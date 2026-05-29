@@ -216,6 +216,11 @@ export type VizGeoAggregationOptions = {
   radius?: number;
 };
 
+export type VizGeoHeatOptions = {
+  radiusMeters?: number;
+  weightMetric?: string;
+};
+
 export type VizGeoAggregationFeature<TProperties = Record<string, unknown>> =
   | {
       coordinates: [longitude: number, latitude: number];
@@ -245,6 +250,17 @@ export type VizGeoAggregation<TProperties = Record<string, unknown>> = {
   };
 };
 
+export type VizGeoHeatAggregation<TProperties = Record<string, unknown>> = {
+  features: Array<VizGeoHeatFeature<TProperties>>;
+  summary: {
+    bounds: VizGeoBounds;
+    maxWeight: number;
+    metrics: VizMetricRecord;
+    visiblePointCount: number;
+    zoom: number;
+  };
+};
+
 export type VizGeoPointIndex<TProperties = Record<string, unknown>> = {
   getBackendCapabilities(): {
     backend: Exclude<VizResolvedBackend, "mixed">;
@@ -259,10 +275,83 @@ export type VizGeoPointIndex<TProperties = Record<string, unknown>> = {
     offset?: number,
   ): Array<VizIndexedGeoPoint<TProperties>>;
   getPointById(pointId: string): VizIndexedGeoPoint<TProperties> | null;
+  getHeatFeatures(
+    query: VizGeoViewportQuery,
+    options?: VizGeoHeatOptions,
+  ): VizGeoHeatAggregation<TProperties>;
   getViewportAggregation(
     query: VizGeoViewportQuery,
     options?: VizGeoAggregationOptions,
   ): VizGeoAggregation<TProperties>;
+  nearestPoint(query: {
+    latitude: number;
+    longitude: number;
+    maxDistance?: number;
+  }): VizIndexedGeoPoint<TProperties> | null;
+};
+
+export type VizGeoJsonOptions = {
+  clipToViewport?: boolean;
+  simplifyTolerance?: number;
+};
+
+export type VizGeoJsonViewport<TProperties = Record<string, unknown>> = {
+  bounds: VizGeoBounds | null;
+  featureCollection: VizGeoJsonFeatureCollection<TProperties>;
+  featureCount: number;
+  viewportBounds: VizGeoBounds;
+  zoom: number;
+};
+
+export type VizGeoJsonIndex<TProperties = Record<string, unknown>> = {
+  getBackendCapabilities(): {
+    backend: Exclude<VizResolvedBackend, "mixed">;
+    implementation?: Exclude<VizBackendImplementation, "mixed">;
+    usesWasm: boolean;
+  };
+  getBounds(): VizGeoBounds | null;
+  getViewportFeatures(
+    query: VizGeoViewportQuery,
+    options?: VizGeoJsonOptions,
+  ): VizGeoJsonViewport<TProperties>;
+};
+
+export type VizGeoFlowOptions = {
+  aggregate?: "none" | "origin-destination" | "grid";
+  minWeight?: number;
+  weightMetric?: string;
+};
+
+export type VizIndexedGeoFlow<TProperties = Record<string, unknown>> = Required<
+  VizGeoFlow<TProperties>
+> & {
+  id: string;
+  sourceIndex: number;
+};
+
+export type VizGeoFlowAggregation<TProperties = Record<string, unknown>> = {
+  features: Array<VizGeoFlowFeature<TProperties>>;
+  summary: {
+    bounds: VizGeoBounds | null;
+    maxWeight: number;
+    metrics: VizMetricRecord;
+    viewportBounds: VizGeoBounds;
+    visibleFlowCount: number;
+    zoom: number;
+  };
+};
+
+export type VizGeoFlowIndex<TProperties = Record<string, unknown>> = {
+  getBackendCapabilities(): {
+    backend: Exclude<VizResolvedBackend, "mixed">;
+    implementation?: Exclude<VizBackendImplementation, "mixed">;
+    usesWasm: boolean;
+  };
+  getBounds(): VizGeoBounds | null;
+  getViewportFlows(
+    query: VizGeoViewportQuery,
+    options?: VizGeoFlowOptions,
+  ): VizGeoFlowAggregation<TProperties>;
 };
 
 export type VizDataset<TProperties = Record<string, unknown>> =
@@ -324,12 +413,16 @@ export type VizLayer =
       weightMetric?: string;
     }
   | {
+      clipToViewport?: boolean;
       datasetId: VizDatasetId;
       kind: "geojson";
+      simplifyTolerance?: number;
     }
   | {
+      aggregate?: "none" | "origin-destination" | "grid";
       datasetId: VizDatasetId;
       kind: "geo-flows";
+      minWeight?: number;
       weightMetric?: string;
     };
 
@@ -387,7 +480,7 @@ export type VizGeoHeatFeature<TProperties = Record<string, unknown>> = {
 };
 
 export type VizGeoFlowFeature<TProperties = Record<string, unknown>> = {
-  flow: Required<VizGeoFlow<TProperties>> & { id: string };
+  flow: VizIndexedGeoFlow<TProperties>;
   rawWeight: number;
   value: number;
 };
@@ -442,10 +535,13 @@ export type VizRenderLayer<TProperties = Record<string, unknown>> =
       bounds: VizGeoBounds | null;
       datasetId: VizDatasetId;
       featureCollection: VizGeoJsonFeatureCollection<TProperties>;
+      featureCount: number;
       kind: "geojson";
       layerId: VizLayerId;
+      viewport: VizGeoJsonViewport<TProperties>;
     }
   | {
+      aggregation: VizGeoFlowAggregation<TProperties>;
       bounds: VizGeoBounds | null;
       datasetId: VizDatasetId;
       features: Array<VizGeoFlowFeature<TProperties>>;
@@ -478,8 +574,9 @@ export type VizHitTestOptions = {
   y: number;
 };
 
-export type VizHitTestResult = {
+export type VizCartesianHitTestResult = {
   datasetId: VizDatasetId;
+  kind: "cartesian";
   layerId: VizLayerId;
   pointCount: number;
   sampleIndex: number;
@@ -488,13 +585,41 @@ export type VizHitTestResult = {
   y: number | null;
 };
 
+export type VizGeoPointHitTestResult<TProperties = Record<string, unknown>> = {
+  datasetId: VizDatasetId;
+  distance: number;
+  kind: "geo-point";
+  layerId: VizLayerId;
+  point: VizIndexedGeoPoint<TProperties>;
+};
+
+export type VizGeoFlowHitTestResult<TProperties = Record<string, unknown>> = {
+  datasetId: VizDatasetId;
+  flow: VizIndexedGeoFlow<TProperties>;
+  kind: "geo-flow";
+  layerId: VizLayerId;
+};
+
+export type VizGeoJsonHitTestResult = {
+  datasetId: VizDatasetId;
+  featureIndex: number;
+  kind: "geojson";
+  layerId: VizLayerId;
+};
+
+export type VizHitTestResult<TProperties = Record<string, unknown>> =
+  | VizCartesianHitTestResult
+  | VizGeoPointHitTestResult<TProperties>
+  | VizGeoFlowHitTestResult<TProperties>
+  | VizGeoJsonHitTestResult;
+
 export type VizEngine<TProperties = Record<string, unknown>> = {
   addDataset(dataset: VizDataset<TProperties>): VizDatasetId;
   addLayer(layer: VizLayer): VizLayerId;
   computeFrame(options: VizComputeFrameOptions): VizRenderFrame<TProperties>;
   getDatasetCount(): number;
   getLayerCount(): number;
-  hitTest(options: VizHitTestOptions): VizHitTestResult | null;
+  hitTest(options: VizHitTestOptions): VizHitTestResult<TProperties> | null;
   removeDataset(datasetId: VizDatasetId): void;
   removeLayer(layerId: VizLayerId): void;
 };
@@ -515,9 +640,11 @@ export type VizDatasetIndex<TProperties = Record<string, unknown>> =
       kind: "geo-points";
     }
   | {
+      index: VizGeoJsonIndex<TProperties>;
       kind: "geojson";
     }
   | {
+      index: VizGeoFlowIndex<TProperties>;
       kind: "geo-flows";
     };
 

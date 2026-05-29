@@ -6,6 +6,8 @@ import type {
   VizGeoAggregation,
   VizGeoAggregationOptions,
   VizGeoBounds,
+  VizGeoHeatAggregation,
+  VizGeoHeatOptions,
   VizGeoPoint,
   VizGeoPointIndex,
   VizGeoViewportQuery,
@@ -56,11 +58,26 @@ export class WasmVizGeoPointIndex<
     return this.byId.get(pointId) ?? null;
   }
 
+  getHeatFeatures(
+    query: VizGeoViewportQuery,
+    options: VizGeoHeatOptions = {},
+  ): VizGeoHeatAggregation<TProperties> {
+    return this.getIndex().getHeatFeatures(query, options) as VizGeoHeatAggregation<TProperties>;
+  }
+
   getViewportAggregation(
     query: VizGeoViewportQuery,
     options: VizGeoAggregationOptions = {},
   ): VizGeoAggregation<TProperties> {
     return this.getIndex(options).getViewportAggregation(query) as VizGeoAggregation<TProperties>;
+  }
+
+  nearestPoint(query: {
+    latitude: number;
+    longitude: number;
+    maxDistance?: number;
+  }): VizIndexedGeoPoint<TProperties> | null {
+    return this.getIndex().nearestPoint(query) as VizIndexedGeoPoint<TProperties> | null;
   }
 
   private getIndex(options: VizGeoAggregationOptions = {}) {

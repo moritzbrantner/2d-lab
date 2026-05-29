@@ -4,6 +4,8 @@ import type {
   VizGeoAggregation,
   VizGeoAggregationOptions,
   VizGeoBounds,
+  VizGeoHeatAggregation,
+  VizGeoHeatOptions,
   VizGeoPoint,
   VizGeoPointIndex,
   VizGeoViewportQuery,
@@ -59,6 +61,41 @@ export class JsVizGeoPointIndex<
     return this.byId.get(pointId) ?? null;
   }
 
+  getHeatFeatures(
+    query: VizGeoViewportQuery,
+    options: VizGeoHeatOptions = {},
+  ): VizGeoHeatAggregation<TProperties> {
+    const visiblePoints = this.points.filter((point) => pointInBounds(point, query.bounds));
+    const weighted = visiblePoints
+      .map((point) => ({
+        point,
+        rawWeight: getGeoWeight(point.metrics, options.weightMetric),
+      }))
+      .filter((entry) => entry.rawWeight > 0);
+    const maxWeight = Math.max(1, ...weighted.map((entry) => entry.rawWeight));
+    const features = weighted.map(({ point, rawWeight }) => ({
+      coordinates: [point.longitude, point.latitude] as [number, number],
+      id: point.id,
+      label: point.label,
+      metrics: point.metrics,
+      point,
+      pointCount: 1,
+      rawWeight,
+      value: rawWeight / maxWeight,
+    }));
+
+    return {
+      features,
+      summary: {
+        bounds: query.bounds,
+        maxWeight,
+        metrics: sumMetrics(features.map((feature) => feature.metrics)),
+        visiblePointCount: features.length,
+        zoom: query.zoom,
+      },
+    };
+  }
+
   getViewportAggregation(
     query: VizGeoViewportQuery,
     options: VizGeoAggregationOptions = {},
@@ -76,6 +113,32 @@ export class JsVizGeoPointIndex<
       features,
       summary: summarizeGeoFeatures(query, features),
     };
+  }
+
+  nearestPoint(query: {
+    latitude: number;
+    longitude: number;
+    maxDistance?: number;
+  }): VizIndexedGeoPoint<TProperties> | null {
+    let nearest: VizIndexedGeoPoint<TProperties> | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    for (const point of this.points) {
+      const distance = Math.hypot(
+        point.longitude - query.longitude,
+        point.latitude - query.latitude,
+      );
+      if (distance < nearestDistance) {
+        nearest = point;
+        nearestDistance = distance;
+      }
+    }
+
+    if (query.maxDistance != null && nearestDistance > query.maxDistance) {
+      return null;
+    }
+
+    return nearest;
   }
 }
 
@@ -222,6 +285,11 @@ function sumMetrics(records: readonly VizMetricRecord[]): VizMetricRecord {
   }
 
   return result;
+}
+
+export function getGeoWeight(metrics: VizMetricRecord, weightMetric: string | undefined) {
+  const weight = weightMetric ? (metrics[weightMetric] ?? 0) : (metrics.weight ?? 1);
+  return Number.isFinite(weight) ? Math.max(0, weight) : 0;
 }
 
 function abbreviateCount(count: number) {

@@ -66,7 +66,7 @@ export function createVizEngine<TProperties = Record<string, unknown>>(
       return layers.size;
     },
 
-    hitTest(hitOptions: VizHitTestOptions): VizHitTestResult | null {
+    hitTest(hitOptions: VizHitTestOptions): VizHitTestResult<TProperties> | null {
       if (!lastFrame && hitOptions.viewport) {
         lastFrame = computeVizRenderFrame(datasets, layers, backend, {
           viewport: hitOptions.viewport,

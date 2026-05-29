@@ -5,7 +5,6 @@
     "": {
       "name": "@moritzbrantner/viz-engine",
       "dependencies": {
-        "@mb-rust/dense-data-wasm": "file:../rust-packages/packages/dense-data-wasm",
         "@mb-rust/geo-viz-core-wasm": "file:../rust-packages/packages/geo-viz-core-wasm",
       },
       "devDependencies": {
@@ -160,8 +159,6 @@
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.5", "", {}, "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="],
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
-
-    "@mb-rust/dense-data-wasm": ["@mb-rust/dense-data-wasm@file:../rust-packages/packages/dense-data-wasm", {}],
 
     "@mb-rust/geo-viz-core-wasm": ["@mb-rust/geo-viz-core-wasm@file:../rust-packages/packages/geo-viz-core-wasm", {}],
 

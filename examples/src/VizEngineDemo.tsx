@@ -149,9 +149,11 @@ function VizEngineDemoLayers({
 
         <div className="hit-readout">
           <span>Hit test</span>
-          <strong>{hit?.sourcePointId ?? "No point"}</strong>
+          <strong>
+            {hit?.kind === "cartesian" ? (hit.sourcePointId ?? "No point") : "No point"}
+          </strong>
           <p>
-            {hit
+            {hit?.kind === "cartesian"
               ? `${hit.pointCount.toLocaleString()} point bin at ${minuteLabel(hit.x)}`
               : "Move over the series path"}
           </p>
@@ -262,6 +264,10 @@ function VizEngineLayer({ layer, yDomain }: { layer: VizRenderLayer; yDomain: [n
 }
 
 function HitMarker({ hit, yDomain }: { hit: VizHitTestResult; yDomain: [number, number] }) {
+  if (hit.kind !== "cartesian") {
+    return null;
+  }
+
   const x = scaleX(hit.x);
   const y = scaleY(hit.y ?? 0, yDomain);
 

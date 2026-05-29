@@ -112,7 +112,10 @@ describe("computeVizRenderFrame", () => {
             featureCollection: { features: [], type: "FeatureCollection" },
             kind: "geojson",
           },
-          index: { kind: "geojson" },
+          index: backend.createIndex({
+            featureCollection: { features: [], type: "FeatureCollection" },
+            kind: "geojson",
+          }),
         },
       ],
     ]);
@@ -184,7 +187,14 @@ describe("computeVizRenderFrame", () => {
     });
     const geoJsonDatasetId = engine.addDataset({
       featureCollection: {
-        features: [{ geometry: null, id: "shape", properties: { name: "Shape" }, type: "Feature" }],
+        features: [
+          {
+            geometry: { coordinates: [13, 52], type: "Point" },
+            id: "shape",
+            properties: { name: "Shape" },
+            type: "Feature",
+          },
+        ],
         type: "FeatureCollection",
       },
       kind: "geojson",

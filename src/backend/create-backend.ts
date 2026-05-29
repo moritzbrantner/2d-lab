@@ -1,8 +1,12 @@
 import { JsVizDensityIndex } from "./js-density-index";
+import { JsVizGeoFlowIndex } from "./js-geo-flow-index";
 import { JsVizGeoPointIndex } from "./js-geo-index";
+import { JsVizGeoJsonIndex } from "./js-geojson-index";
 import { ProgressiveVizDensityIndex } from "./progressive-density-index";
 import { RustWasmVizDensityIndex } from "./rust-wasm-density-index";
+import { WasmVizGeoFlowIndex } from "./wasm-geo-flow-index";
 import { WasmVizGeoPointIndex } from "./wasm-geo-index";
+import { WasmVizGeoJsonIndex } from "./wasm-geojson-index";
 
 import type { VizBackendOption, VizDataset, VizDatasetIndex, VizEngineBackend } from "../types";
 
@@ -28,11 +32,35 @@ export function createVizEngineBackend<TProperties = Record<string, unknown>>(
       }
 
       if (dataset.kind === "geojson") {
-        return { kind: "geojson" };
+        switch (option) {
+          case "js":
+            return {
+              index: new JsVizGeoJsonIndex(dataset.featureCollection),
+              kind: "geojson",
+            };
+          case "wasm":
+          case "auto":
+            return {
+              index: new WasmVizGeoJsonIndex(dataset.featureCollection),
+              kind: "geojson",
+            };
+        }
       }
 
       if (dataset.kind === "geo-flows") {
-        return { kind: "geo-flows" };
+        switch (option) {
+          case "js":
+            return {
+              index: new JsVizGeoFlowIndex(dataset.flows),
+              kind: "geo-flows",
+            };
+          case "wasm":
+          case "auto":
+            return {
+              index: new WasmVizGeoFlowIndex(dataset.flows),
+              kind: "geo-flows",
+            };
+        }
       }
 
       switch (option) {
@@ -55,7 +83,12 @@ export function createVizEngineBackend<TProperties = Record<string, unknown>>(
     },
     option,
     resolveBackend(index: VizDatasetIndex<TProperties>): "js" | "wasm" {
-      if (index.kind === "xy" || index.kind === "geo-points") {
+      if (
+        index.kind === "xy" ||
+        index.kind === "geo-points" ||
+        index.kind === "geojson" ||
+        index.kind === "geo-flows"
+      ) {
         return index.index.getBackendCapabilities().backend;
       }
 
@@ -82,7 +115,12 @@ export function resolveFrameBackendImplementation<TProperties>(
 ) {
   const implementations = new Set(
     indexes.map((index) => {
-      if (index.kind === "xy" || index.kind === "geo-points") {
+      if (
+        index.kind === "xy" ||
+        index.kind === "geo-points" ||
+        index.kind === "geojson" ||
+        index.kind === "geo-flows"
+      ) {
         const capabilities = index.index.getBackendCapabilities();
 
         return (

@@ -127,6 +127,7 @@ describe("hitTestVizFrame", () => {
       }),
     ).toMatchObject({
       datasetId: "dataset-series",
+      kind: "cartesian",
       layerId: "layer-series",
       sampleIndex: 2,
       sourcePointId: "c",
@@ -137,25 +138,31 @@ describe("hitTestVizFrame", () => {
 
   test("clamps pixel x values and handles non-positive width", () => {
     expect(
-      hitTestVizFrame(frame(), {
-        viewport: { height: 100, width: 400, xDomain: [0, 40] },
-        x: -20,
-        y: 0,
-      })?.sampleIndex,
+      cartesianHit(
+        hitTestVizFrame(frame(), {
+          viewport: { height: 100, width: 400, xDomain: [0, 40] },
+          x: -20,
+          y: 0,
+        }),
+      )?.sampleIndex,
     ).toBe(1);
     expect(
-      hitTestVizFrame(frame(), {
-        viewport: { height: 100, width: 400, xDomain: [0, 40] },
-        x: 900,
-        y: 0,
-      })?.sampleIndex,
+      cartesianHit(
+        hitTestVizFrame(frame(), {
+          viewport: { height: 100, width: 400, xDomain: [0, 40] },
+          x: 900,
+          y: 0,
+        }),
+      )?.sampleIndex,
     ).toBe(2);
     expect(
-      hitTestVizFrame(frame(), {
-        viewport: { height: 100, width: 0, xDomain: [0, 40] },
-        x: 900,
-        y: 0,
-      })?.sampleIndex,
+      cartesianHit(
+        hitTestVizFrame(frame(), {
+          viewport: { height: 100, width: 0, xDomain: [0, 40] },
+          x: 900,
+          y: 0,
+        }),
+      )?.sampleIndex,
     ).toBe(1);
   });
 
@@ -171,11 +178,17 @@ describe("hitTestVizFrame", () => {
     layer.series.samples[1]!.lastPoint = null;
 
     expect(
-      hitTestVizFrame(noSourceFrame, {
-        viewport: { height: 100, width: 400, xDomain: [0, 40] },
-        x: 120,
-        y: 0,
-      })?.sourcePointId,
+      cartesianHit(
+        hitTestVizFrame(noSourceFrame, {
+          viewport: { height: 100, width: 400, xDomain: [0, 40] },
+          x: 120,
+          y: 0,
+        }),
+      )?.sourcePointId,
     ).toBeNull();
   });
 });
+
+function cartesianHit(result: ReturnType<typeof hitTestVizFrame>) {
+  return result?.kind === "cartesian" ? result : null;
+}

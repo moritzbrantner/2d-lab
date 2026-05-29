@@ -1,7 +1,15 @@
 import { StrictMode, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import type { VizSeriesPoint, VizValueMode } from "../../src";
+import {
+  createVizEngine,
+  type VizGeoFlowFeature,
+  type VizGeoHeatFeature,
+  type VizGeoAggregationFeature,
+  type VizRenderLayer,
+  type VizSeriesPoint,
+  type VizValueMode,
+} from "../../src";
 
 import { VizEngineDemo } from "./VizEngineDemo";
 import "./styles.css";
@@ -26,7 +34,7 @@ function ExampleApp() {
       <header className="app-header">
         <div>
           <p className="eyebrow">@moritzbrantner/viz-engine</p>
-          <h1>Shared density-index renderer demo</h1>
+          <h1>Shared visualization engine demo</h1>
         </div>
         <button className="button" onClick={() => setSeed((currentSeed) => currentSeed + 1)}>
           Regenerate data
@@ -92,8 +100,234 @@ function ExampleApp() {
         targetBinCount={targetBinCount}
         valueMode={valueMode}
       />
+
+      <GeoEngineDemo />
     </main>
   );
+}
+
+function GeoEngineDemo() {
+  const frame = useMemo(() => {
+    const engine = createVizEngine({ backend: "auto" });
+    const pointDatasetId = engine.addDataset({
+      kind: "geo-points",
+      points: [
+        {
+          id: "berlin",
+          label: "Berlin",
+          latitude: 52.52,
+          longitude: 13.405,
+          metrics: { demand: 8 },
+        },
+        {
+          id: "potsdam",
+          label: "Potsdam",
+          latitude: 52.39,
+          longitude: 13.064,
+          metrics: { demand: 4 },
+        },
+        {
+          id: "leipzig",
+          label: "Leipzig",
+          latitude: 51.34,
+          longitude: 12.37,
+          metrics: { demand: 5 },
+        },
+        {
+          id: "dresden",
+          label: "Dresden",
+          latitude: 51.05,
+          longitude: 13.74,
+          metrics: { demand: 6 },
+        },
+      ],
+    });
+    const shapeDatasetId = engine.addDataset({
+      featureCollection: {
+        features: [
+          {
+            geometry: {
+              coordinates: [
+                [
+                  [12.15, 50.85],
+                  [14.3, 50.85],
+                  [14.3, 53.0],
+                  [12.15, 53.0],
+                  [12.15, 50.85],
+                ],
+              ],
+              type: "Polygon",
+            },
+            id: "viewport-region",
+            properties: { name: "Region" },
+            type: "Feature",
+          },
+        ],
+        type: "FeatureCollection",
+      },
+      kind: "geojson",
+    });
+    const flowDatasetId = engine.addDataset({
+      flows: [
+        { from: [13.405, 52.52], id: "berlin-leipzig", metrics: { demand: 5 }, to: [12.37, 51.34] },
+        { from: [13.405, 52.52], id: "berlin-dresden", metrics: { demand: 7 }, to: [13.74, 51.05] },
+      ],
+      kind: "geo-flows",
+    });
+
+    engine.addLayer({ datasetId: shapeDatasetId, kind: "geojson", simplifyTolerance: 0.001 });
+    engine.addLayer({ datasetId: flowDatasetId, kind: "geo-flows", weightMetric: "demand" });
+    engine.addLayer({ datasetId: pointDatasetId, kind: "geo-heat", weightMetric: "demand" });
+    engine.addLayer({ datasetId: pointDatasetId, kind: "geo-clusters", radius: 48 });
+
+    return engine.computeFrame({
+      viewport: {
+        bounds: [11.9, 50.7, 14.6, 53.2],
+        center: [13.25, 52],
+        display: "flat",
+        height: 360,
+        kind: "geo",
+        width: 720,
+        zoom: 7,
+      },
+    });
+  }, []);
+  const bounds = [11.9, 50.7, 14.6, 53.2] as const;
+
+  return (
+    <section className="geo-panel" aria-label="Geo frame demo">
+      <div>
+        <p className="eyebrow">Geo frame</p>
+        <h2>Rust-backed map layers</h2>
+      </div>
+      <svg className="geo-map" role="img" viewBox="0 0 720 360">
+        {frame.layers.map((layer) => (
+          <GeoLayer key={layer.layerId} bounds={bounds} layer={layer} />
+        ))}
+      </svg>
+    </section>
+  );
+}
+
+function GeoLayer({
+  bounds,
+  layer,
+}: {
+  bounds: readonly [number, number, number, number];
+  layer: VizRenderLayer;
+}) {
+  if (layer.kind === "geojson") {
+    return (
+      <g className="geo-shapes">
+        {layer.featureCollection.features.map((feature, index) => {
+          const rings = getPolygonRings(feature.geometry);
+
+          return rings.map((ring, ringIndex) => (
+            <polygon
+              key={`${index}-${ringIndex}`}
+              points={ring.map((position) => projectGeo(position, bounds).join(",")).join(" ")}
+            />
+          ));
+        })}
+      </g>
+    );
+  }
+
+  if (layer.kind === "geo-flows") {
+    return (
+      <g className="geo-flows">
+        {layer.features.map((feature) => (
+          <GeoFlowPath key={feature.flow.id} bounds={bounds} feature={feature} />
+        ))}
+      </g>
+    );
+  }
+
+  if (layer.kind === "geo-heat") {
+    return (
+      <g className="geo-heat-points">
+        {layer.features.map((feature) => (
+          <GeoHeatCircle key={feature.id} bounds={bounds} feature={feature} />
+        ))}
+      </g>
+    );
+  }
+
+  if (layer.kind === "geo-clusters") {
+    return (
+      <g className="geo-clusters">
+        {layer.features.map((feature, index) => (
+          <GeoClusterMark key={index} bounds={bounds} feature={feature} />
+        ))}
+      </g>
+    );
+  }
+
+  return null;
+}
+
+function GeoFlowPath({
+  bounds,
+  feature,
+}: {
+  bounds: readonly [number, number, number, number];
+  feature: VizGeoFlowFeature;
+}) {
+  const [x1, y1] = projectGeo(feature.flow.from, bounds);
+  const [x2, y2] = projectGeo(feature.flow.to, bounds);
+
+  return <line strokeWidth={1 + feature.value * 5} x1={x1} x2={x2} y1={y1} y2={y2} />;
+}
+
+function GeoHeatCircle({
+  bounds,
+  feature,
+}: {
+  bounds: readonly [number, number, number, number];
+  feature: VizGeoHeatFeature;
+}) {
+  const [cx, cy] = projectGeo(feature.coordinates, bounds);
+
+  return <circle cx={cx} cy={cy} r={10 + feature.value * 20} />;
+}
+
+function GeoClusterMark({
+  bounds,
+  feature,
+}: {
+  bounds: readonly [number, number, number, number];
+  feature: VizGeoAggregationFeature;
+}) {
+  const [cx, cy] = projectGeo(feature.coordinates, bounds);
+  const label = feature.kind === "cluster" ? feature.pointCountAbbreviated : feature.point.label;
+
+  return (
+    <g transform={`translate(${cx} ${cy})`}>
+      <circle r={feature.kind === "cluster" ? 14 : 8} />
+      <text y={feature.kind === "cluster" ? 4 : -12}>{label}</text>
+    </g>
+  );
+}
+
+function getPolygonRings(geometry: unknown): Array<Array<[number, number]>> {
+  if (!geometry || typeof geometry !== "object") {
+    return [];
+  }
+
+  const polygon = geometry as { coordinates?: Array<Array<[number, number]>>; type?: string };
+  return polygon.type === "Polygon" && Array.isArray(polygon.coordinates)
+    ? polygon.coordinates
+    : [];
+}
+
+function projectGeo(
+  position: readonly [number, number],
+  bounds: readonly [number, number, number, number],
+) {
+  const x = ((position[0] - bounds[0]) / (bounds[2] - bounds[0])) * 720;
+  const y = (1 - (position[1] - bounds[1]) / (bounds[3] - bounds[1])) * 360;
+
+  return [x, y];
 }
 
 function createExamplePoints(

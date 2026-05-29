@@ -1,8 +1,8 @@
 # @moritzbrantner/viz-engine
 
 Experimental renderer-agnostic visualization engine layer backed by
-JavaScript fallbacks, legacy WASM kernels, and the new Rust-first
-`viz-engine-core` direction.
+JavaScript fallbacks, local Rust/WASM XY kernels, and published Rust geo
+packages.
 
 `createVizEngine` lets multiple chart layers share datasets and density indexes,
 then returns a render frame that SVG, Canvas, WebGL, React chart components, or
@@ -38,11 +38,12 @@ const frame = engine.computeFrame({
 - The TypeScript engine owns registered datasets, backend loading, cached
   indexes, frame assembly, hit testing, and renderer-facing data shapes.
 - `viz-engine-core` is the future Rust source of truth for reusable
-  data/math/geometry/indexing logic.
+  XY data/math/indexing logic.
 - `viz-engine-wasm` exposes selected Rust APIs to the browser through
   `wasm-bindgen`.
-- Existing JavaScript and legacy `@mb-rust/*-wasm` backends remain available
-  while Rust coverage grows.
+- Published `@mb-rust/*-wasm` packages own geo computation such as map
+  clustering, GeoJSON viewport filtering, heat features, flow filtering, and
+  future projection helpers.
 - Renderers consume returned renderable data.
 - React hooks coordinate lifecycle and small UI state only.
 
@@ -51,8 +52,9 @@ const frame = engine.computeFrame({
 The package boundary is:
 
 ```txt
-viz-engine-core: Rust computation
-viz-engine-wasm: browser binding
+viz-engine-core: local Rust XY computation
+viz-engine-wasm: local browser binding for XY computation
+@mb-rust/geo-viz-core-wasm: published Rust geo computation
 @moritzbrantner/viz-engine: TypeScript runtime wrapper
 charts/maps/future packages: visuals
 ```
@@ -60,15 +62,17 @@ charts/maps/future packages: visuals
 The rule is:
 
 ```txt
-Rust owns computation.
+Rust crates own computation.
 TypeScript owns integration.
 charts/maps/future packages own visuals.
 ```
 
 The current Rust MVP supports XY datasets, binned series, histograms, heatmaps,
-series bounds, and simple x-based hit testing. Geo datasets, GeoJSON, flows,
-React lifecycle, renderer-facing frame assembly, dynamic backend selection, and
-fallback routing remain in TypeScript or existing WASM packages for now.
+series bounds, and simple x-based hit testing. Geo point clustering, geo heat
+features, GeoJSON viewport filtering, and flow filtering/aggregation are routed
+through `@mb-rust/geo-viz-core-wasm`, with JavaScript fallbacks retained for
+tests and non-WASM environments. React lifecycle, renderer-facing frame
+assembly, dynamic backend selection, and fallback routing remain in TypeScript.
 
 Do not move React, DOM, Leaflet, Recharts, SVG rendering, Canvas rendering, UI
 controls, or renderer integrations into Rust.
@@ -105,7 +109,7 @@ Not included:
 - a DOM-selection model
 - a primary SVG, Canvas, WebGL, or WebGPU renderer
 - a complete map engine
-- complete GeoJSON projection, clipping, or simplification
+- complete map projection or clipping
 - WebGL/WebGPU buffers or typed-array render buffers
 - worker scheduling
 - React/browser integration in Rust

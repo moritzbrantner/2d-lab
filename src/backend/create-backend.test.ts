@@ -6,7 +6,9 @@ import {
   resolveFrameBackendImplementation,
 } from "./create-backend";
 import { JsVizDensityIndex } from "./js-density-index";
+import { JsVizGeoFlowIndex } from "./js-geo-flow-index";
 import { JsVizGeoPointIndex } from "./js-geo-index";
+import { JsVizGeoJsonIndex } from "./js-geojson-index";
 import { ProgressiveVizDensityIndex } from "./progressive-density-index";
 import { RustWasmVizDensityIndex } from "./rust-wasm-density-index";
 import { WasmVizGeoPointIndex } from "./wasm-geo-index";
@@ -48,7 +50,7 @@ describe("createVizEngineBackend", () => {
     });
   });
 
-  test("creates marker indexes for geojson and geo-flows", () => {
+  test("creates indexes for geojson and geo-flows", () => {
     const backend = createVizEngineBackend("js");
 
     expect(
@@ -56,8 +58,11 @@ describe("createVizEngineBackend", () => {
         featureCollection: { features: [], type: "FeatureCollection" },
         kind: "geojson",
       }),
-    ).toEqual({ kind: "geojson" });
-    expect(backend.createIndex({ flows: [], kind: "geo-flows" })).toEqual({ kind: "geo-flows" });
+    ).toMatchObject({ index: expect.any(JsVizGeoJsonIndex), kind: "geojson" });
+    expect(backend.createIndex({ flows: [], kind: "geo-flows" })).toMatchObject({
+      index: expect.any(JsVizGeoFlowIndex),
+      kind: "geo-flows",
+    });
   });
 
   test("resolves frame backend and implementation stats", () => {
@@ -74,7 +79,10 @@ describe("createVizEngineBackend", () => {
       kind: "geo-points",
       points: [{ latitude: 52, longitude: 13 }],
     });
-    const geojsonIndex: VizDatasetIndex = { kind: "geojson" };
+    const geojsonIndex: VizDatasetIndex = createVizEngineBackend("js").createIndex({
+      featureCollection: { features: [], type: "FeatureCollection" },
+      kind: "geojson",
+    });
 
     expect(resolveFrameBackend(backend, [jsIndex])).toBe("js");
     expect(resolveFrameBackend(createVizEngineBackend("wasm"), [wasmIndex])).toBe("wasm");

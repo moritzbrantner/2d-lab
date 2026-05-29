@@ -8,9 +8,8 @@ import type {
   VizEngineBackend,
   VizEngineDatasetRecord,
   VizFrameDiagnostic,
-  VizGeoBounds,
-  VizGeoFlow,
-  VizGeoFlowFeature,
+  VizGeoFlowIndex,
+  VizGeoJsonIndex,
   VizGeoPointIndex,
   VizGeoViewport,
   VizHeatmap,
@@ -195,73 +194,76 @@ function computeVizRenderLayer<TProperties>(
       if (!index || !viewport) {
         return null;
       }
-      const aggregation = index.getViewportAggregation({
-        bounds: viewport.bounds,
-        zoom: viewport.zoom,
-      });
-      const points = aggregation.features.flatMap((feature) =>
-        feature.kind === "point"
-          ? [feature.point]
-          : index.getClusterLeaves(feature.clusterId, feature.pointCount, 0),
+      const heat = index.getHeatFeatures(
+        {
+          bounds: viewport.bounds,
+          zoom: viewport.zoom,
+        },
+        {
+          radiusMeters: layer.radiusMeters,
+          weightMetric: layer.weightMetric,
+        },
       );
-      const weights = points.map((point) => getGeoWeight(point.metrics, layer.weightMetric));
-      const maxWeight = Math.max(1, ...weights);
 
       return {
-        bounds: aggregation.summary.bounds,
+        bounds: heat.summary.bounds,
         datasetId: layer.datasetId,
-        features: points
-          .map((point, pointIndex) => ({
-            coordinates: [point.longitude, point.latitude] as [number, number],
-            id: point.id,
-            label: point.label,
-            metrics: point.metrics,
-            point,
-            pointCount: 1,
-            rawWeight: weights[pointIndex] ?? 0,
-            value: Math.max(0, (weights[pointIndex] ?? 0) / maxWeight),
-          }))
-          .filter((feature) => feature.rawWeight > 0),
+        features: heat.features,
         kind: "geo-heat",
         layerId,
-        maxWeight,
+        maxWeight: heat.summary.maxWeight,
       };
     }
     case "geojson": {
-      if (datasetRecord.dataset.kind !== "geojson") {
-        pushIncompatibleLayerDiagnostic(
-          layerId,
-          layer.kind,
-          datasetRecord.dataset.kind,
-          diagnostics,
-        );
+      const index = getGeoJsonIndex(layerId, layer.kind, datasetRecord, diagnostics);
+      const viewport = getGeoViewport(options.viewport, layerId, diagnostics);
+      if (!index || !viewport) {
         return null;
       }
+      const geojson = index.getViewportFeatures(
+        {
+          bounds: viewport.bounds,
+          zoom: viewport.zoom,
+        },
+        {
+          clipToViewport: layer.clipToViewport,
+          simplifyTolerance: layer.simplifyTolerance,
+        },
+      );
 
       return {
-        bounds: null,
+        bounds: geojson.bounds,
         datasetId: layer.datasetId,
-        featureCollection: datasetRecord.dataset.featureCollection,
+        featureCollection: geojson.featureCollection,
+        featureCount: geojson.featureCount,
         kind: "geojson",
         layerId,
+        viewport: geojson,
       };
     }
     case "geo-flows": {
-      if (datasetRecord.dataset.kind !== "geo-flows") {
-        pushIncompatibleLayerDiagnostic(
-          layerId,
-          layer.kind,
-          datasetRecord.dataset.kind,
-          diagnostics,
-        );
+      const index = getGeoFlowIndex(layerId, layer.kind, datasetRecord, diagnostics);
+      const viewport = getGeoViewport(options.viewport, layerId, diagnostics);
+      if (!index || !viewport) {
         return null;
       }
-      const features = createGeoFlowFeatures(datasetRecord.dataset.flows, layer.weightMetric);
+      const aggregation = index.getViewportFlows(
+        {
+          bounds: viewport.bounds,
+          zoom: viewport.zoom,
+        },
+        {
+          aggregate: layer.aggregate,
+          minWeight: layer.minWeight,
+          weightMetric: layer.weightMetric,
+        },
+      );
 
       return {
-        bounds: getGeoFlowBounds(features),
+        aggregation,
+        bounds: aggregation.summary.bounds,
         datasetId: layer.datasetId,
-        features,
+        features: aggregation.features,
         kind: "geo-flows",
         layerId,
       };
@@ -382,6 +384,34 @@ function getGeoPointIndex<TProperties>(
   return null;
 }
 
+function getGeoJsonIndex<TProperties>(
+  layerId: VizLayerId,
+  layerKind: VizLayer["kind"],
+  datasetRecord: VizEngineDatasetRecord<TProperties>,
+  diagnostics: VizFrameDiagnostic[],
+): VizGeoJsonIndex<TProperties> | null {
+  if (datasetRecord.index.kind === "geojson") {
+    return datasetRecord.index.index;
+  }
+
+  pushIncompatibleLayerDiagnostic(layerId, layerKind, datasetRecord.dataset.kind, diagnostics);
+  return null;
+}
+
+function getGeoFlowIndex<TProperties>(
+  layerId: VizLayerId,
+  layerKind: VizLayer["kind"],
+  datasetRecord: VizEngineDatasetRecord<TProperties>,
+  diagnostics: VizFrameDiagnostic[],
+): VizGeoFlowIndex<TProperties> | null {
+  if (datasetRecord.index.kind === "geo-flows") {
+    return datasetRecord.index.index;
+  }
+
+  pushIncompatibleLayerDiagnostic(layerId, layerKind, datasetRecord.dataset.kind, diagnostics);
+  return null;
+}
+
 function pushIncompatibleLayerDiagnostic(
   layerId: VizLayerId,
   layerKind: VizLayer["kind"],
@@ -430,56 +460,4 @@ function getGeoViewport(
     severity: "warning",
   });
   return null;
-}
-
-function getGeoWeight(metrics: Record<string, number>, weightMetric: string | undefined) {
-  const weight = weightMetric ? (metrics[weightMetric] ?? 0) : (metrics.weight ?? 1);
-  return Number.isFinite(weight) ? Math.max(0, weight) : 0;
-}
-
-function createGeoFlowFeatures<TProperties>(
-  flows: readonly VizGeoFlow<TProperties>[],
-  weightMetric: string | undefined,
-): Array<VizGeoFlowFeature<TProperties>> {
-  const normalized = flows
-    .map((flow, index) => ({
-      flow: {
-        from: flow.from,
-        id: String(flow.id ?? index),
-        label: flow.label ?? "",
-        metrics: flow.metrics ?? {},
-        properties: flow.properties ?? ({} as TProperties),
-        to: flow.to,
-      },
-      rawWeight: getGeoWeight(flow.metrics ?? {}, weightMetric),
-    }))
-    .filter(
-      ({ flow, rawWeight }) =>
-        rawWeight > 0 && flow.from.every(Number.isFinite) && flow.to.every(Number.isFinite),
-    );
-  const maxWeight = Math.max(1, ...normalized.map((entry) => entry.rawWeight));
-
-  return normalized.map(({ flow, rawWeight }) => ({
-    flow,
-    rawWeight,
-    value: rawWeight / maxWeight,
-  }));
-}
-
-function getGeoFlowBounds<TProperties>(
-  features: Array<VizGeoFlowFeature<TProperties>>,
-): VizGeoBounds | null {
-  if (!features.length) {
-    return null;
-  }
-
-  const longitudes = features.flatMap((feature) => [feature.flow.from[0], feature.flow.to[0]]);
-  const latitudes = features.flatMap((feature) => [feature.flow.from[1], feature.flow.to[1]]);
-
-  return [
-    Math.min(...longitudes),
-    Math.min(...latitudes),
-    Math.max(...longitudes),
-    Math.max(...latitudes),
-  ];
 }

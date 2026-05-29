@@ -19,7 +19,6 @@
     }
   },
   "dependencies": {
-    "@mb-rust/dense-data-wasm": "file:../rust-packages/packages/dense-data-wasm",
     "@mb-rust/geo-viz-core-wasm": "file:../rust-packages/packages/geo-viz-core-wasm"
   },
   "peerDependencies": {
