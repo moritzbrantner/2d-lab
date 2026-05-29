@@ -1,7 +1,5 @@
 import { useMemo, useState, type PointerEvent } from "react";
 
-import type { ChartSeriesPoint, ChartValueMode } from "@moritzbrantner/charts";
-
 import {
   VizEngineProvider,
   useVizDataset,
@@ -10,14 +8,16 @@ import {
   useVizLayer,
   type VizHitTestResult,
   type VizRenderLayer,
+  type VizSeriesPoint,
+  type VizValueMode,
 } from "../../src";
 
 type VizEngineDemoProps = {
   bucketCount: number;
-  points: readonly ChartSeriesPoint[];
+  points: readonly VizSeriesPoint[];
   showHeatmap: boolean;
   targetBinCount: number;
-  valueMode: ChartValueMode;
+  valueMode: VizValueMode;
 };
 
 const viewport = {
@@ -241,6 +241,10 @@ function VizEngineLayer({ layer }: { layer: VizRenderLayer }) {
         })}
       </g>
     );
+  }
+
+  if (layer.kind !== "binned-series") {
+    return null;
   }
 
   const path = layer.rows

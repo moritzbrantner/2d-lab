@@ -4,7 +4,7 @@ export function hitTestVizFrame<TProperties>(
   frame: VizRenderFrame<TProperties> | null,
   options: VizHitTestOptions,
 ): VizHitTestResult | null {
-  if (!frame || !options.viewport) {
+  if (!frame || !options.viewport || options.viewport.kind === "geo") {
     return null;
   }
 

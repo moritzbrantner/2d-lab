@@ -1,7 +1,7 @@
 import { StrictMode, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import type { ChartSeriesPoint, ChartValueMode } from "@moritzbrantner/charts";
+import type { VizSeriesPoint, VizValueMode } from "../../src";
 
 import { VizEngineDemo } from "./VizEngineDemo";
 import "./styles.css";
@@ -10,13 +10,13 @@ type ExamplePointProperties = {
   cohort: "weekday" | "weekend";
 };
 
-const valueModes: ChartValueMode[] = ["average", "count", "max", "p90"];
+const valueModes: VizValueMode[] = ["average", "count", "max", "sum"];
 
 function ExampleApp() {
   const [seed, setSeed] = useState(7);
   const [pointCount, setPointCount] = useState(24_000);
   const [targetBinCount, setTargetBinCount] = useState(180);
-  const [valueMode, setValueMode] = useState<ChartValueMode>("average");
+  const [valueMode, setValueMode] = useState<VizValueMode>("average");
   const [showHeatmap, setShowHeatmap] = useState(true);
 
   const points = useMemo(() => createExamplePoints(pointCount, seed), [pointCount, seed]);
@@ -99,7 +99,7 @@ function ExampleApp() {
 function createExamplePoints(
   pointCount: number,
   seed: number,
-): Array<ChartSeriesPoint<ExamplePointProperties>> {
+): Array<VizSeriesPoint<ExamplePointProperties>> {
   const random = createSeededRandom(seed);
 
   return Array.from({ length: pointCount }, (_, index) => {

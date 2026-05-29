@@ -7,8 +7,6 @@ import {
   type ReactNode,
 } from "react";
 
-import type { ChartSeriesPoint } from "@moritzbrantner/charts";
-
 import { createVizEngine } from "./create-viz-engine";
 
 import type {
@@ -19,6 +17,7 @@ import type {
   VizLayer,
   VizLayerId,
   VizRenderFrame,
+  VizSeriesPoint,
   VizViewport,
 } from "./types";
 
@@ -80,7 +79,7 @@ export function useVizEngine<TProperties = Record<string, unknown>>() {
 }
 
 export function useVizDataset<TProperties = Record<string, unknown>>(
-  points: readonly ChartSeriesPoint<TProperties>[],
+  points: readonly VizSeriesPoint<TProperties>[],
 ): VizDatasetId | null {
   const engine = useVizEngine<TProperties>();
   const idStore = useMemo(() => createIdStore<VizDatasetId>(), []);

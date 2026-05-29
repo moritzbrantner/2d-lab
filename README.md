@@ -1,11 +1,11 @@
 # @moritzbrantner/viz-engine
 
-Experimental renderer-agnostic visualization engine layer for
-`@moritzbrantner/charts`.
+Experimental renderer-agnostic visualization engine layer backed by a
+Rust/WASM density kernel.
 
 `createVizEngine` lets multiple chart layers share datasets and density indexes,
-then returns a render frame that SVG, Canvas, WebGL, Recharts, or server-side
-renderers can consume.
+then returns a render frame that SVG, Canvas, WebGL, React chart components, or
+server-side renderers can consume.
 
 ```ts
 import { createVizEngine } from "@moritzbrantner/viz-engine";
@@ -35,7 +35,8 @@ const frame = engine.computeFrame({
 
 - React describes datasets, layers, and viewports.
 - The engine owns registered datasets and cached chart density indexes.
-- The backend computes chart/render data.
+- The backend computes chart/render data through JavaScript or
+  `@mb-rust/dense-data-wasm`.
 - Renderers consume returned renderable data.
 - React hooks coordinate lifecycle and small UI state only.
 
@@ -54,15 +55,15 @@ engine keeps ownership of large point arrays, indexes, and computed data.
 
 ## CI
 
-GitHub Actions checks formatting, types, tests, and the package build. Because
-this package currently depends on the private sibling repository
-`moritzbrantner/charts` through `file:../charts`, the repository needs a
-`CHARTS_REPO_TOKEN` Actions secret with read access to `moritzbrantner/charts`.
+GitHub Actions checks formatting, types, tests, and the package build. The WASM
+backend is supplied by `@mb-rust/dense-data-wasm`, which wraps the Rust
+`dense-data` crate.
 
 ## Non-Goals
 
 This MVP is not a D3 clone and not a primary renderer. It is a small proof of
-concept for a shared JS/WASM visualization backend.
+concept for a shared JS/WASM visualization backend. Higher-level chart packages
+can build on top of this package instead of owning the data kernel.
 
 Not included:
 

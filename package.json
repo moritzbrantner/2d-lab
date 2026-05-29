@@ -19,7 +19,8 @@
     }
   },
   "dependencies": {
-    "@moritzbrantner/charts": "file:../charts"
+    "@mb-rust/dense-data-wasm": "file:../rust-packages/packages/dense-data-wasm",
+    "@mb-rust/geo-viz-core-wasm": "file:../rust-packages/packages/geo-viz-core-wasm"
   },
   "peerDependencies": {
     "react": "^19.0.0"
@@ -39,7 +40,7 @@
     "vitest": "^4.1.2"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean --out-dir dist --external @moritzbrantner/charts --external react --external react/jsx-runtime",
+    "build": "tsup src/index.ts --format esm --dts --clean --out-dir dist --external @mb-rust/dense-data-wasm --external react --external react/jsx-runtime",
     "check-types": "tsc --noEmit",
     "dev": "vite examples --host 0.0.0.0",
     "format:check": "prettier --check .",
