@@ -25,7 +25,7 @@ const viewport = {
   width: 960,
   xDomain: [0, 1_440] as [number, number],
 };
-const yDomain = [0, 130] as [number, number];
+const defaultYDomain = [0, 130] as [number, number];
 const plotPadding = {
   bottom: 36,
   left: 36,
@@ -63,7 +63,7 @@ function VizEngineDemoLayers({
             xBinCount: 80,
             xDomain: viewport.xDomain,
             yBinCount: 28,
-            yDomain,
+            yDomain: defaultYDomain,
           }
         : null,
     [datasetId, showHeatmap],
@@ -102,6 +102,7 @@ function VizEngineDemoLayers({
     [binnedLayerId, heatmapLayerId, histogramLayerId],
   );
   const frame = useVizFrame(viewport, frameDependencies);
+  const chartYDomain = useMemo(() => deriveChartYDomain(frame.layers), [frame.layers]);
 
   const summary = {
     backend: frame.stats.backend.toUpperCase(),
@@ -128,11 +129,11 @@ function VizEngineDemoLayers({
           role="img"
           viewBox={`0 0 ${viewport.width} ${viewport.height}`}
         >
-          <ChartFrame />
+          <ChartFrame yDomain={chartYDomain} />
           {frame.layers.map((layer) => (
-            <VizEngineLayer key={layer.layerId} layer={layer} />
+            <VizEngineLayer key={layer.layerId} layer={layer} yDomain={chartYDomain} />
           ))}
-          {hit ? <HitMarker hit={hit} /> : null}
+          {hit ? <HitMarker hit={hit} yDomain={chartYDomain} /> : null}
         </svg>
       </div>
 
@@ -160,21 +161,21 @@ function VizEngineDemoLayers({
   );
 }
 
-function ChartFrame() {
+function ChartFrame({ yDomain }: { yDomain: [number, number] }) {
   const ticks = [0, 360, 720, 1_080, 1_440];
-  const yTicks = [0, 32.5, 65, 97.5, 130];
+  const yTicks = createYTicks(yDomain);
 
   return (
     <g className="chart-frame">
       <rect height={plotHeight} width={plotWidth} x={plotPadding.left} y={plotPadding.top} />
       {yTicks.map((tick) => {
-        const y = scaleY(tick);
+        const y = scaleY(tick, yDomain);
 
         return (
           <g key={tick}>
             <line x1={plotPadding.left} x2={viewport.width - plotPadding.right} y1={y} y2={y} />
             <text x={plotPadding.left - 10} y={y + 4}>
-              {Math.round(tick)}
+              {formatTick(tick)}
             </text>
           </g>
         );
@@ -192,7 +193,7 @@ function ChartFrame() {
   );
 }
 
-function VizEngineLayer({ layer }: { layer: VizRenderLayer }) {
+function VizEngineLayer({ layer, yDomain }: { layer: VizRenderLayer; yDomain: [number, number] }) {
   if (layer.kind === "heatmap") {
     const maxCount = Math.max(1, ...layer.cells.map((cell) => cell.pointCount));
 
@@ -207,12 +208,12 @@ function VizEngineLayer({ layer }: { layer: VizRenderLayer }) {
 
           return (
             <rect
-              height={Math.max(1, scaleY(cell.y0) - scaleY(cell.y1) - 1)}
+              height={Math.max(1, scaleY(cell.y0, yDomain) - scaleY(cell.y1, yDomain) - 1)}
               key={cell.index}
               opacity={opacity}
               width={Math.max(1, scaleX(cell.x1) - scaleX(cell.x0) - 1)}
               x={scaleX(cell.x0)}
-              y={scaleY(cell.y1)}
+              y={scaleY(cell.y1, yDomain)}
             />
           );
         })}
@@ -251,7 +252,7 @@ function VizEngineLayer({ layer }: { layer: VizRenderLayer }) {
     .filter((row) => row.value !== null)
     .map((row, index) => {
       const x = scaleX(row.x);
-      const y = scaleY(row.value ?? 0);
+      const y = scaleY(row.value ?? 0, yDomain);
 
       return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
     })
@@ -260,9 +261,9 @@ function VizEngineLayer({ layer }: { layer: VizRenderLayer }) {
   return <path className="series-layer" d={path} />;
 }
 
-function HitMarker({ hit }: { hit: VizHitTestResult }) {
+function HitMarker({ hit, yDomain }: { hit: VizHitTestResult; yDomain: [number, number] }) {
   const x = scaleX(hit.x);
-  const y = scaleY(hit.y ?? 0);
+  const y = scaleY(hit.y ?? 0, yDomain);
 
   return (
     <g className="hit-marker">
@@ -278,10 +279,50 @@ function scaleX(value: number) {
   return plotPadding.left + ((value - min) / (max - min)) * plotWidth;
 }
 
-function scaleY(value: number) {
+function scaleY(value: number, yDomain: [number, number]) {
   const [min, max] = yDomain;
 
   return plotPadding.top + (1 - (value - min) / (max - min)) * plotHeight;
+}
+
+function deriveChartYDomain(layers: Array<VizRenderLayer>): [number, number] {
+  let min = defaultYDomain[0];
+  let max = defaultYDomain[1];
+
+  for (const layer of layers) {
+    if (layer.kind !== "binned-series") {
+      continue;
+    }
+
+    for (const row of layer.rows) {
+      if (row.value === null || !Number.isFinite(row.value)) {
+        continue;
+      }
+
+      min = Math.min(min, row.value);
+      max = Math.max(max, row.value);
+    }
+  }
+
+  if (min === max) {
+    return [min - 1, max + 1];
+  }
+
+  const paddedMax = max > defaultYDomain[1] ? Math.ceil(max * 1.08) : defaultYDomain[1];
+  const paddedMin = min < defaultYDomain[0] ? Math.floor(min * 1.08) : defaultYDomain[0];
+
+  return [paddedMin, paddedMax];
+}
+
+function createYTicks(yDomain: [number, number]) {
+  const [min, max] = yDomain;
+  const step = (max - min) / 4;
+
+  return Array.from({ length: 5 }, (_, index) => min + step * index);
+}
+
+function formatTick(value: number) {
+  return Math.abs(value) >= 100 ? Math.round(value).toLocaleString() : Number(value.toFixed(1));
 }
 
 function getSvgPoint(event: PointerEvent<SVGSVGElement>) {

@@ -66,7 +66,7 @@ describe("viz engine", () => {
     });
     expect(layer?.kind).toBe("binned-series");
     expect(layer?.datasetId).toBe(datasetId);
-    expect(layer?.bounds).toEqual([0, 2, 40, 32]);
+    expect(layer?.bounds).toEqual([0, 2, 40, 24]);
     expect(layer?.kind === "binned-series" ? layer.rows.length : 0).toBe(4);
   });
 
@@ -208,6 +208,25 @@ describe("viz engine", () => {
     expect(
       frame.layers[0]?.kind === "binned-series" ? frame.layers[0].rows.map((row) => row.value) : [],
     ).toEqual([2, 4, 8, 16, 32]);
+  });
+
+  test("uses rendered binned-series values for layer bounds", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({ kind: "xy", points });
+
+    engine.addLayer({
+      datasetId,
+      kind: "binned-series",
+      targetBinCount: 2,
+      valueMode: "count",
+      xDomain: [0, 40],
+    });
+
+    const frame = engine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+
+    expect(frame.layers[0]?.bounds).toEqual([0, 2, 40, 3]);
   });
 
   test("keeps js and wasm density results equivalent", () => {

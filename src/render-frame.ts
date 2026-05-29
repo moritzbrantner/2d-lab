@@ -320,8 +320,8 @@ function getSeriesBounds<TProperties>(
 
   const minX = Math.min(...samples.map((sample) => sample.x0));
   const maxX = Math.max(...samples.map((sample) => sample.x1));
-  const minY = Math.min(...samples.map((sample) => sample.minY ?? sample.y ?? 0));
-  const maxY = Math.max(...samples.map((sample) => sample.maxY ?? sample.y ?? 0));
+  const minY = Math.min(...samples.map((sample) => sample.y ?? 0));
+  const maxY = Math.max(...samples.map((sample) => sample.y ?? 0));
 
   return [minX, minY, maxX, maxY];
 }
