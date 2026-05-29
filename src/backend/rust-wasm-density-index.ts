@@ -125,7 +125,7 @@ export class RustWasmVizDensityIndex<
   }
 
   getSeriesBounds() {
-    return this.index.getSeriesBounds();
+    return this.index.getSeriesBounds() ?? null;
   }
 
   hitTestX(query: VizDensityQuery & { x: number }) {
@@ -146,6 +146,7 @@ export class RustWasmVizDensityIndex<
       lastPoint: this.pointBySourceIndex(bin.lastPointIndex),
       lastPointIndex: bin.lastPointIndex ?? null,
       maxY: bin.maxY ?? null,
+      metrics: normalizeRustMetrics(bin.metrics),
       minY: bin.minY ?? null,
     };
   }
@@ -159,6 +160,7 @@ export class RustWasmVizDensityIndex<
       lastPoint: this.pointBySourceIndex(sample.lastPointIndex),
       lastPointIndex: sample.lastPointIndex ?? null,
       maxY: sample.maxY ?? null,
+      metrics: normalizeRustMetrics(sample.metrics),
       minY: sample.minY ?? null,
       y: sample.y ?? null,
     };
@@ -173,6 +175,7 @@ export class RustWasmVizDensityIndex<
       lastPoint: this.pointBySourceIndex(bucket.lastPointIndex),
       lastPointIndex: bucket.lastPointIndex ?? null,
       maxValue: bucket.maxValue ?? null,
+      metrics: normalizeRustMetrics(bucket.metrics),
       minValue: bucket.minValue ?? null,
     };
   }
@@ -185,6 +188,7 @@ export class RustWasmVizDensityIndex<
       firstPointIndex: cell.firstPointIndex ?? null,
       lastPoint: this.pointBySourceIndex(cell.lastPointIndex),
       lastPointIndex: cell.lastPointIndex ?? null,
+      metrics: normalizeRustMetrics(cell.metrics),
     };
   }
 
@@ -195,4 +199,8 @@ export class RustWasmVizDensityIndex<
 
 function metricValues(metrics: VizMetricRecord | undefined, metricKeys: readonly string[]) {
   return metricKeys.map((key) => metrics?.[key] ?? 0);
+}
+
+function normalizeRustMetrics(metrics: VizMetricRecord | Map<string, number>): VizMetricRecord {
+  return metrics instanceof Map ? Object.fromEntries(metrics) : metrics;
 }

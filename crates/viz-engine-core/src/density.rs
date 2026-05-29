@@ -539,6 +539,36 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_metrics_to_the_schema() {
+        let index = VizDensityIndex::new(
+            vec![
+                VizSeriesPoint {
+                    id: "a".to_string(),
+                    label: "a".to_string(),
+                    x: 0.0,
+                    y: 1.0,
+                    metrics: vec![f64::NAN, 2.0, 99.0],
+                    source_index: 0,
+                },
+                VizSeriesPoint {
+                    id: "b".to_string(),
+                    label: "b".to_string(),
+                    x: 1.0,
+                    y: 2.0,
+                    metrics: vec![3.0],
+                    source_index: 1,
+                },
+            ],
+            VizMetricSchema {
+                keys: vec!["count".to_string(), "weight".to_string()],
+            },
+        );
+
+        assert_eq!(index.points()[0].metrics, vec![0.0, 2.0]);
+        assert_eq!(index.points()[1].metrics, vec![3.0, 0.0]);
+    }
+
+    #[test]
     fn bins_points_into_series() {
         let series = index().get_binned_series(VizBinnedSeriesQuery {
             x_domain: [0.0, 40.0],
@@ -566,6 +596,22 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_reversed_domains_and_clamps_zero_counts() {
+        let series = index().get_binned_series(VizBinnedSeriesQuery {
+            x_domain: [40.0, 0.0],
+            target_bin_count: 0,
+            include_empty_bins: true,
+            value_mode: VizValueMode::Average,
+        });
+
+        assert_eq!(series.bins.len(), 1);
+        assert_eq!(series.bins[0].x0, 0.0);
+        assert_eq!(series.bins[0].x1, 40.0);
+        assert_eq!(series.bins[0].point_count, 5);
+        assert_eq!(series.summary.x_domain, [0.0, 40.0]);
+    }
+
+    #[test]
     fn supports_empty_bins() {
         let series = index().get_binned_series(VizBinnedSeriesQuery {
             x_domain: [0.0, 40.0],
@@ -583,6 +629,21 @@ mod tests {
                 .count(),
             3
         );
+    }
+
+    #[test]
+    fn summarizes_binned_series_metrics() {
+        let series = index().get_binned_series(VizBinnedSeriesQuery {
+            x_domain: [0.0, 40.0],
+            target_bin_count: 4,
+            include_empty_bins: true,
+            value_mode: VizValueMode::Average,
+        });
+
+        assert_eq!(series.summary.metrics.get("count"), Some(&5.0));
+        assert_eq!(series.summary.metrics.get("weight"), Some(&62.0));
+        assert_eq!(series.summary.point_count, 5);
+        assert_eq!(series.summary.sample_count, 4);
     }
 
     #[test]
@@ -628,6 +689,28 @@ mod tests {
     }
 
     #[test]
+    fn filters_empty_histogram_buckets_and_applies_x_domain() {
+        let histogram = index().get_histogram(VizHistogramQuery {
+            bucket_count: 4,
+            include_empty_buckets: false,
+            value_domain: Some([0.0, 40.0]),
+            x_domain: Some([0.0, 20.0]),
+        });
+
+        assert_eq!(
+            histogram
+                .buckets
+                .iter()
+                .map(|bucket| bucket.point_count)
+                .collect::<Vec<_>>(),
+            vec![3]
+        );
+        assert_eq!(histogram.summary.point_count, 3);
+        assert_eq!(histogram.summary.metrics.get("count"), Some(&3.0));
+        assert_eq!(histogram.summary.metrics.get("weight"), Some(&14.0));
+    }
+
+    #[test]
     fn computes_heatmap_cells() {
         let heatmap = index().get_heatmap(VizHeatmapQuery {
             x_bin_count: 4,
@@ -640,6 +723,62 @@ mod tests {
         assert_eq!(heatmap.cells.len(), 16);
         assert_eq!(heatmap.summary.max_cell_count, 1);
         assert_eq!(heatmap.summary.point_count, 5);
+    }
+
+    #[test]
+    fn filters_empty_heatmap_cells_and_keeps_boundary_points() {
+        let heatmap = index().get_heatmap(VizHeatmapQuery {
+            x_bin_count: 2,
+            x_domain: [0.0, 40.0],
+            y_bin_count: 2,
+            y_domain: Some([0.0, 40.0]),
+            include_empty_cells: false,
+        });
+
+        assert_eq!(
+            heatmap
+                .cells
+                .iter()
+                .map(|cell| (cell.x_index, cell.y_index, cell.point_count, cell.value))
+                .collect::<Vec<_>>(),
+            vec![(0, 0, 2, 1.0), (1, 0, 2, 1.0), (1, 1, 1, 0.5)]
+        );
+        assert_eq!(heatmap.summary.metrics.get("count"), Some(&5.0));
+        assert_eq!(heatmap.summary.metrics.get("weight"), Some(&62.0));
+    }
+
+    #[test]
+    fn handles_empty_indexes() {
+        let index = VizDensityIndex::new(
+            vec![],
+            VizMetricSchema {
+                keys: vec!["count".to_string()],
+            },
+        );
+
+        assert_eq!(index.get_series_bounds(), None);
+
+        let histogram = index.get_histogram(VizHistogramQuery {
+            bucket_count: 0,
+            include_empty_buckets: true,
+            value_domain: None,
+            x_domain: None,
+        });
+
+        assert_eq!(histogram.summary.value_domain, [0.0, 0.0]);
+        assert_eq!(histogram.buckets.len(), 1);
+
+        let heatmap = index.get_heatmap(VizHeatmapQuery {
+            x_bin_count: 0,
+            x_domain: [f64::NAN, f64::INFINITY],
+            y_bin_count: 0,
+            y_domain: None,
+            include_empty_cells: true,
+        });
+
+        assert_eq!(heatmap.summary.x_domain, [0.0, 0.0]);
+        assert_eq!(heatmap.summary.y_domain, [0.0, 0.0]);
+        assert_eq!(heatmap.cells.len(), 1);
     }
 
     #[test]
@@ -661,6 +800,21 @@ mod tests {
                 x: 20.0,
                 y: Some(8.0),
             })
+        );
+    }
+
+    #[test]
+    fn returns_none_when_hit_testing_empty_series() {
+        let index = VizDensityIndex::new(vec![], VizMetricSchema { keys: vec![] });
+
+        assert_eq!(
+            index.hit_test_x(VizHitTestQuery {
+                x: 19.0,
+                x_domain: [0.0, 40.0],
+                target_bin_count: 5,
+                value_mode: VizValueMode::Average,
+            }),
+            None
         );
     }
 }

@@ -1,0 +1,137 @@
+import { describe, expect, test } from "vitest";
+
+import { JsVizDensityIndex } from "./js-density-index";
+import { RustWasmVizDensityIndex } from "./rust-wasm-density-index";
+
+import type { VizDensityIndex, VizSeriesPoint, VizValueMode } from "../types";
+
+const points: VizSeriesPoint<{ group: string }>[] = [
+  {
+    id: "c",
+    label: "C",
+    x: 20,
+    y: 8,
+    metrics: { count: 1, weight: 8 },
+    properties: { group: "x" },
+  },
+  { id: "a", label: "A", x: 0, y: 2, metrics: { count: 1, weight: 2 }, properties: { group: "x" } },
+  { id: "bad-x", x: Number.NaN, y: 1 },
+  { id: "bad-metric", x: 5, y: 3, metrics: { count: Number.NaN, weight: 3 } },
+  {
+    id: "b",
+    label: "B",
+    x: 10,
+    y: 4,
+    metrics: { count: 1, weight: 4 },
+    properties: { group: "y" },
+  },
+  {
+    id: "d",
+    label: "D",
+    x: 30,
+    y: 16,
+    metrics: { count: 1, weight: 16 },
+    properties: { group: "y" },
+  },
+  {
+    id: "e",
+    label: "E",
+    x: 40,
+    y: 32,
+    metrics: { count: 1, weight: 32 },
+    properties: { group: "z" },
+  },
+];
+
+describe("RustWasmVizDensityIndex", () => {
+  test("reports wasm capabilities and preserves point lookup data", () => {
+    const index = new RustWasmVizDensityIndex(points);
+
+    expect(index.getBackendCapabilities()).toEqual({
+      backend: "wasm",
+      implementation: "rust-viz-engine-wasm",
+      usesWasm: true,
+    });
+    expect(index.getPointById("a")).toMatchObject({
+      id: "a",
+      label: "A",
+      metrics: { count: 1, weight: 2 },
+      properties: { group: "x" },
+      sourceIndex: 1,
+    });
+    expect(index.getPointById("missing")).toBeNull();
+  });
+
+  test("matches the JS density index for public query outputs", () => {
+    const js = new JsVizDensityIndex(points);
+    const wasm = new RustWasmVizDensityIndex(points);
+
+    expect(publicResults(wasm)).toEqual(publicResults(js));
+  });
+
+  test("handles empty input like the JS density index", () => {
+    expect(publicResults(new RustWasmVizDensityIndex([]))).toEqual(
+      publicResults(new JsVizDensityIndex([])),
+    );
+  });
+});
+
+function publicResults(index: VizDensityIndex) {
+  const modes: VizValueMode[] = ["average", "count", "max", "min", "sum"];
+
+  return {
+    bounds: index.getSeriesBounds(),
+    binned: index
+      .getBinnedSeries({ includeEmptyBins: true, targetBinCount: 4, xDomain: [0, 40] })
+      .bins.map(publicBin),
+    heatmap: index
+      .getHeatmap({ includeEmptyCells: true, xBinCount: 4, xDomain: [0, 40], yBinCount: 4 })
+      .cells.map((cell) => ({
+        averageValue: cell.averageValue,
+        firstPointIndex: cell.firstPointIndex,
+        lastPointIndex: cell.lastPointIndex,
+        metrics: cell.metrics,
+        pointCount: cell.pointCount,
+        sumValue: cell.sumValue,
+        value: cell.value,
+        xIndex: cell.xIndex,
+        yIndex: cell.yIndex,
+      })),
+    histogram: index
+      .getHistogram({ bucketCount: 4, includeEmptyBuckets: true, xDomain: [0, 40] })
+      .buckets.map((bucket) => ({
+        averageValue: bucket.averageValue,
+        firstPointIndex: bucket.firstPointIndex,
+        lastPointIndex: bucket.lastPointIndex,
+        maxValue: bucket.maxValue,
+        metrics: bucket.metrics,
+        minValue: bucket.minValue,
+        pointCount: bucket.pointCount,
+        sumValue: bucket.sumValue,
+      })),
+    series: modes.map((valueMode) =>
+      index
+        .getChartSeries({ includeEmptyBins: true, targetBinCount: 4, valueMode, xDomain: [0, 40] })
+        .samples.map((sample) => ({
+          ...publicBin(sample),
+          x: sample.x,
+          y: sample.y,
+        })),
+    ),
+  };
+}
+
+function publicBin(bin: ReturnType<VizDensityIndex["getBinnedSeries"]>["bins"][number]) {
+  return {
+    averageY: bin.averageY,
+    firstPointIndex: bin.firstPointIndex,
+    lastPointIndex: bin.lastPointIndex,
+    maxY: bin.maxY,
+    metrics: bin.metrics,
+    minY: bin.minY,
+    pointCount: bin.pointCount,
+    sumY: bin.sumY,
+    x0: bin.x0,
+    x1: bin.x1,
+  };
+}

@@ -1,0 +1,127 @@
+import { describe, expect, test } from "vitest";
+
+import { JsVizGeoPointIndex, getBoundsFromGeoPoints, normalizeGeoPoints } from "./js-geo-index";
+
+import type { VizGeoPoint } from "../types";
+
+const points: VizGeoPoint<{ group: string }>[] = [
+  {
+    id: "a",
+    label: "A",
+    latitude: 52,
+    longitude: 13,
+    metrics: { demand: 2 },
+    properties: { group: "x" },
+  },
+  {
+    id: "b",
+    latitude: 52.001,
+    longitude: 13.001,
+    metrics: { demand: 3 },
+    properties: { group: "x" },
+  },
+  {
+    id: "c",
+    latitude: 10,
+    longitude: 179.5,
+    metrics: { demand: 5 },
+    properties: { group: "east" },
+  },
+  {
+    id: "d",
+    latitude: 10,
+    longitude: -179.5,
+    metrics: { demand: 7 },
+    properties: { group: "west" },
+  },
+  { id: "bad", latitude: 100, longitude: 13 },
+];
+
+describe("geo index utils", () => {
+  test("normalizes geo points and filters invalid coordinates", () => {
+    expect(normalizeGeoPoints([{ latitude: 1, longitude: 2, metrics: { a: Number.NaN } }])).toEqual(
+      [
+        {
+          id: "0",
+          label: "",
+          latitude: 1,
+          longitude: 2,
+          metrics: {},
+          properties: {},
+          sourceIndex: 0,
+        },
+      ],
+    );
+    expect(normalizeGeoPoints(points).map((point) => point.id)).toEqual(["a", "b", "c", "d"]);
+  });
+
+  test("computes bounds from geo points", () => {
+    expect(getBoundsFromGeoPoints([])).toBeNull();
+    expect(getBoundsFromGeoPoints(normalizeGeoPoints(points.slice(0, 2)))).toEqual([
+      13, 52, 13.001, 52.001,
+    ]);
+  });
+});
+
+describe("JsVizGeoPointIndex", () => {
+  test("reports capabilities, bounds, and point lookup", () => {
+    const index = new JsVizGeoPointIndex(points);
+
+    expect(index.getBackendCapabilities()).toEqual({
+      backend: "js",
+      implementation: "js",
+      usesWasm: false,
+    });
+    expect(index.getBounds()).toEqual([-179.5, 10, 179.5, 52.001]);
+    expect(index.getPointById("a")).toMatchObject({ id: "a", label: "A", metrics: { demand: 2 } });
+    expect(index.getPointById("missing")).toBeNull();
+  });
+
+  test("filters viewport aggregation by normal and antimeridian bounds", () => {
+    const index = new JsVizGeoPointIndex(points);
+
+    expect(
+      index.getViewportAggregation({ bounds: [12.9, 51.9, 13.1, 52.1], zoom: 12 }).summary,
+    ).toMatchObject({ metrics: { demand: 5 }, visiblePointCount: 2 });
+    expect(
+      index
+        .getViewportAggregation({ bounds: [170, 0, -170, 20], zoom: 12 })
+        .features.map((feature) =>
+          feature.kind === "point" ? feature.point.id : feature.clusterId,
+        ),
+    ).toEqual(["c", "d"]);
+  });
+
+  test("clusters nearby points and exposes leaves", () => {
+    const index = new JsVizGeoPointIndex(points);
+    const aggregation = index.getViewportAggregation(
+      { bounds: [12.9, 51.9, 13.1, 52.1], zoom: 1 },
+      { radius: 80 },
+    );
+    const cluster = aggregation.features[0];
+
+    expect(cluster).toMatchObject({
+      kind: "cluster",
+      metrics: { demand: 5 },
+      pointCount: 2,
+      pointCountAbbreviated: "2",
+    });
+    expect(cluster?.coordinates[0]).toBeCloseTo(13.0005);
+    expect(cluster?.coordinates[1]).toBeCloseTo(52.0005);
+    expect(aggregation.summary).toMatchObject({
+      metrics: { demand: 5 },
+      visibleClusterCount: 1,
+      visiblePointCount: 2,
+      visibleUnclusteredCount: 0,
+    });
+
+    if (cluster?.kind !== "cluster") {
+      throw new Error("Expected a cluster");
+    }
+
+    expect(index.getClusterExpansionZoom(cluster.clusterId)).toBe(16);
+    expect(index.getClusterLeaves(cluster.clusterId, 1, 1).map((point) => point.id)).toEqual(["b"]);
+    expect(index.getClusterExpansionZoom(999)).toBe(0);
+    expect(index.getClusterLeaves(999)).toEqual([]);
+  });
+});
