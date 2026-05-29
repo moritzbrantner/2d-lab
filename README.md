@@ -75,3 +75,14 @@ Not included:
 - a giant scene graph
 
 The API is experimental and may change before `1.0`.
+
+## Development
+
+Run the example project with:
+
+```sh
+bun dev
+```
+
+The Vite app in `examples/` renders the current engine through React, including
+binned series, histogram, heatmap, frame stats, and hit testing.

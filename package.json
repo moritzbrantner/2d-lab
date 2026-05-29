@@ -41,6 +41,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean --out-dir dist --external @moritzbrantner/charts --external react --external react/jsx-runtime",
     "check-types": "tsc --noEmit",
+    "dev": "vite examples --host 0.0.0.0",
     "format:check": "prettier --check .",
     "test": "vitest run"
   }
