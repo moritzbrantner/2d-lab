@@ -1,0 +1,47 @@
+{
+  "name": "@moritzbrantner/viz-engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.3.14",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moritzbrantner/viz-engine.git"
+  },
+  "license": "MIT",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@moritzbrantner/charts": "file:../charts"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.2",
+    "@vitejs/plugin-react": "^5.1.2",
+    "jsdom": "^26.1.0",
+    "prettier": "^3.8.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tsup": "^8.5.0",
+    "typescript": "6.0.2",
+    "vite": "^8.0.14",
+    "vitest": "^4.1.2"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean --out-dir dist --external @moritzbrantner/charts --external react --external react/jsx-runtime",
+    "check-types": "tsc --noEmit",
+    "format:check": "prettier --check .",
+    "test": "vitest run"
+  }
+}
