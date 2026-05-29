@@ -157,6 +157,10 @@ describe("viz engine", () => {
       wasmEngine.computeFrame({ viewport: { height: 320, width: 800, xDomain: [0, 40] } }).stats
         .backend,
     ).toBe("wasm");
+    expect(
+      wasmEngine.computeFrame({ viewport: { height: 320, width: 800, xDomain: [0, 40] } }).stats
+        .backendImplementation,
+    ).toBe("rust-viz-engine-wasm");
   });
 
   test("hit tests a visible binned-series layer", () => {
@@ -323,6 +327,7 @@ describe("viz engine", () => {
     });
 
     expect(frame.stats.backend).toBe("wasm");
+    expect(frame.stats.backendImplementation).toBe("legacy-wasm");
     expect(
       frame.layers[0]?.kind === "geo-clusters"
         ? frame.layers[0].aggregation.summary.metrics.demand
@@ -356,6 +361,7 @@ describe("viz engine", () => {
       code: "incompatible-layer-dataset",
       severity: "warning",
     });
+    expect(frame.stats.backendImplementation).toBe("js");
   });
 
   test("does not import the charts package", () => {

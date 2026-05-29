@@ -1,1 +1,5 @@
-export { createVizEngineBackend, resolveFrameBackend } from "./backend/create-backend";
+export {
+  createVizEngineBackend,
+  resolveFrameBackend,
+  resolveFrameBackendImplementation,
+} from "./backend/create-backend";

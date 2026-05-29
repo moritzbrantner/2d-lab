@@ -1,5 +1,5 @@
 import { JsVizDensityIndex } from "./js-density-index";
-import { WasmVizDensityIndex } from "./wasm-density-index";
+import { RustWasmVizDensityIndex } from "./rust-wasm-density-index";
 
 import type {
   VizBinnedSeriesQuery,
@@ -52,7 +52,7 @@ export class ProgressiveVizDensityIndex<
 
   warmWasmIndex() {
     this.warmupPromise ??= Promise.resolve().then(() => {
-      this.activeIndex = new WasmVizDensityIndex(this.points);
+      this.activeIndex = new RustWasmVizDensityIndex(this.points);
     });
 
     return this.warmupPromise;

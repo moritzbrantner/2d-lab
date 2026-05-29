@@ -3,6 +3,7 @@ export type VizLayerId = string;
 
 export type VizBackendOption = "auto" | "js" | "wasm";
 export type VizResolvedBackend = "js" | "mixed" | "wasm";
+export type VizBackendImplementation = "js" | "legacy-wasm" | "mixed" | "rust-viz-engine-wasm";
 
 export type VizMetricRecord = Record<string, number>;
 export type VizValueMode = "average" | "count" | "max" | "min" | "sum";
@@ -192,6 +193,7 @@ export type VizSeriesBounds = {
 export type VizDensityIndex<TProperties = Record<string, unknown>> = {
   getBackendCapabilities(): {
     backend: Exclude<VizResolvedBackend, "mixed">;
+    implementation?: Exclude<VizBackendImplementation, "mixed">;
     usesWasm: boolean;
   };
   getBinnedSeries(query: VizBinnedSeriesQuery): { bins: Array<VizDensityBin<TProperties>> };
@@ -246,6 +248,7 @@ export type VizGeoAggregation<TProperties = Record<string, unknown>> = {
 export type VizGeoPointIndex<TProperties = Record<string, unknown>> = {
   getBackendCapabilities(): {
     backend: Exclude<VizResolvedBackend, "mixed">;
+    implementation?: Exclude<VizBackendImplementation, "mixed">;
     usesWasm: boolean;
   };
   getBounds(): VizGeoBounds | null;
@@ -461,6 +464,7 @@ export type VizRenderFrame<TProperties = Record<string, unknown>> = {
   layers: Array<VizRenderLayer<TProperties>>;
   stats: {
     backend: VizResolvedBackend;
+    backendImplementation?: VizBackendImplementation;
     computeMs: number;
     datasetCount: number;
     diagnostics: VizFrameDiagnostic[];

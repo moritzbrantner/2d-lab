@@ -29,6 +29,7 @@ export class WasmVizGeoPointIndex<
   getBackendCapabilities() {
     return {
       backend: "wasm" as const,
+      implementation: "legacy-wasm" as const,
       usesWasm: true,
     };
   }

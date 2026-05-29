@@ -1,4 +1,4 @@
-import { resolveFrameBackend } from "./js-backend";
+import { resolveFrameBackend, resolveFrameBackendImplementation } from "./js-backend";
 
 import type {
   VizCartesianViewport,
@@ -60,6 +60,7 @@ export function computeVizRenderFrame<TProperties>(
     layers: renderLayers,
     stats: {
       backend: resolveFrameBackend(backend, usedIndexes),
+      backendImplementation: resolveFrameBackendImplementation(usedIndexes),
       computeMs: performance.now() - startedAt,
       datasetCount: datasets.size,
       diagnostics,

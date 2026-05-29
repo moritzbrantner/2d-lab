@@ -37,13 +37,18 @@
     "tsup": "^8.5.0",
     "typescript": "6.0.2",
     "vite": "^8.0.14",
+    "vite-plugin-wasm": "^3.6.0",
     "vitest": "^4.1.2"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean --out-dir dist --external @mb-rust/dense-data-wasm --external react --external react/jsx-runtime",
+    "build": "bun run build:wasm && tsup && cp src/wasm/pkg/viz_engine_wasm_bg.wasm dist/viz_engine_wasm_bg.wasm",
+    "build:wasm": "wasm-pack build crates/viz-engine-wasm --target bundler --out-dir ../../src/wasm/pkg",
     "check-types": "tsc --noEmit",
     "dev": "vite examples --host 0.0.0.0",
     "format:check": "prettier --check .",
-    "test": "vitest run"
+    "test": "bun run build:wasm && vitest run",
+    "test:rust": "cargo test --workspace",
+    "test:wasm": "bun run test",
+    "verify": "bun run check-types && bun run test && bun run test:rust && bun run build"
   }
 }

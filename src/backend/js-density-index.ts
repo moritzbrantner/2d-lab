@@ -36,6 +36,7 @@ export class JsVizDensityIndex<
   getBackendCapabilities() {
     return {
       backend: "js" as const,
+      implementation: "js" as const,
       usesWasm: false,
     };
   }

@@ -1,7 +1,7 @@
 import { JsVizDensityIndex } from "./js-density-index";
 import { JsVizGeoPointIndex } from "./js-geo-index";
 import { ProgressiveVizDensityIndex } from "./progressive-density-index";
-import { WasmVizDensityIndex } from "./wasm-density-index";
+import { RustWasmVizDensityIndex } from "./rust-wasm-density-index";
 import { WasmVizGeoPointIndex } from "./wasm-geo-index";
 
 import type { VizBackendOption, VizDataset, VizDatasetIndex, VizEngineBackend } from "../types";
@@ -43,7 +43,7 @@ export function createVizEngineBackend<TProperties = Record<string, unknown>>(
           };
         case "wasm":
           return {
-            index: new WasmVizDensityIndex(dataset.points),
+            index: new RustWasmVizDensityIndex(dataset.points),
             kind: "xy",
           };
         case "auto":
@@ -75,4 +75,28 @@ export function resolveFrameBackend<TProperties>(
   }
 
   return backends.has("wasm") ? ("wasm" as const) : ("js" as const);
+}
+
+export function resolveFrameBackendImplementation<TProperties>(
+  indexes: Array<VizDatasetIndex<TProperties>>,
+) {
+  const implementations = new Set(
+    indexes.map((index) => {
+      if (index.kind === "xy" || index.kind === "geo-points") {
+        const capabilities = index.index.getBackendCapabilities();
+
+        return (
+          capabilities.implementation ?? (capabilities.backend === "js" ? "js" : "legacy-wasm")
+        );
+      }
+
+      return "js";
+    }),
+  );
+
+  if (implementations.size > 1) {
+    return "mixed" as const;
+  }
+
+  return implementations.values().next().value ?? ("js" as const);
 }
