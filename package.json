@@ -44,7 +44,7 @@
     "build": "bun run build:wasm && tsup && cp src/wasm/pkg/viz_engine_wasm_bg.wasm dist/viz_engine_wasm_bg.wasm",
     "build:wasm": "wasm-pack build crates/viz-engine-wasm --target bundler --out-dir ../../src/wasm/pkg",
     "check-types": "tsc --noEmit",
-    "dev": "vite examples --host 0.0.0.0",
+    "dev": "vite --host 0.0.0.0",
     "format:check": "prettier --check .",
     "test": "bun run build:wasm && vitest run",
     "test:rust": "cargo test --workspace",
