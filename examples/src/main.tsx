@@ -1,4 +1,30 @@
-import { StrictMode, useEffect, useMemo, useState } from "react";
+import {
+  Badge,
+  Button,
+  Slider,
+  Stat,
+  StatGroup,
+  StatLabel,
+  StatValue,
+  Switch,
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@moritzbrantner/ui";
+import {
+  PageActions,
+  PageContent,
+  PageDescription,
+  PageHeader,
+  PageShell,
+  PageTitle,
+  Surface,
+  SurfaceContent,
+  SurfaceDescription,
+  SurfaceHeader,
+  SurfaceTitle,
+} from "@moritzbrantner/ui/shell";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import {
@@ -22,6 +48,7 @@ import {
 } from "../../src";
 
 import { VizEngineDemo } from "./VizEngineDemo";
+import "@moritzbrantner/ui/atlas/styles.css";
 import "./styles.css";
 
 type ExamplePointProperties = {
@@ -42,6 +69,7 @@ type FocusedFrame = {
 };
 
 const valueModes: VizValueMode[] = ["average", "count", "max", "sum"];
+const queryClient = new QueryClient();
 const cartesianViewport: VizCartesianViewport = {
   height: 440,
   width: 920,
@@ -148,7 +176,13 @@ function ExampleApp() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  const points = useMemo(() => createExamplePoints(pointCount, seed), [pointCount, seed]);
+  const pointsQuery = useQuery({
+    initialData: () => createExamplePoints(pointCount, seed),
+    queryFn: () => createExamplePoints(pointCount, seed),
+    queryKey: ["example-points", pointCount, seed],
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const points = pointsQuery.data;
   const currentPage =
     visualizationPages.find((page) => page.slug === currentSlug) ?? visualizationPages[0];
 
@@ -160,49 +194,65 @@ function ExampleApp() {
   }
 
   return (
-    <main className="app-shell">
-      <header className="app-header">
+    <PageShell maxWidth="full" className="min-h-screen gap-4">
+      <PageHeader className="items-start gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="eyebrow">@moritzbrantner/viz-engine</p>
-          <h1>Visualization engine examples</h1>
+          <Badge variant="outline" className="mb-3">
+            @moritzbrantner/viz-engine
+          </Badge>
+          <PageTitle>Visualization engine examples</PageTitle>
+          <PageDescription>
+            Render dense cartesian, geographic, and finance layers through the shared engine.
+          </PageDescription>
         </div>
-        <button className="button" onClick={() => setSeed((currentSeed) => currentSeed + 1)}>
-          Regenerate data
-        </button>
-      </header>
+        <PageActions>
+          <Button onClick={() => setSeed((currentSeed) => currentSeed + 1)}>Regenerate data</Button>
+        </PageActions>
+      </PageHeader>
 
-      <nav className="page-nav" aria-label="Visualization pages">
+      <nav
+        className="flex flex-wrap gap-2 rounded-lg border bg-card p-2"
+        aria-label="Visualization pages"
+      >
         {visualizationPages.map((page) => (
-          <a
-            aria-current={page.slug === currentPage.slug ? "page" : undefined}
-            href={page.slug === "overview" ? "./" : `./?page=${page.slug}`}
+          <Button
+            asChild
             key={page.slug}
-            onClick={(event) => {
-              event.preventDefault();
-              navigateTo(page);
-            }}
+            size="sm"
+            variant={page.slug === currentPage.slug ? "default" : "ghost"}
           >
-            {page.label}
-          </a>
+            <a
+              aria-current={page.slug === currentPage.slug ? "page" : undefined}
+              href={page.slug === "overview" ? "./" : `./?page=${page.slug}`}
+              onClick={(event) => {
+                event.preventDefault();
+                navigateTo(page);
+              }}
+            >
+              {page.label}
+            </a>
+          </Button>
         ))}
       </nav>
 
-      {currentPage.slug === "overview" ? (
-        <OverviewPage
-          pointCount={pointCount}
-          points={points}
-          setPointCount={setPointCount}
-          setShowHeatmap={setShowHeatmap}
-          setTargetBinCount={setTargetBinCount}
-          setValueMode={setValueMode}
-          showHeatmap={showHeatmap}
-          targetBinCount={targetBinCount}
-          valueMode={valueMode}
-        />
-      ) : (
-        <FocusedVisualizationPage page={currentPage} seed={seed} />
-      )}
-    </main>
+      <PageContent className="gap-4">
+        {currentPage.slug === "overview" ? (
+          <OverviewPage
+            pointCount={pointCount}
+            points={points}
+            setPointCount={setPointCount}
+            setShowHeatmap={setShowHeatmap}
+            setTargetBinCount={setTargetBinCount}
+            setValueMode={setValueMode}
+            showHeatmap={showHeatmap}
+            targetBinCount={targetBinCount}
+            valueMode={valueMode}
+          />
+        ) : (
+          <FocusedVisualizationPage page={currentPage} seed={seed} />
+        )}
+      </PageContent>
+    </PageShell>
   );
 }
 
@@ -229,57 +279,68 @@ function OverviewPage({
 }) {
   return (
     <>
-      <section className="toolbar" aria-label="Example controls">
-        <label className="control">
-          <span>Points</span>
-          <input
-            max="80000"
-            min="2000"
-            onChange={(event) => setPointCount(Number(event.currentTarget.value))}
-            step="2000"
-            type="range"
-            value={pointCount}
-          />
-          <strong>{pointCount.toLocaleString()}</strong>
-        </label>
+      <Surface aria-label="Example controls" padding="compact">
+        <SurfaceContent className="grid gap-3 lg:grid-cols-[minmax(190px,1fr)_minmax(190px,1fr)_auto_auto]">
+          <label className="grid min-h-14 grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md bg-muted px-3">
+            <span className="text-xs font-semibold uppercase text-muted-foreground">Points</span>
+            <Slider
+              max={80_000}
+              min={2_000}
+              onValueChange={([value]) => setPointCount(value ?? pointCount)}
+              step={2_000}
+              thumbAriaLabel="Point count"
+              value={[pointCount]}
+            />
+            <strong className="min-w-16 text-right">{pointCount.toLocaleString()}</strong>
+          </label>
 
-        <label className="control">
-          <span>Series bins</span>
-          <input
-            max="320"
-            min="32"
-            onChange={(event) => setTargetBinCount(Number(event.currentTarget.value))}
-            step="8"
-            type="range"
-            value={targetBinCount}
-          />
-          <strong>{targetBinCount}</strong>
-        </label>
+          <label className="grid min-h-14 grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md bg-muted px-3">
+            <span className="text-xs font-semibold uppercase text-muted-foreground">
+              Series bins
+            </span>
+            <Slider
+              max={320}
+              min={32}
+              onValueChange={([value]) => setTargetBinCount(value ?? targetBinCount)}
+              step={8}
+              thumbAriaLabel="Series bin count"
+              value={[targetBinCount]}
+            />
+            <strong className="min-w-12 text-right">{targetBinCount}</strong>
+          </label>
 
-        <fieldset className="segmented-control">
-          <legend>Value</legend>
-          {valueModes.map((mode) => (
-            <label key={mode}>
-              <input
-                checked={valueMode === mode}
-                name="valueMode"
-                onChange={() => setValueMode(mode)}
-                type="radio"
-              />
-              <span>{mode}</span>
-            </label>
-          ))}
-        </fieldset>
+          <div className="grid gap-1">
+            <span className="text-xs font-semibold uppercase text-muted-foreground">Value</span>
+            <ToggleGroup
+              aria-label="Value mode"
+              onValueChange={(mode) => {
+                if (isValueMode(mode)) {
+                  setValueMode(mode);
+                }
+              }}
+              type="single"
+              value={valueMode}
+            >
+              {valueModes.map((mode) => (
+                <ToggleGroupItem key={mode} value={mode}>
+                  {mode}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </div>
 
-        <label className="switch">
-          <input
-            checked={showHeatmap}
-            onChange={(event) => setShowHeatmap(event.currentTarget.checked)}
-            type="checkbox"
-          />
-          <span>Heatmap layer</span>
-        </label>
-      </section>
+          <label className="flex min-h-14 items-center justify-center gap-3 rounded-md bg-muted px-3">
+            <Switch
+              aria-label="Toggle heatmap layer"
+              checked={showHeatmap}
+              onCheckedChange={setShowHeatmap}
+            />
+            <span className="text-xs font-semibold uppercase text-muted-foreground">
+              Heatmap layer
+            </span>
+          </label>
+        </SurfaceContent>
+      </Surface>
 
       <VizEngineDemo
         bucketCount={48}
@@ -295,7 +356,13 @@ function OverviewPage({
 }
 
 function FocusedVisualizationPage({ page, seed }: { page: VisualizationPage; seed: number }) {
-  const focused = useMemo(() => createFocusedFrame(page.slug, seed), [page.slug, seed]);
+  const focusedQuery = useQuery({
+    initialData: () => createFocusedFrame(page.slug, seed),
+    queryFn: () => createFocusedFrame(page.slug, seed),
+    queryKey: ["focused-frame", page.slug, seed],
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const focused = focusedQuery.data;
   const layer = focused.frame.layers[0] ?? null;
   const viewport = focused.viewport;
   const yDomain =
@@ -303,24 +370,29 @@ function FocusedVisualizationPage({ page, seed }: { page: VisualizationPage; see
   const summary = createFrameSummary(focused.frame, layer);
 
   return (
-    <section className="focused-page">
-      <header className="focused-header">
+    <Surface>
+      <SurfaceHeader className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
         <div>
-          <p className="eyebrow">{page.slug}</p>
-          <h2>{page.label}</h2>
-          <p>{page.description}</p>
+          <Badge variant="outline" className="mb-3">
+            {page.slug}
+          </Badge>
+          <SurfaceTitle>{page.label}</SurfaceTitle>
+          <SurfaceDescription>{page.description}</SurfaceDescription>
         </div>
-        <dl className="mini-stats" aria-label="Frame summary">
+        <StatGroup
+          className="grid min-w-full grid-cols-3 gap-2 lg:min-w-96"
+          aria-label="Frame summary"
+        >
           {summary.map(([label, value]) => (
-            <div key={label}>
-              <dt>{label}</dt>
-              <dd>{value}</dd>
-            </div>
+            <Stat key={label}>
+              <StatLabel>{label}</StatLabel>
+              <StatValue>{value}</StatValue>
+            </Stat>
           ))}
-        </dl>
-      </header>
+        </StatGroup>
+      </SurfaceHeader>
 
-      <div className="focused-visual">
+      <SurfaceContent className="min-w-0">
         <svg
           aria-label={`${page.label} visualization`}
           className={viewport.kind === "geo" ? "focused-map" : "focused-chart"}
@@ -348,41 +420,58 @@ function FocusedVisualizationPage({ page, seed }: { page: VisualizationPage; see
             </>
           )}
         </svg>
-      </div>
-    </section>
+      </SurfaceContent>
+    </Surface>
   );
 }
 
 function GeoEngineDemo() {
-  const focused = useMemo(() => createFocusedFrame("geo-clusters", 7), []);
-  const flow = useMemo(() => createFocusedFrame("geo-flows", 7), []);
-  const heat = useMemo(() => createFocusedFrame("geo-heat", 7), []);
-  const shape = useMemo(() => createFocusedFrame("geojson", 7), []);
+  const geoQuery = useQuery({
+    initialData: () => ({
+      clusters: createFocusedFrame("geo-clusters", 7),
+      flow: createFocusedFrame("geo-flows", 7),
+      heat: createFocusedFrame("geo-heat", 7),
+      shape: createFocusedFrame("geojson", 7),
+    }),
+    queryFn: () => ({
+      clusters: createFocusedFrame("geo-clusters", 7),
+      flow: createFocusedFrame("geo-flows", 7),
+      heat: createFocusedFrame("geo-heat", 7),
+      shape: createFocusedFrame("geojson", 7),
+    }),
+    queryKey: ["overview-geo-frame"],
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const { clusters, flow, heat, shape } = geoQuery.data;
   const viewport = geoViewport;
   const layers = [
     ...shape.frame.layers,
     ...flow.frame.layers,
     ...heat.frame.layers,
-    ...focused.frame.layers,
+    ...clusters.frame.layers,
   ];
 
   return (
-    <section className="geo-panel" aria-label="Geo frame demo">
-      <div>
-        <p className="eyebrow">Geo frame</p>
-        <h2>Rust-backed map layers</h2>
-      </div>
-      <svg className="geo-map" role="img" viewBox={`0 0 ${viewport.width} ${viewport.height}`}>
-        <GeoBackdrop viewport={viewport} />
-        {layers.map((layer, index) => (
-          <GeoLayer
-            key={`${layer.kind}-${layer.layerId}-${index}`}
-            layer={layer}
-            viewport={viewport}
-          />
-        ))}
-      </svg>
-    </section>
+    <Surface aria-label="Geo frame demo">
+      <SurfaceHeader>
+        <Badge variant="outline" className="mb-3">
+          Geo frame
+        </Badge>
+        <SurfaceTitle>Rust-backed map layers</SurfaceTitle>
+      </SurfaceHeader>
+      <SurfaceContent>
+        <svg className="geo-map" role="img" viewBox={`0 0 ${viewport.width} ${viewport.height}`}>
+          <GeoBackdrop viewport={viewport} />
+          {layers.map((layer, index) => (
+            <GeoLayer
+              key={`${layer.kind}-${layer.layerId}-${index}`}
+              layer={layer}
+              viewport={viewport}
+            />
+          ))}
+        </svg>
+      </SurfaceContent>
+    </Surface>
   );
 }
 
@@ -1076,6 +1165,10 @@ function isFinanceLayerKind(
   return slug === "finance-candles" || slug === "finance-line" || slug === "finance-returns";
 }
 
+function isValueMode(value: string): value is VizValueMode {
+  return valueModes.includes(value as VizValueMode);
+}
+
 function getPageSlugFromLocation(): VisualizationSlug {
   const slug = new URLSearchParams(window.location.search).get("page");
 
@@ -1114,6 +1207,8 @@ function minuteLabel(value: number) {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ExampleApp />
+    <QueryClientProvider client={queryClient}>
+      <ExampleApp />
+    </QueryClientProvider>
   </StrictMode>,
 );

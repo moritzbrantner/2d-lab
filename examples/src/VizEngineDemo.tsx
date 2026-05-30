@@ -1,3 +1,4 @@
+import { Card, CardContent, Stat, StatGroup, StatLabel, StatValue } from "@moritzbrantner/ui";
 import { useMemo, useState, type PointerEvent } from "react";
 
 import {
@@ -195,45 +196,49 @@ function VizEngineDemoLayers({
 
   return (
     <section className="demo-grid">
-      <div className="chart-panel">
-        <svg
-          aria-label="Viz engine demo chart"
-          className="chart"
-          onPointerLeave={() => setHit(null)}
-          onPointerMove={handlePointerMove}
-          role="img"
-          viewBox={`0 0 ${viewport.width} ${viewport.height}`}
-        >
-          <ChartFrame yDomain={chartYDomain} />
-          {frame.layers.map((layer) => (
-            <VizEngineLayer key={layer.layerId} layer={layer} yDomain={chartYDomain} />
-          ))}
-          {hit ? <HitMarker hit={hit} yDomain={chartYDomain} /> : null}
-        </svg>
-      </div>
+      <Card className="min-w-0 p-3">
+        <CardContent className="p-0">
+          <svg
+            aria-label="Viz engine demo chart"
+            className="chart"
+            onPointerLeave={() => setHit(null)}
+            onPointerMove={handlePointerMove}
+            role="img"
+            viewBox={`0 0 ${viewport.width} ${viewport.height}`}
+          >
+            <ChartFrame yDomain={chartYDomain} />
+            {frame.layers.map((layer) => (
+              <VizEngineLayer key={layer.layerId} layer={layer} yDomain={chartYDomain} />
+            ))}
+            {hit ? <HitMarker hit={hit} yDomain={chartYDomain} /> : null}
+          </svg>
+        </CardContent>
+      </Card>
 
-      <aside className="stats-panel" aria-label="Frame stats">
-        <dl className="stats-list">
-          {Object.entries(summary).map(([label, value]) => (
-            <div key={label}>
-              <dt>{label.replace(/([A-Z])/g, " $1")}</dt>
-              <dd>{value}</dd>
-            </div>
-          ))}
-        </dl>
+      <Card className="stats-panel" aria-label="Frame stats">
+        <CardContent className="grid h-full content-between gap-4 p-0">
+          <StatGroup className="grid gap-2">
+            {Object.entries(summary).map(([label, value]) => (
+              <Stat key={label}>
+                <StatLabel>{label.replace(/([A-Z])/g, " $1")}</StatLabel>
+                <StatValue>{value}</StatValue>
+              </Stat>
+            ))}
+          </StatGroup>
 
-        <div className="hit-readout">
-          <span>Hit test</span>
-          <strong>
-            {hit?.kind === "cartesian" ? (hit.sourcePointId ?? "No point") : "No point"}
-          </strong>
-          <p>
-            {hit?.kind === "cartesian"
-              ? `${hit.pointCount.toLocaleString()} point bin at ${minuteLabel(hit.x)}`
-              : "Move over the series path"}
-          </p>
-        </div>
-      </aside>
+          <div className="hit-readout">
+            <span>Hit test</span>
+            <strong>
+              {hit?.kind === "cartesian" ? (hit.sourcePointId ?? "No point") : "No point"}
+            </strong>
+            <p>
+              {hit?.kind === "cartesian"
+                ? `${hit.pointCount.toLocaleString()} point bin at ${minuteLabel(hit.x)}`
+                : "Move over the series path"}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     </section>
   );
 }

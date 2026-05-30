@@ -1,6 +1,6 @@
 :root {
-  color: #17201b;
-  background: #f7f8fa;
+  color: var(--foreground);
+  background: var(--background);
   font-family:
     Inter,
     ui-sans-serif,
@@ -21,6 +21,7 @@
 body {
   min-width: 320px;
   margin: 0;
+  background: var(--background);
 }
 
 button,
