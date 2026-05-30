@@ -17,103 +17,60 @@ export function createVizEngineBackend<TProperties = Record<string, unknown>>(
 ): VizEngineBackend<TProperties> {
   return {
     createIndex(dataset: VizDataset<TProperties>) {
-      if (dataset.kind === "geo-points") {
-        switch (option) {
-          case "js":
-            return {
-              index: new JsVizGeoPointIndex(dataset.points),
-              kind: "geo-points",
-            };
-          case "wasm":
-          case "auto":
-            return {
-              index: new WasmVizGeoPointIndex(dataset.points),
-              kind: "geo-points",
-            };
-        }
-      }
-
-      if (dataset.kind === "geojson") {
-        switch (option) {
-          case "js":
-            return {
-              index: new JsVizGeoJsonIndex(dataset.featureCollection),
-              kind: "geojson",
-            };
-          case "wasm":
-          case "auto":
-            return {
-              index: new WasmVizGeoJsonIndex(dataset.featureCollection),
-              kind: "geojson",
-            };
-        }
-      }
-
-      if (dataset.kind === "geo-flows") {
-        switch (option) {
-          case "js":
-            return {
-              index: new JsVizGeoFlowIndex(dataset.flows),
-              kind: "geo-flows",
-            };
-          case "wasm":
-          case "auto":
-            return {
-              index: new WasmVizGeoFlowIndex(dataset.flows),
-              kind: "geo-flows",
-            };
-        }
-      }
-
-      if (dataset.kind === "finance-ohlcv") {
-        switch (option) {
-          case "js":
-            return {
-              index: new JsVizFinanceIndex(dataset),
-              kind: "finance-ohlcv",
-            };
-          case "wasm":
-          case "auto":
-            return {
-              index: new WasmVizFinanceIndex(dataset),
-              kind: "finance-ohlcv",
-            };
-        }
-      }
-
-      switch (option) {
-        case "js":
-          return {
-            index: new JsVizDensityIndex(dataset.points),
-            kind: "xy",
-          };
-        case "wasm":
-          return {
-            index: new RustWasmVizDensityIndex(dataset.points),
-            kind: "xy",
-          };
-        case "auto":
-          return {
-            index: new ProgressiveVizDensityIndex(dataset.points),
-            kind: "xy",
-          };
-      }
+      return createDatasetIndex(dataset, option);
     },
     option,
     resolveBackend(index: VizDatasetIndex<TProperties>): "js" | "wasm" {
-      if (
-        index.kind === "xy" ||
-        index.kind === "geo-points" ||
-        index.kind === "geojson" ||
-        index.kind === "geo-flows" ||
-        index.kind === "finance-ohlcv"
-      ) {
-        return index.index.getBackendCapabilities().backend;
-      }
-
-      return "js";
+      return index.index.getBackendCapabilities().backend;
     },
   };
+}
+
+function createDatasetIndex<TProperties>(
+  dataset: VizDataset<TProperties>,
+  option: VizBackendOption,
+): VizDatasetIndex<TProperties> {
+  switch (dataset.kind) {
+    case "geo-points":
+      return {
+        index:
+          option === "js"
+            ? new JsVizGeoPointIndex(dataset.points)
+            : new WasmVizGeoPointIndex(dataset.points),
+        kind: "geo-points",
+      };
+    case "geojson":
+      return {
+        index:
+          option === "js"
+            ? new JsVizGeoJsonIndex(dataset.featureCollection)
+            : new WasmVizGeoJsonIndex(dataset.featureCollection),
+        kind: "geojson",
+      };
+    case "geo-flows":
+      return {
+        index:
+          option === "js"
+            ? new JsVizGeoFlowIndex(dataset.flows)
+            : new WasmVizGeoFlowIndex(dataset.flows),
+        kind: "geo-flows",
+      };
+    case "finance-ohlcv":
+      return {
+        index: option === "js" ? new JsVizFinanceIndex(dataset) : new WasmVizFinanceIndex(dataset),
+        kind: "finance-ohlcv",
+      };
+    case "xy":
+      return {
+        index:
+          option === "js"
+            ? new JsVizDensityIndex(dataset.points)
+            : option === "wasm"
+              ? new RustWasmVizDensityIndex(dataset.points)
+              : new ProgressiveVizDensityIndex(dataset.points),
+        kind: "xy",
+      };
+  }
 }
 
 export function resolveFrameBackend<TProperties>(
@@ -134,21 +91,9 @@ export function resolveFrameBackendImplementation<TProperties>(
 ) {
   const implementations = new Set(
     indexes.map((index) => {
-      if (
-        index.kind === "xy" ||
-        index.kind === "geo-points" ||
-        index.kind === "geojson" ||
-        index.kind === "geo-flows" ||
-        index.kind === "finance-ohlcv"
-      ) {
-        const capabilities = index.index.getBackendCapabilities();
+      const capabilities = index.index.getBackendCapabilities();
 
-        return (
-          capabilities.implementation ?? (capabilities.backend === "js" ? "js" : "legacy-wasm")
-        );
-      }
-
-      return "js";
+      return capabilities.implementation ?? (capabilities.backend === "js" ? "js" : "legacy-wasm");
     }),
   );
 

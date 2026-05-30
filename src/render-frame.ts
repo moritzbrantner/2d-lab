@@ -380,16 +380,27 @@ function getSampleRenderValue<TProperties>(
 function getSeriesBounds<TProperties>(
   series: VizDensitySeries<TProperties>,
 ): VizRenderBounds | null {
-  const samples = series.samples.filter((sample) => sample.y !== null);
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  let hasSamples = false;
 
-  if (!samples.length) {
-    return null;
+  for (const sample of series.samples) {
+    if (sample.y === null) {
+      continue;
+    }
+
+    hasSamples = true;
+    minX = Math.min(minX, sample.x0);
+    maxX = Math.max(maxX, sample.x1);
+    minY = Math.min(minY, sample.y);
+    maxY = Math.max(maxY, sample.y);
   }
 
-  const minX = Math.min(...samples.map((sample) => sample.x0));
-  const maxX = Math.max(...samples.map((sample) => sample.x1));
-  const minY = Math.min(...samples.map((sample) => sample.y ?? 0));
-  const maxY = Math.max(...samples.map((sample) => sample.y ?? 0));
+  if (!hasSamples) {
+    return null;
+  }
 
   return [minX, minY, maxX, maxY];
 }
@@ -401,12 +412,13 @@ function getHistogramBounds<TProperties>(
     return null;
   }
 
-  return [
-    histogram.summary.valueDomain[0],
-    0,
-    histogram.summary.valueDomain[1],
-    Math.max(...histogram.buckets.map((bucket) => bucket.pointCount)),
-  ];
+  let maxPointCount = 0;
+
+  for (const bucket of histogram.buckets) {
+    maxPointCount = Math.max(maxPointCount, bucket.pointCount);
+  }
+
+  return [histogram.summary.valueDomain[0], 0, histogram.summary.valueDomain[1], maxPointCount];
 }
 
 function getHeatmapBounds<TProperties>(heatmap: VizHeatmap<TProperties>): VizRenderBounds | null {
@@ -425,16 +437,22 @@ function getHeatmapBounds<TProperties>(heatmap: VizHeatmap<TProperties>): VizRen
 function getFinanceCandleBounds<TProperties>(
   bars: readonly VizOhlcvBar<TProperties>[],
 ): VizRenderBounds | null {
-  if (!bars.length) {
+  const first = bars[0];
+  const last = bars[bars.length - 1];
+
+  if (!first || !last) {
     return null;
   }
 
-  return [
-    bars[0]?.timestamp ?? 0,
-    Math.min(...bars.map((bar) => bar.low)),
-    bars[bars.length - 1]?.timestamp ?? 0,
-    Math.max(...bars.map((bar) => bar.high)),
-  ];
+  let minLow = first.low;
+  let maxHigh = first.high;
+
+  for (const bar of bars) {
+    minLow = Math.min(minLow, bar.low);
+    maxHigh = Math.max(maxHigh, bar.high);
+  }
+
+  return [first.timestamp, minLow, last.timestamp, maxHigh];
 }
 
 function createFinanceLineRows<TProperties>(
@@ -465,18 +483,25 @@ function createFinanceLineRows<TProperties>(
 function getFinanceRowsBounds<TProperties>(
   rows: readonly VizRenderDatum<TProperties>[],
 ): VizRenderBounds | null {
-  const populated = rows.filter((row) => row.value != null);
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  let hasRows = false;
 
-  if (!populated.length) {
-    return null;
+  for (const row of rows) {
+    if (row.value == null) {
+      continue;
+    }
+
+    hasRows = true;
+    minX = Math.min(minX, row.x);
+    maxX = Math.max(maxX, row.x);
+    minY = Math.min(minY, row.value);
+    maxY = Math.max(maxY, row.value);
   }
 
-  return [
-    Math.min(...populated.map((row) => row.x)),
-    Math.min(...populated.map((row) => row.value ?? 0)),
-    Math.max(...populated.map((row) => row.x)),
-    Math.max(...populated.map((row) => row.value ?? 0)),
-  ];
+  return hasRows ? [minX, minY, maxX, maxY] : null;
 }
 
 function getDensityIndex<TProperties>(

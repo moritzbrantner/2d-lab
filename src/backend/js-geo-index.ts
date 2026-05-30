@@ -72,7 +72,12 @@ export class JsVizGeoPointIndex<
         rawWeight: getGeoWeight(point.metrics, options.weightMetric),
       }))
       .filter((entry) => entry.rawWeight > 0);
-    const maxWeight = Math.max(1, ...weighted.map((entry) => entry.rawWeight));
+    let maxWeight = 1;
+
+    for (const entry of weighted) {
+      maxWeight = Math.max(maxWeight, entry.rawWeight);
+    }
+
     const features = weighted.map(({ point, rawWeight }) => ({
       coordinates: [point.longitude, point.latitude] as [number, number],
       id: point.id,
@@ -171,16 +176,25 @@ export function normalizeGeoPoints<TProperties>(
 export function getBoundsFromGeoPoints<TProperties>(
   points: readonly Pick<VizIndexedGeoPoint<TProperties>, "latitude" | "longitude">[],
 ): VizGeoBounds | null {
-  if (!points.length) {
+  const first = points[0];
+
+  if (!first) {
     return null;
   }
 
-  return [
-    Math.min(...points.map((point) => point.longitude)),
-    Math.min(...points.map((point) => point.latitude)),
-    Math.max(...points.map((point) => point.longitude)),
-    Math.max(...points.map((point) => point.latitude)),
-  ];
+  let west = first.longitude;
+  let south = first.latitude;
+  let east = first.longitude;
+  let north = first.latitude;
+
+  for (const point of points) {
+    west = Math.min(west, point.longitude);
+    south = Math.min(south, point.latitude);
+    east = Math.max(east, point.longitude);
+    north = Math.max(north, point.latitude);
+  }
+
+  return [west, south, east, north];
 }
 
 function createJsAggregationFeatures<TProperties>(

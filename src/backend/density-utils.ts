@@ -19,14 +19,21 @@ export type NormalizedSeriesPoint<TProperties> = VizIndexedSeriesPoint<TProperti
 export function normalizeSeriesPoints<TProperties>(
   points: readonly VizSeriesPoint<TProperties>[],
 ): Array<NormalizedSeriesPoint<TProperties>> {
-  return points
-    .map((point, sourceIndex) => ({ ...point, sourceIndex }))
-    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
-    .map((point) => ({
+  const normalized: Array<NormalizedSeriesPoint<TProperties>> = [];
+
+  for (const [sourceIndex, point] of points.entries()) {
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      continue;
+    }
+
+    normalized.push({
       ...point,
       metrics: normalizeMetrics(point.metrics),
-    }))
-    .sort((left, right) => left.x - right.x || left.sourceIndex - right.sourceIndex);
+      sourceIndex,
+    });
+  }
+
+  return normalized.sort((left, right) => left.x - right.x || left.sourceIndex - right.sourceIndex);
 }
 
 export function collectMetricKeys<TProperties>(
@@ -62,15 +69,29 @@ export function createPointLookup<TProperties>(
 export function getSeriesBounds<TProperties>(
   points: readonly NormalizedSeriesPoint<TProperties>[],
 ): VizSeriesBounds | null {
-  if (!points.length) {
+  const first = points[0];
+
+  if (!first) {
     return null;
   }
 
+  let minX = first.x;
+  let maxX = first.x;
+  let minY = first.y;
+  let maxY = first.y;
+
+  for (const point of points) {
+    minX = Math.min(minX, point.x);
+    maxX = Math.max(maxX, point.x);
+    minY = Math.min(minY, point.y);
+    maxY = Math.max(maxY, point.y);
+  }
+
   return {
-    maxX: Math.max(...points.map((point) => point.x)),
-    maxY: Math.max(...points.map((point) => point.y)),
-    minX: Math.min(...points.map((point) => point.x)),
-    minY: Math.min(...points.map((point) => point.y)),
+    maxX,
+    maxY,
+    minX,
+    minY,
   };
 }
 
@@ -130,8 +151,7 @@ export function createHistogram<TProperties>(
   const selectedPoints = query.xDomain
     ? pointsInXDomain(points, normalizeDomain(query.xDomain))
     : points;
-  const values = selectedPoints.map((point) => point.y).filter(Number.isFinite);
-  const valueDomain = normalizeDomain(query.valueDomain ?? deriveDomain(values));
+  const valueDomain = normalizeDomain(query.valueDomain ?? derivePointYDomain(selectedPoints));
   const width = binWidth(valueDomain, bucketCount);
   const buckets = Array.from({ length: bucketCount }, (_, index) =>
     createEmptyHistogramBucket<TProperties>(index, bucketCount, valueDomain, width, metricKeys),
@@ -175,9 +195,7 @@ export function createHeatmap<TProperties>(
   const yBinCount = clampCount(query.yBinCount);
   const xDomain = normalizeDomain(query.xDomain);
   const selectedPoints = pointsInXDomain(points, xDomain);
-  const yDomain = normalizeDomain(
-    query.yDomain ?? deriveDomain(selectedPoints.map((point) => point.y)),
-  );
+  const yDomain = normalizeDomain(query.yDomain ?? derivePointYDomain(selectedPoints));
   const xWidth = binWidth(xDomain, xBinCount);
   const yWidth = binWidth(yDomain, yBinCount);
   const cells = Array.from({ length: xBinCount * yBinCount }, (_, index) =>
@@ -203,7 +221,11 @@ export function createHeatmap<TProperties>(
     updateHeatmapCell(cells[yIndex * xBinCount + xIndex], point, metricKeys);
   }
 
-  const maxCellCount = Math.max(0, ...cells.map((cell) => cell.pointCount));
+  let maxCellCount = 0;
+
+  for (const cell of cells) {
+    maxCellCount = Math.max(maxCellCount, cell.pointCount);
+  }
 
   for (const cell of cells) {
     cell.value = maxCellCount > 0 ? cell.pointCount / maxCellCount : 0;
@@ -417,14 +439,20 @@ function pointsInXDomain<TProperties>(
   return points.filter((point) => point.x >= xDomain[0] && point.x <= xDomain[1]);
 }
 
-function deriveDomain(values: readonly number[]): [number, number] {
-  const finite = values.filter(Number.isFinite);
+function derivePointYDomain<TProperties>(
+  points: readonly NormalizedSeriesPoint<TProperties>[],
+): [number, number] {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  let hasPoints = false;
 
-  if (!finite.length) {
-    return [0, 0];
+  for (const point of points) {
+    hasPoints = true;
+    min = Math.min(min, point.y);
+    max = Math.max(max, point.y);
   }
 
-  return [Math.min(...finite), Math.max(...finite)];
+  return hasPoints ? [min, max] : [0, 0];
 }
 
 function binWidth(domain: [number, number], binCount: number) {

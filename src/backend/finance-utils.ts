@@ -47,16 +47,22 @@ export function normalizeOhlcvBars<TProperties>(
 export function getFinanceBounds<TProperties>(
   bars: readonly VizOhlcvBar<TProperties>[],
 ): VizRenderBounds | null {
-  if (!bars.length) {
+  const first = bars[0];
+  const last = bars[bars.length - 1];
+
+  if (!first || !last) {
     return null;
   }
 
-  return [
-    bars[0]?.timestamp ?? 0,
-    Math.min(...bars.map((bar) => bar.low)),
-    bars[bars.length - 1]?.timestamp ?? 0,
-    Math.max(...bars.map((bar) => bar.high)),
-  ];
+  let minLow = first.low;
+  let maxHigh = first.high;
+
+  for (const bar of bars) {
+    minLow = Math.min(minLow, bar.low);
+    maxHigh = Math.max(maxHigh, bar.high);
+  }
+
+  return [first.timestamp, minLow, last.timestamp, maxHigh];
 }
 
 export function barsInRange<TProperties>(
@@ -229,23 +235,36 @@ function aggregateOhlcvBucket<TProperties>(
     throw new TypeError("cannot aggregate an empty OHLCV bucket");
   }
 
-  const adjustedClose =
-    last.adjustedClose ??
-    [...bars].reverse().find((bar) => bar.adjustedClose != null)?.adjustedClose;
-  const volume = bars.some((bar) => bar.volume != null)
-    ? bars.reduce((sum, bar) => sum + (bar.volume ?? 0), 0)
-    : undefined;
+  let adjustedClose = last.adjustedClose;
+  let hasVolume = false;
+  let high = first.high;
+  let low = first.low;
+  let volume = 0;
+
+  for (let index = bars.length - 1; index >= 0 && adjustedClose == null; index--) {
+    adjustedClose = bars[index]?.adjustedClose;
+  }
+
+  for (const bar of bars) {
+    high = Math.max(high, bar.high);
+    low = Math.min(low, bar.low);
+
+    if (bar.volume != null) {
+      hasVolume = true;
+      volume += bar.volume;
+    }
+  }
 
   return {
     adjustedClose,
     close: last.close,
-    high: Math.max(...bars.map((bar) => bar.high)),
-    low: Math.min(...bars.map((bar) => bar.low)),
+    high,
+    low,
     metrics: last.metrics,
     open: first.open,
     properties: last.properties,
     timestamp: first.timestamp,
-    volume,
+    volume: hasVolume ? volume : undefined,
   };
 }
 
@@ -273,20 +292,29 @@ function createReturnBin<TProperties>(
 ): VizDensityBin<TProperties> {
   const firstPoint = points[0] ?? null;
   const lastPoint = points[points.length - 1] ?? null;
-  const values = points.map((point) => point.y);
-  const sumY = values.reduce((sum, value) => sum + value, 0);
+  let maxY = Number.NEGATIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let sumY = 0;
+
+  for (const point of points) {
+    sumY += point.y;
+    maxY = Math.max(maxY, point.y);
+    minY = Math.min(minY, point.y);
+  }
+
+  const pointCount = points.length;
 
   return {
-    averageY: values.length ? sumY / values.length : null,
+    averageY: pointCount ? sumY / pointCount : null,
     firstPoint,
     firstPointIndex: firstPoint?.sourceIndex ?? null,
     index,
     lastPoint,
     lastPointIndex: lastPoint?.sourceIndex ?? null,
-    maxY: values.length ? Math.max(...values) : null,
+    maxY: pointCount ? maxY : null,
     metrics: {},
-    minY: values.length ? Math.min(...values) : null,
-    pointCount: points.length,
+    minY: pointCount ? minY : null,
+    pointCount,
     sumY,
     x0: firstPoint?.x ?? 0,
     x1: lastPoint?.x ?? firstPoint?.x ?? 0,

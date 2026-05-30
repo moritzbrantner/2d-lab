@@ -49,7 +49,12 @@ export class JsVizGeoFlowIndex<
       weighted = aggregateFlows(weighted);
     }
 
-    const maxWeight = Math.max(1, ...weighted.map((entry) => entry.rawWeight));
+    let maxWeight = 1;
+
+    for (const entry of weighted) {
+      maxWeight = Math.max(maxWeight, entry.rawWeight);
+    }
+
     const features = weighted.map(({ flow, rawWeight }) => ({
       flow,
       rawWeight,
@@ -155,19 +160,25 @@ function coordinateIsGeographic(point: [number, number]) {
 function getGeoFlowBounds<TProperties>(
   flows: readonly VizIndexedGeoFlow<TProperties>[],
 ): VizGeoBounds | null {
-  if (!flows.length) {
+  const first = flows[0];
+
+  if (!first) {
     return null;
   }
 
-  const longitudes = flows.flatMap((flow) => [flow.from[0], flow.to[0]]);
-  const latitudes = flows.flatMap((flow) => [flow.from[1], flow.to[1]]);
+  let west = Math.min(first.from[0], first.to[0]);
+  let south = Math.min(first.from[1], first.to[1]);
+  let east = Math.max(first.from[0], first.to[0]);
+  let north = Math.max(first.from[1], first.to[1]);
 
-  return [
-    Math.min(...longitudes),
-    Math.min(...latitudes),
-    Math.max(...longitudes),
-    Math.max(...latitudes),
-  ];
+  for (const flow of flows) {
+    west = Math.min(west, flow.from[0], flow.to[0]);
+    south = Math.min(south, flow.from[1], flow.to[1]);
+    east = Math.max(east, flow.from[0], flow.to[0]);
+    north = Math.max(north, flow.from[1], flow.to[1]);
+  }
+
+  return [west, south, east, north];
 }
 
 function normalizeMetrics(metrics: VizMetricRecord | undefined): VizMetricRecord {

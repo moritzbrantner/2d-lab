@@ -52,23 +52,23 @@ export class JsVizGeoJsonIndex<
 function getFeatureCollectionBounds<TProperties>(
   featureCollection: VizGeoJsonFeatureCollection<TProperties>,
 ): VizGeoBounds | null {
-  const positions = featureCollection.features.flatMap((feature) =>
-    collectPositions(feature.geometry),
-  );
+  let west = Number.POSITIVE_INFINITY;
+  let south = Number.POSITIVE_INFINITY;
+  let east = Number.NEGATIVE_INFINITY;
+  let north = Number.NEGATIVE_INFINITY;
+  let hasPositions = false;
 
-  if (!positions.length) {
-    return null;
+  for (const feature of featureCollection.features) {
+    for (const [longitude, latitude] of collectPositions(feature.geometry)) {
+      hasPositions = true;
+      west = Math.min(west, longitude);
+      south = Math.min(south, latitude);
+      east = Math.max(east, longitude);
+      north = Math.max(north, latitude);
+    }
   }
 
-  const longitudes = positions.map((position) => position[0]);
-  const latitudes = positions.map((position) => position[1]);
-
-  return [
-    Math.min(...longitudes),
-    Math.min(...latitudes),
-    Math.max(...longitudes),
-    Math.max(...latitudes),
-  ];
+  return hasPositions ? [west, south, east, north] : null;
 }
 
 function geometryIntersectsBounds(geometry: unknown, bounds: VizGeoBounds) {
