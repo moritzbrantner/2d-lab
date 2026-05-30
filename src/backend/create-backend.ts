@@ -1,10 +1,12 @@
 import { JsVizDensityIndex } from "./js-density-index";
+import { JsVizFinanceIndex } from "./js-finance-index";
 import { JsVizGeoFlowIndex } from "./js-geo-flow-index";
 import { JsVizGeoPointIndex } from "./js-geo-index";
 import { JsVizGeoJsonIndex } from "./js-geojson-index";
 import { ProgressiveVizDensityIndex } from "./progressive-density-index";
 import { RustWasmVizDensityIndex } from "./rust-wasm-density-index";
 import { WasmVizGeoFlowIndex } from "./wasm-geo-flow-index";
+import { WasmVizFinanceIndex } from "./wasm-finance-index";
 import { WasmVizGeoPointIndex } from "./wasm-geo-index";
 import { WasmVizGeoJsonIndex } from "./wasm-geojson-index";
 
@@ -63,6 +65,22 @@ export function createVizEngineBackend<TProperties = Record<string, unknown>>(
         }
       }
 
+      if (dataset.kind === "finance-ohlcv") {
+        switch (option) {
+          case "js":
+            return {
+              index: new JsVizFinanceIndex(dataset),
+              kind: "finance-ohlcv",
+            };
+          case "wasm":
+          case "auto":
+            return {
+              index: new WasmVizFinanceIndex(dataset),
+              kind: "finance-ohlcv",
+            };
+        }
+      }
+
       switch (option) {
         case "js":
           return {
@@ -87,7 +105,8 @@ export function createVizEngineBackend<TProperties = Record<string, unknown>>(
         index.kind === "xy" ||
         index.kind === "geo-points" ||
         index.kind === "geojson" ||
-        index.kind === "geo-flows"
+        index.kind === "geo-flows" ||
+        index.kind === "finance-ohlcv"
       ) {
         return index.index.getBackendCapabilities().backend;
       }
@@ -119,7 +138,8 @@ export function resolveFrameBackendImplementation<TProperties>(
         index.kind === "xy" ||
         index.kind === "geo-points" ||
         index.kind === "geojson" ||
-        index.kind === "geo-flows"
+        index.kind === "geo-flows" ||
+        index.kind === "finance-ohlcv"
       ) {
         const capabilities = index.index.getBackendCapabilities();
 

@@ -1,4 +1,5 @@
 import { resolveFrameBackend, resolveFrameBackendImplementation } from "./js-backend";
+import { priceValue } from "./backend/finance-utils";
 
 import type {
   VizCartesianViewport,
@@ -7,6 +8,7 @@ import type {
   VizDensitySeries,
   VizEngineBackend,
   VizEngineDatasetRecord,
+  VizFinanceIndex,
   VizFrameDiagnostic,
   VizGeoFlowIndex,
   VizGeoJsonIndex,
@@ -16,6 +18,7 @@ import type {
   VizHistogram,
   VizLayer,
   VizLayerId,
+  VizOhlcvBar,
   VizRenderBounds,
   VizRenderDatum,
   VizRenderFrame,
@@ -268,6 +271,69 @@ function computeVizRenderLayer<TProperties>(
         layerId,
       };
     }
+    case "finance-candles": {
+      const index = getFinanceIndex(layerId, layer.kind, datasetRecord, diagnostics);
+      if (!index || !isCartesianViewport(options.viewport, layerId, diagnostics)) {
+        return null;
+      }
+      const bars = index.getDownsampledBars({
+        targetBarCount: layer.targetBarCount ?? 120,
+        xDomain: layer.xDomain,
+      });
+
+      return {
+        bars,
+        bounds: getFinanceCandleBounds(bars),
+        datasetId: layer.datasetId,
+        instrument:
+          datasetRecord.dataset.kind === "finance-ohlcv"
+            ? datasetRecord.dataset.instrument
+            : { symbol: "" },
+        kind: "finance-candles",
+        layerId,
+      };
+    }
+    case "finance-line": {
+      const index = getFinanceIndex(layerId, layer.kind, datasetRecord, diagnostics);
+      if (!index || !isCartesianViewport(options.viewport, layerId, diagnostics)) {
+        return null;
+      }
+      const bars = layer.targetPointCount
+        ? index.getDownsampledBars({
+            targetBarCount: layer.targetPointCount,
+            xDomain: layer.xDomain,
+          })
+        : index.getBars({ xDomain: layer.xDomain });
+      const rows = createFinanceLineRows(bars, layer.value ?? "close");
+
+      return {
+        bounds: getFinanceRowsBounds(rows),
+        datasetId: layer.datasetId,
+        kind: "finance-line",
+        layerId,
+        rows,
+      };
+    }
+    case "finance-returns": {
+      const index = getFinanceIndex(layerId, layer.kind, datasetRecord, diagnostics);
+      if (!index || !isCartesianViewport(options.viewport, layerId, diagnostics)) {
+        return null;
+      }
+      const series = index.getReturns({
+        method: layer.method,
+        priceMode: layer.priceMode,
+        targetPointCount: layer.targetPointCount,
+        xDomain: layer.xDomain,
+      });
+
+      return {
+        bounds: getSeriesBounds(series),
+        datasetId: layer.datasetId,
+        kind: "finance-returns",
+        layerId,
+        rows: createVizRenderRows(series),
+      };
+    }
   }
 }
 
@@ -356,6 +422,63 @@ function getHeatmapBounds<TProperties>(heatmap: VizHeatmap<TProperties>): VizRen
   ];
 }
 
+function getFinanceCandleBounds<TProperties>(
+  bars: readonly VizOhlcvBar<TProperties>[],
+): VizRenderBounds | null {
+  if (!bars.length) {
+    return null;
+  }
+
+  return [
+    bars[0]?.timestamp ?? 0,
+    Math.min(...bars.map((bar) => bar.low)),
+    bars[bars.length - 1]?.timestamp ?? 0,
+    Math.max(...bars.map((bar) => bar.high)),
+  ];
+}
+
+function createFinanceLineRows<TProperties>(
+  bars: readonly VizOhlcvBar<TProperties>[],
+  value: "adjustedClose" | "close" | "high" | "low" | "open" | "volume",
+): Array<VizRenderDatum<TProperties>> {
+  return bars.map((bar, index) => {
+    const y = priceValue(bar, value);
+
+    return {
+      average: y,
+      count: y == null ? 0 : 1,
+      index,
+      label: String(bar.timestamp),
+      max: y,
+      metrics: bar.metrics,
+      min: y,
+      pointCount: y == null ? 0 : 1,
+      sum: y,
+      value: y,
+      x: bar.timestamp,
+      x0: bar.timestamp,
+      x1: bar.timestamp,
+    };
+  });
+}
+
+function getFinanceRowsBounds<TProperties>(
+  rows: readonly VizRenderDatum<TProperties>[],
+): VizRenderBounds | null {
+  const populated = rows.filter((row) => row.value != null);
+
+  if (!populated.length) {
+    return null;
+  }
+
+  return [
+    Math.min(...populated.map((row) => row.x)),
+    Math.min(...populated.map((row) => row.value ?? 0)),
+    Math.max(...populated.map((row) => row.x)),
+    Math.max(...populated.map((row) => row.value ?? 0)),
+  ];
+}
+
 function getDensityIndex<TProperties>(
   layerId: VizLayerId,
   layerKind: VizLayer["kind"],
@@ -405,6 +528,20 @@ function getGeoFlowIndex<TProperties>(
   diagnostics: VizFrameDiagnostic[],
 ): VizGeoFlowIndex<TProperties> | null {
   if (datasetRecord.index.kind === "geo-flows") {
+    return datasetRecord.index.index;
+  }
+
+  pushIncompatibleLayerDiagnostic(layerId, layerKind, datasetRecord.dataset.kind, diagnostics);
+  return null;
+}
+
+function getFinanceIndex<TProperties>(
+  layerId: VizLayerId,
+  layerKind: VizLayer["kind"],
+  datasetRecord: VizEngineDatasetRecord<TProperties>,
+  diagnostics: VizFrameDiagnostic[],
+): VizFinanceIndex<TProperties> | null {
+  if (datasetRecord.index.kind === "finance-ohlcv") {
     return datasetRecord.index.index;
   }
 

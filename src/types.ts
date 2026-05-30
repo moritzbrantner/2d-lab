@@ -3,7 +3,12 @@ export type VizLayerId = string;
 
 export type VizBackendOption = "auto" | "js" | "wasm";
 export type VizResolvedBackend = "js" | "mixed" | "wasm";
-export type VizBackendImplementation = "js" | "legacy-wasm" | "mixed" | "rust-viz-engine-wasm";
+export type VizBackendImplementation =
+  | "js"
+  | "legacy-wasm"
+  | "mixed"
+  | "rust-finance-data-wasm"
+  | "rust-viz-engine-wasm";
 
 export type VizMetricRecord = Record<string, number>;
 export type VizValueMode = "average" | "count" | "max" | "min" | "sum";
@@ -354,6 +359,95 @@ export type VizGeoFlowIndex<TProperties = Record<string, unknown>> = {
   ): VizGeoFlowAggregation<TProperties>;
 };
 
+export type VizFinancialInstrument = {
+  assetClass?:
+    | "bond"
+    | "crypto"
+    | "equity"
+    | "etf"
+    | "forex"
+    | "fund"
+    | "future"
+    | "index"
+    | "option"
+    | "other";
+  currency?: string;
+  exchange?: string;
+  id?: string;
+  name?: string;
+  symbol: string;
+};
+
+export type VizOhlcvBar<TProperties = Record<string, unknown>> = {
+  adjustedClose?: number;
+  close: number;
+  high: number;
+  low: number;
+  metrics?: VizMetricRecord;
+  open: number;
+  properties?: TProperties;
+  timestamp: number;
+  volume?: number;
+};
+
+export type VizFinanceDataset<TProperties = Record<string, unknown>> = {
+  bars: readonly VizOhlcvBar<TProperties>[];
+  instrument: VizFinancialInstrument;
+  kind: "finance-ohlcv";
+};
+
+export type VizFinanceBarsQuery = {
+  xDomain: [number, number];
+};
+
+export type VizFinanceDownsampleQuery = VizFinanceBarsQuery & {
+  targetBarCount: number;
+};
+
+export type VizFinanceReturnsQuery = {
+  method?: "log" | "simple";
+  priceMode?: "adjusted" | "raw";
+  targetPointCount?: number;
+  xDomain: [number, number];
+};
+
+export type VizFinanceRiskQuery = {
+  confidence?: number;
+  periodsPerYear?: number;
+  priceMode?: "adjusted" | "raw";
+  riskFreeReturnPerPeriod?: number;
+};
+
+export type VizFinanceRiskSummary = {
+  annualizedReturn: number;
+  annualizedVolatility: number;
+  conditionalValueAtRisk: number;
+  maxDrawdown: {
+    depth: number;
+    peakIndex: number;
+    recoveryIndex: number | null;
+    troughIndex: number;
+  };
+  meanReturn: number;
+  sharpeRatio: number | null;
+  sortinoRatio: number | null;
+  stdDev: number;
+  valueAtRisk: number;
+};
+
+export type VizFinanceIndex<TProperties = Record<string, unknown>> = {
+  getBackendCapabilities(): {
+    backend: Exclude<VizResolvedBackend, "mixed">;
+    implementation?: Exclude<VizBackendImplementation, "mixed">;
+    usesWasm: boolean;
+  };
+  getBars(query: VizFinanceBarsQuery): Array<VizOhlcvBar<TProperties>>;
+  getBounds(): VizRenderBounds | null;
+  getDownsampledBars(query: VizFinanceDownsampleQuery): Array<VizOhlcvBar<TProperties>>;
+  getReturns(query: VizFinanceReturnsQuery): VizDensitySeries<TProperties>;
+  getRiskSummary(query: VizFinanceRiskQuery): VizFinanceRiskSummary;
+};
+
 export type VizDataset<TProperties = Record<string, unknown>> =
   | {
       kind: "xy";
@@ -370,7 +464,8 @@ export type VizDataset<TProperties = Record<string, unknown>> =
   | {
       flows: readonly VizGeoFlow<TProperties>[];
       kind: "geo-flows";
-    };
+    }
+  | VizFinanceDataset<TProperties>;
 
 export type VizLayer =
   | {
@@ -424,6 +519,28 @@ export type VizLayer =
       kind: "geo-flows";
       minWeight?: number;
       weightMetric?: string;
+    }
+  | {
+      datasetId: VizDatasetId;
+      kind: "finance-candles";
+      priceMode?: "adjusted" | "raw";
+      targetBarCount?: number;
+      xDomain: [number, number];
+    }
+  | {
+      datasetId: VizDatasetId;
+      kind: "finance-line";
+      targetPointCount?: number;
+      value?: "adjustedClose" | "close" | "high" | "low" | "open" | "volume";
+      xDomain: [number, number];
+    }
+  | {
+      datasetId: VizDatasetId;
+      kind: "finance-returns";
+      method?: "log" | "simple";
+      priceMode?: "adjusted" | "raw";
+      targetPointCount?: number;
+      xDomain: [number, number];
     };
 
 export type VizCartesianViewport = {
@@ -547,6 +664,21 @@ export type VizRenderLayer<TProperties = Record<string, unknown>> =
       features: Array<VizGeoFlowFeature<TProperties>>;
       kind: "geo-flows";
       layerId: VizLayerId;
+    }
+  | {
+      bars: Array<VizOhlcvBar<TProperties>>;
+      bounds: VizRenderBounds | null;
+      datasetId: VizDatasetId;
+      instrument: VizFinancialInstrument;
+      kind: "finance-candles";
+      layerId: VizLayerId;
+    }
+  | {
+      bounds: VizRenderBounds | null;
+      datasetId: VizDatasetId;
+      kind: "finance-line" | "finance-returns";
+      layerId: VizLayerId;
+      rows: Array<VizRenderDatum<TProperties>>;
     };
 
 export type VizFrameDiagnostic = {
@@ -646,6 +778,10 @@ export type VizDatasetIndex<TProperties = Record<string, unknown>> =
   | {
       index: VizGeoFlowIndex<TProperties>;
       kind: "geo-flows";
+    }
+  | {
+      index: VizFinanceIndex<TProperties>;
+      kind: "finance-ohlcv";
     };
 
 export type VizEngineDatasetRecord<TProperties = Record<string, unknown>> = {

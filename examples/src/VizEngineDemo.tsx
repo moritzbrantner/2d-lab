@@ -7,6 +7,7 @@ import {
   useVizFrame,
   useVizLayer,
   type VizHitTestResult,
+  type VizOhlcvBar,
   type VizRenderLayer,
   type VizSeriesPoint,
   type VizValueMode,
@@ -34,6 +35,18 @@ const plotPadding = {
 };
 const plotWidth = viewport.width - plotPadding.left - plotPadding.right;
 const plotHeight = viewport.height - plotPadding.top - plotPadding.bottom;
+const financeBars: VizOhlcvBar[] = [
+  { close: 94, high: 96, low: 90, open: 91, timestamp: 120, volume: 10_200 },
+  { close: 102, high: 104, low: 93, open: 94, timestamp: 240, volume: 12_400 },
+  { close: 99, high: 106, low: 97, open: 102, timestamp: 360, volume: 9_800 },
+  { close: 111, high: 113, low: 98, open: 99, timestamp: 480, volume: 15_100 },
+  { close: 118, high: 121, low: 109, open: 111, timestamp: 600, volume: 13_500 },
+  { close: 114, high: 122, low: 112, open: 118, timestamp: 720, volume: 11_900 },
+  { close: 123, high: 125, low: 113, open: 114, timestamp: 840, volume: 16_700 },
+  { close: 119, high: 126, low: 117, open: 123, timestamp: 960, volume: 14_100 },
+  { close: 127, high: 130, low: 118, open: 119, timestamp: 1_080, volume: 17_300 },
+  { close: 124, high: 129, low: 122, open: 127, timestamp: 1_200, volume: 12_800 },
+];
 
 export function VizEngineDemo(props: VizEngineDemoProps) {
   return (
@@ -52,6 +65,15 @@ function VizEngineDemoLayers({
 }: VizEngineDemoProps) {
   const engine = useVizEngine();
   const datasetId = useVizDataset(points);
+  const financeDataset = useMemo(
+    () => ({
+      bars: financeBars,
+      instrument: { assetClass: "equity" as const, currency: "USD", symbol: "AAPL" },
+      kind: "finance-ohlcv" as const,
+    }),
+    [],
+  );
+  const financeDatasetId = useVizDataset(financeDataset);
   const [hit, setHit] = useState<VizHitTestResult | null>(null);
 
   const heatmapLayer = useMemo(
@@ -93,13 +115,66 @@ function VizEngineDemoLayers({
         : null,
     [datasetId, targetBinCount, valueMode],
   );
+  const financeCandleLayer = useMemo(
+    () =>
+      financeDatasetId
+        ? {
+            datasetId: financeDatasetId,
+            kind: "finance-candles" as const,
+            targetBarCount: 10,
+            xDomain: viewport.xDomain,
+          }
+        : null,
+    [financeDatasetId],
+  );
+  const financeLineLayer = useMemo(
+    () =>
+      financeDatasetId
+        ? {
+            datasetId: financeDatasetId,
+            kind: "finance-line" as const,
+            value: "close" as const,
+            xDomain: viewport.xDomain,
+          }
+        : null,
+    [financeDatasetId],
+  );
+  const financeReturnsLayer = useMemo(
+    () =>
+      financeDatasetId
+        ? {
+            datasetId: financeDatasetId,
+            kind: "finance-returns" as const,
+            method: "simple" as const,
+            xDomain: viewport.xDomain,
+          }
+        : null,
+    [financeDatasetId],
+  );
 
   const heatmapLayerId = useVizLayer(heatmapLayer);
   const histogramLayerId = useVizLayer(histogramLayer);
   const binnedLayerId = useVizLayer(binnedLayer);
+  const financeCandleLayerId = useVizLayer(financeCandleLayer);
+  const financeLineLayerId = useVizLayer(financeLineLayer);
+  const financeReturnsLayerId = useVizLayer(financeReturnsLayer);
   const frameDependencies = useMemo(
-    () => [heatmapLayerId, histogramLayerId, binnedLayerId],
-    [binnedLayerId, heatmapLayerId, histogramLayerId],
+    () => [
+      heatmapLayerId,
+      histogramLayerId,
+      binnedLayerId,
+      financeCandleLayerId,
+      financeLineLayerId,
+      financeReturnsLayerId,
+    ],
+    [
+      binnedLayerId,
+      financeCandleLayerId,
+      financeLineLayerId,
+      financeReturnsLayerId,
+      heatmapLayerId,
+      histogramLayerId,
+    ],
   );
   const frame = useVizFrame(viewport, frameDependencies);
   const chartYDomain = useMemo(() => deriveChartYDomain(frame.layers), [frame.layers]);
@@ -246,6 +321,52 @@ function VizEngineLayer({ layer, yDomain }: { layer: VizRenderLayer; yDomain: [n
     );
   }
 
+  if (layer.kind === "finance-candles") {
+    return (
+      <g className="finance-candle-layer">
+        {layer.bars.map((bar) => {
+          const x = scaleX(bar.timestamp);
+          const openY = scaleY(bar.open, yDomain);
+          const closeY = scaleY(bar.close, yDomain);
+          const top = Math.min(openY, closeY);
+          const height = Math.max(2, Math.abs(closeY - openY));
+
+          return (
+            <g key={bar.timestamp}>
+              <line x1={x} x2={x} y1={scaleY(bar.high, yDomain)} y2={scaleY(bar.low, yDomain)} />
+              <rect
+                height={height}
+                width={8}
+                x={x - 4}
+                y={top}
+                data-direction={bar.close >= bar.open ? "up" : "down"}
+              />
+            </g>
+          );
+        })}
+      </g>
+    );
+  }
+
+  if (layer.kind === "finance-line" || layer.kind === "finance-returns") {
+    const path = layer.rows
+      .filter((row) => row.value !== null)
+      .map((row, index) => {
+        const x = scaleX(row.x);
+        const y = scaleY(row.value ?? 0, yDomain);
+
+        return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+      })
+      .join(" ");
+
+    return (
+      <path
+        className={layer.kind === "finance-line" ? "finance-line-layer" : "finance-return-layer"}
+        d={path}
+      />
+    );
+  }
+
   if (layer.kind !== "binned-series") {
     return null;
   }
@@ -297,6 +418,20 @@ function deriveChartYDomain(layers: Array<VizRenderLayer>): [number, number] {
 
   for (const layer of layers) {
     if (layer.kind !== "binned-series") {
+      if (layer.kind === "finance-candles") {
+        for (const bar of layer.bars) {
+          min = Math.min(min, bar.low);
+          max = Math.max(max, bar.high);
+        }
+      }
+      if (layer.kind === "finance-line") {
+        for (const row of layer.rows) {
+          if (row.value !== null && Number.isFinite(row.value)) {
+            min = Math.min(min, row.value);
+            max = Math.max(max, row.value);
+          }
+        }
+      }
       continue;
     }
 

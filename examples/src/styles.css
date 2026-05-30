@@ -245,6 +245,42 @@ input[type="range"] {
   stroke-width: 2.4;
 }
 
+.finance-candle-layer line {
+  stroke: #31483e;
+  stroke-width: 1.4;
+}
+
+.finance-candle-layer rect {
+  fill: #fffdf8;
+  stroke: #31483e;
+  stroke-width: 1.2;
+}
+
+.finance-candle-layer rect[data-direction="up"] {
+  fill: #9fd0ba;
+}
+
+.finance-candle-layer rect[data-direction="down"] {
+  fill: #e7a7a0;
+}
+
+.finance-line-layer,
+.finance-return-layer {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.finance-line-layer {
+  stroke: #c84830;
+  stroke-width: 2;
+}
+
+.finance-return-layer {
+  stroke: #7a5fb0;
+  stroke-width: 1.5;
+}
+
 .hit-marker line {
   stroke: #1f5f74;
   stroke-dasharray: 4 4;

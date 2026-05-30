@@ -32,6 +32,30 @@ const frame = engine.computeFrame({
 });
 ```
 
+Financial OHLCV data can use the same frame API:
+
+```ts
+const startMs = 1_717_113_600_000;
+const endMs = 1_717_200_000_000;
+const bars = [
+  { timestamp: startMs, open: 100, high: 104, low: 99, close: 103, volume: 125_000 },
+  { timestamp: endMs, open: 103, high: 108, low: 101, close: 106, volume: 148_000 },
+];
+
+const datasetId = engine.addDataset({
+  kind: "finance-ohlcv",
+  instrument: { symbol: "AAPL", assetClass: "equity", currency: "USD" },
+  bars,
+});
+
+engine.addLayer({
+  datasetId,
+  kind: "finance-candles",
+  targetBarCount: 180,
+  xDomain: [startMs, endMs],
+});
+```
+
 ## Architecture
 
 - React describes datasets, layers, and viewports.
@@ -55,6 +79,8 @@ The package boundary is:
 viz-engine-core: local Rust XY computation
 viz-engine-wasm: local browser binding for XY computation
 @mb-rust/geo-viz-core-wasm: published Rust geo computation
+finance-data: reusable Rust financial market-data core in rust-packages
+finance-statistics: reusable Rust return/risk/statistics crate in rust-packages
 @moritzbrantner/viz-engine: TypeScript runtime wrapper
 charts/maps/future packages: visuals
 ```
@@ -71,8 +97,13 @@ The current Rust MVP supports XY datasets, binned series, histograms, heatmaps,
 series bounds, and simple x-based hit testing. Geo point clustering, geo heat
 features, GeoJSON viewport filtering, and flow filtering/aggregation are routed
 through `@mb-rust/geo-viz-core-wasm`, with JavaScript fallbacks retained for
-tests and non-WASM environments. React lifecycle, renderer-facing frame
-assembly, dynamic backend selection, and fallback routing remain in TypeScript.
+tests and non-WASM environments. Financial OHLCV modeling, validation,
+downsampling, provider-neutral data contracts, and derived return/risk helpers
+live in the reusable `finance-data` and `finance-statistics` Rust crates under
+`/home/moenarch/moritzbrantner/rust-packages`; `viz-engine` exposes those
+concepts as renderer-facing finance datasets and layers. React lifecycle,
+renderer-facing frame assembly, dynamic backend selection, and fallback routing
+remain in TypeScript.
 
 Do not move React, DOM, Leaflet, Recharts, SVG rendering, Canvas rendering, UI
 controls, or renderer integrations into Rust.

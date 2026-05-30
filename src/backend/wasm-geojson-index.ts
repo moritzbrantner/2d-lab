@@ -1,4 +1,4 @@
-import { GeoJsonIndex } from "@mb-rust/geo-viz-core-wasm";
+import { GeoJsonIndex } from "@mb-rust/geo-viz-wasm";
 
 import type {
   VizGeoBounds,

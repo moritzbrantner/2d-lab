@@ -12,6 +12,7 @@ import { createVizEngine } from "./create-viz-engine";
 import type {
   VizBackendOption,
   VizComputeFrameOptions,
+  VizDataset,
   VizDatasetId,
   VizEngine,
   VizLayer,
@@ -79,13 +80,16 @@ export function useVizEngine<TProperties = Record<string, unknown>>() {
 }
 
 export function useVizDataset<TProperties = Record<string, unknown>>(
-  points: readonly VizSeriesPoint<TProperties>[],
+  input: VizDataset<TProperties> | readonly VizSeriesPoint<TProperties>[],
 ): VizDatasetId | null {
   const engine = useVizEngine<TProperties>();
   const idStore = useMemo(() => createIdStore<VizDatasetId>(), []);
 
   useEffect(() => {
-    const nextDatasetId = engine.addDataset({ kind: "xy", points });
+    const dataset: VizDataset<TProperties> = isSeriesPointArray(input)
+      ? { kind: "xy", points: input }
+      : input;
+    const nextDatasetId = engine.addDataset(dataset);
 
     idStore.set(nextDatasetId);
     idStore.emit();
@@ -97,9 +101,15 @@ export function useVizDataset<TProperties = Record<string, unknown>>(
         idStore.emit();
       }
     };
-  }, [engine, idStore, points]);
+  }, [engine, idStore, input]);
 
   return useSyncExternalStore(idStore.subscribe, idStore.getSnapshot, idStore.getSnapshot);
+}
+
+function isSeriesPointArray<TProperties>(
+  input: VizDataset<TProperties> | readonly VizSeriesPoint<TProperties>[],
+): input is readonly VizSeriesPoint<TProperties>[] {
+  return Array.isArray(input);
 }
 
 export function useVizLayer(layer: VizLayer | null): VizLayerId | null {

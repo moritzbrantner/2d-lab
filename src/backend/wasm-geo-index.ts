@@ -1,4 +1,4 @@
-import { GeoPointIndex } from "@mb-rust/geo-viz-core-wasm";
+import { GeoPointIndex } from "@mb-rust/geo-viz-wasm";
 
 import { normalizeGeoPoints } from "./js-geo-index";
 
@@ -41,7 +41,7 @@ export class WasmVizGeoPointIndex<
   }
 
   getClusterExpansionZoom(clusterId: number): number {
-    return this.getIndex().getClusterExpansionZoom(clusterId);
+    return this.getIndex().getClusterExpansionZoom(String(clusterId));
   }
 
   getClusterLeaves(
@@ -49,7 +49,7 @@ export class WasmVizGeoPointIndex<
     limit?: number,
     offset?: number,
   ): Array<VizIndexedGeoPoint<TProperties>> {
-    return this.getIndex().getClusterLeaves(clusterId, limit, offset) as Array<
+    return this.getIndex().getClusterLeaves(String(clusterId), limit, offset) as Array<
       VizIndexedGeoPoint<TProperties>
     >;
   }

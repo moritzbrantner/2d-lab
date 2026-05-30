@@ -12,6 +12,13 @@ const points: VizSeriesPoint[] = [
   { id: "e", x: 40, y: 32 },
 ];
 
+const financeBars = [
+  { close: 100, high: 101, low: 98, open: 99, timestamp: 1, volume: 10 },
+  { close: 110, high: 112, low: 99, open: 100, timestamp: 2, volume: 20 },
+  { close: 105, high: 111, low: 104, open: 110, timestamp: 3, volume: 30 },
+  { close: 120, high: 122, low: 103, open: 105, timestamp: 4, volume: 40 },
+];
+
 describe("createVizEngine", () => {
   test("creates deterministic ids and tracks lifecycle counts", () => {
     const engine = createVizEngine({ backend: "js" });
@@ -121,5 +128,106 @@ describe("createVizEngine", () => {
     expect(
       wasmEngine.computeFrame({ viewport: { height: 320, width: 800, xDomain: [0, 40] } }).stats,
     ).toMatchObject({ backend: "wasm", backendImplementation: "rust-viz-engine-wasm" });
+  });
+
+  test("computes finance candle, line, and returns layers", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({
+      bars: financeBars,
+      instrument: { assetClass: "equity", currency: "USD", symbol: "AAPL" },
+      kind: "finance-ohlcv",
+    });
+
+    engine.addLayer({
+      datasetId,
+      kind: "finance-candles",
+      targetBarCount: 2,
+      xDomain: [1, 4],
+    });
+    engine.addLayer({
+      datasetId,
+      kind: "finance-line",
+      value: "close",
+      xDomain: [1, 4],
+    });
+    engine.addLayer({
+      datasetId,
+      kind: "finance-returns",
+      method: "simple",
+      xDomain: [1, 4],
+    });
+
+    const frame = engine.computeFrame({ viewport: { height: 320, width: 800, xDomain: [1, 4] } });
+
+    expect(frame.layers).toHaveLength(3);
+    expect(frame.layers[0]).toMatchObject({
+      bars: [
+        { close: 110, high: 112, low: 98, open: 99, timestamp: 1, volume: 30 },
+        { close: 120, high: 122, low: 103, open: 110, timestamp: 3, volume: 70 },
+      ],
+      kind: "finance-candles",
+    });
+    expect(frame.layers[1]).toMatchObject({
+      kind: "finance-line",
+      rows: [
+        { value: 100, x: 1 },
+        { value: 110, x: 2 },
+        { value: 105, x: 3 },
+        { value: 120, x: 4 },
+      ],
+    });
+    expect(frame.layers[2]).toMatchObject({ kind: "finance-returns" });
+    const returnLayer = frame.layers[2];
+    expect(returnLayer.kind).toBe("finance-returns");
+    if (returnLayer.kind === "finance-returns") {
+      expect(returnLayer.rows.map((row) => row.x)).toEqual([2, 3, 4]);
+      expect(returnLayer.rows[0]?.value).toBeCloseTo(0.1);
+      expect(returnLayer.rows[1]?.value).toBeCloseTo(-0.045454545454545414);
+      expect(returnLayer.rows[2]?.value).toBeCloseTo(0.1428571428571428);
+    }
+  });
+
+  test("reports diagnostics for incompatible finance usage", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({ kind: "xy", points });
+    engine.addLayer({ datasetId, kind: "finance-candles", xDomain: [1, 4] });
+
+    const wrongDatasetFrame = engine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [1, 4] },
+    });
+
+    expect(wrongDatasetFrame.layers).toHaveLength(0);
+    expect(wrongDatasetFrame.stats.diagnostics[0]).toMatchObject({
+      code: "incompatible-layer-dataset",
+    });
+
+    const financeEngine = createVizEngine({ backend: "js" });
+    const financeDatasetId = financeEngine.addDataset({
+      bars: financeBars,
+      instrument: { symbol: "AAPL" },
+      kind: "finance-ohlcv",
+    });
+    financeEngine.addLayer({
+      datasetId: financeDatasetId,
+      kind: "finance-candles",
+      xDomain: [1, 4],
+    });
+
+    const wrongViewportFrame = financeEngine.computeFrame({
+      viewport: {
+        bounds: [-10, -10, 10, 10],
+        center: [0, 0],
+        display: "flat",
+        height: 320,
+        kind: "geo",
+        width: 800,
+        zoom: 2,
+      },
+    });
+
+    expect(wrongViewportFrame.layers).toHaveLength(0);
+    expect(wrongViewportFrame.stats.diagnostics[0]).toMatchObject({
+      code: "incompatible-viewport",
+    });
   });
 });

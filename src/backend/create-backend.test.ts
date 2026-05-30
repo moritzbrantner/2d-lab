@@ -6,12 +6,14 @@ import {
   resolveFrameBackendImplementation,
 } from "./create-backend";
 import { JsVizDensityIndex } from "./js-density-index";
+import { JsVizFinanceIndex } from "./js-finance-index";
 import { JsVizGeoFlowIndex } from "./js-geo-flow-index";
 import { JsVizGeoPointIndex } from "./js-geo-index";
 import { JsVizGeoJsonIndex } from "./js-geojson-index";
 import { ProgressiveVizDensityIndex } from "./progressive-density-index";
 import { RustWasmVizDensityIndex } from "./rust-wasm-density-index";
 import { WasmVizGeoPointIndex } from "./wasm-geo-index";
+import { WasmVizFinanceIndex } from "./wasm-finance-index";
 
 import type { VizDatasetIndex } from "../types";
 
@@ -65,6 +67,27 @@ describe("createVizEngineBackend", () => {
     });
   });
 
+  test("creates finance indexes for each backend option", () => {
+    const dataset = {
+      bars: [{ close: 101, high: 102, low: 99, open: 100, timestamp: 1, volume: 10 }],
+      instrument: { symbol: "AAPL" },
+      kind: "finance-ohlcv" as const,
+    };
+
+    expect(createVizEngineBackend("js").createIndex(dataset)).toMatchObject({
+      index: expect.any(JsVizFinanceIndex),
+      kind: "finance-ohlcv",
+    });
+    expect(createVizEngineBackend("wasm").createIndex(dataset)).toMatchObject({
+      index: expect.any(WasmVizFinanceIndex),
+      kind: "finance-ohlcv",
+    });
+    expect(createVizEngineBackend("auto").createIndex(dataset)).toMatchObject({
+      index: expect.any(WasmVizFinanceIndex),
+      kind: "finance-ohlcv",
+    });
+  });
+
   test("resolves frame backend and implementation stats", () => {
     const backend = createVizEngineBackend("js");
     const jsIndex = createVizEngineBackend("js").createIndex({
@@ -91,6 +114,15 @@ describe("createVizEngineBackend", () => {
     expect(resolveFrameBackendImplementation([jsIndex])).toBe("js");
     expect(resolveFrameBackendImplementation([wasmIndex])).toBe("rust-viz-engine-wasm");
     expect(resolveFrameBackendImplementation([legacyWasmIndex])).toBe("legacy-wasm");
+    expect(
+      resolveFrameBackendImplementation([
+        createVizEngineBackend("wasm").createIndex({
+          bars: [{ close: 101, high: 102, low: 99, open: 100, timestamp: 1 }],
+          instrument: { symbol: "AAPL" },
+          kind: "finance-ohlcv",
+        }),
+      ]),
+    ).toBe("rust-finance-data-wasm");
     expect(resolveFrameBackendImplementation([wasmIndex, legacyWasmIndex, geojsonIndex])).toBe(
       "mixed",
     );

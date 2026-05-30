@@ -88,3 +88,7 @@ jobs:
       - name: Build package
         working-directory: viz-engine
         run: bun run build
+
+      - name: Check npm package contents
+        working-directory: viz-engine
+        run: npm pack --dry-run

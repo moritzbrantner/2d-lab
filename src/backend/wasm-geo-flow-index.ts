@@ -1,4 +1,4 @@
-import { GeoFlowIndex } from "@mb-rust/geo-viz-core-wasm";
+import { GeoFlowIndex } from "@mb-rust/geo-viz-wasm";
 
 import type {
   VizGeoBounds,
