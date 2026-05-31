@@ -1,3 +1,5 @@
+import Supercluster from "supercluster";
+
 import { normalizeMetrics } from "./density-utils";
 
 import type {
@@ -13,21 +15,44 @@ import type {
   VizMetricRecord,
 } from "../types";
 
-type JsCluster<TProperties> = {
-  id: number;
-  leaves: Array<VizIndexedGeoPoint<TProperties>>;
+type GeoPointFeatureProperties = {
+  id: string;
+  label: string;
+  sourceIndex: number;
+  [key: string]: number | string;
+};
+
+type GeoClusterProperties = {
+  [key: string]: number;
+};
+
+type GeoPointFeature = Supercluster.PointFeature<GeoPointFeatureProperties>;
+type GeoClusterFeature = Supercluster.ClusterFeature<GeoClusterProperties>;
+type GeoSupercluster = Supercluster<GeoPointFeatureProperties, GeoClusterProperties>;
+
+type ClusterOptions = Required<
+  Pick<VizGeoAggregationOptions, "extent" | "maxZoom" | "minZoom" | "radius">
+>;
+
+type ClusterCacheEntry = {
+  index: GeoSupercluster;
+  key: string;
 };
 
 export class JsVizGeoPointIndex<
   TProperties = Record<string, unknown>,
 > implements VizGeoPointIndex<TProperties> {
   private readonly byId = new Map<string, VizIndexedGeoPoint<TProperties>>();
-  private readonly clusters = new Map<number, JsCluster<TProperties>>();
-  private nextClusterId = 1;
+  private readonly clusterIndexes = new Map<string, ClusterCacheEntry>();
+  private readonly clusterFeatures: GeoPointFeature[];
+  private readonly metricKeys: string[];
+  private latestClusterIndexKey: string | null = null;
   private readonly points: Array<VizIndexedGeoPoint<TProperties>>;
 
   constructor(points: readonly VizGeoPoint<TProperties>[]) {
     this.points = normalizeGeoPoints(points);
+    this.metricKeys = collectGeoMetricKeys(this.points);
+    this.clusterFeatures = this.points.map((point) => createGeoPointFeature(point));
     for (const point of this.points) {
       this.byId.set(point.id, point);
     }
@@ -46,7 +71,16 @@ export class JsVizGeoPointIndex<
   }
 
   getClusterExpansionZoom(clusterId: number): number {
-    return this.clusters.has(clusterId) ? 16 : 0;
+    const index = this.latestClusterIndex();
+    if (!index) {
+      return 0;
+    }
+
+    try {
+      return index.getClusterExpansionZoom(clusterId);
+    } catch {
+      return 0;
+    }
   }
 
   getClusterLeaves(
@@ -54,7 +88,19 @@ export class JsVizGeoPointIndex<
     limit = 10,
     offset = 0,
   ): Array<VizIndexedGeoPoint<TProperties>> {
-    return this.clusters.get(clusterId)?.leaves.slice(offset, offset + limit) ?? [];
+    const index = this.latestClusterIndex();
+    if (!index) {
+      return [];
+    }
+
+    try {
+      return index
+        .getLeaves(clusterId, limit, offset)
+        .map((feature) => this.points[feature.properties.sourceIndex])
+        .filter((point): point is VizIndexedGeoPoint<TProperties> => point != null);
+    } catch {
+      return [];
+    }
   }
 
   getPointById(pointId: string): VizIndexedGeoPoint<TProperties> | null {
@@ -105,13 +151,10 @@ export class JsVizGeoPointIndex<
     query: VizGeoViewportQuery,
     options: VizGeoAggregationOptions = {},
   ): VizGeoAggregation<TProperties> {
-    const visiblePoints = this.points.filter((point) => pointInBounds(point, query.bounds));
-    const features = createJsAggregationFeatures(
-      visiblePoints,
-      query,
-      options,
-      this.clusters,
-      () => this.nextClusterId++,
+    const cacheEntry = this.getClusterIndex(options);
+    this.latestClusterIndexKey = cacheEntry.key;
+    const features = getClusterFeatures(cacheEntry.index, query.bounds, query.zoom).map((feature) =>
+      this.mapClusterFeature(feature),
     );
 
     return {
@@ -144,6 +187,88 @@ export class JsVizGeoPointIndex<
     }
 
     return nearest;
+  }
+
+  private getClusterIndex(options: VizGeoAggregationOptions): ClusterCacheEntry {
+    const clusterOptions = normalizeClusterOptions(options);
+    const key = clusterOptionsKey(clusterOptions);
+    const existing = this.clusterIndexes.get(key);
+    if (existing) {
+      return existing;
+    }
+
+    const metricKeys = this.metricKeys;
+    const index = new Supercluster<GeoPointFeatureProperties, GeoClusterProperties>({
+      extent: clusterOptions.extent,
+      map: (properties) => {
+        const metrics: VizMetricRecord = {};
+        for (const metricKey of metricKeys) {
+          const value = properties[metricKey];
+          metrics[metricKey] = typeof value === "number" ? value : 0;
+        }
+        return metrics;
+      },
+      maxZoom: clusterOptions.maxZoom,
+      minZoom: clusterOptions.minZoom,
+      radius: clusterOptions.radius,
+      reduce: (accumulated, properties) => {
+        for (const metricKey of metricKeys) {
+          accumulated[metricKey] = (accumulated[metricKey] ?? 0) + (properties[metricKey] ?? 0);
+        }
+      },
+    }).load(this.clusterFeatures);
+    const entry = { index, key };
+    this.clusterIndexes.set(key, entry);
+
+    return entry;
+  }
+
+  private latestClusterIndex() {
+    return this.latestClusterIndexKey
+      ? (this.clusterIndexes.get(this.latestClusterIndexKey)?.index ?? null)
+      : null;
+  }
+
+  private mapClusterFeature(
+    feature: GeoClusterFeature | GeoPointFeature,
+  ): VizGeoAggregation<TProperties>["features"][number] {
+    const [longitude, latitude] = feature.geometry.coordinates as [number, number];
+    const properties = feature.properties as GeoPointFeatureProperties &
+      GeoClusterProperties & {
+        cluster?: boolean;
+        cluster_id?: number;
+        point_count?: number;
+        point_count_abbreviated?: string | number;
+      };
+
+    if (properties.cluster) {
+      const clusterId = properties.cluster_id ?? 0;
+
+      return {
+        clusterId,
+        coordinates: [longitude, latitude],
+        expansionZoom: this.getClusterExpansionZoom(clusterId),
+        kind: "cluster",
+        metrics: pickMetrics(properties, this.metricKeys),
+        pointCount: properties.point_count ?? 0,
+        pointCountAbbreviated: String(
+          properties.point_count_abbreviated ?? properties.point_count ?? 0,
+        ),
+      };
+    }
+
+    const point = this.points[properties.sourceIndex];
+
+    if (!point) {
+      throw new Error(`Missing geo point for source index ${properties.sourceIndex}.`);
+    }
+
+    return {
+      coordinates: [point.longitude, point.latitude],
+      kind: "point",
+      metrics: point.metrics,
+      point,
+    };
   }
 }
 
@@ -195,60 +320,6 @@ export function getBoundsFromGeoPoints<TProperties>(
   }
 
   return [west, south, east, north];
-}
-
-function createJsAggregationFeatures<TProperties>(
-  points: Array<VizIndexedGeoPoint<TProperties>>,
-  query: VizGeoViewportQuery,
-  options: VizGeoAggregationOptions,
-  clusters: Map<number, JsCluster<TProperties>>,
-  nextClusterId: () => number,
-): VizGeoAggregation<TProperties>["features"] {
-  const radius = Math.max(1, options.radius ?? 72);
-  const cellSize = Math.max(0.01, radius / Math.max(1, query.zoom + 1));
-  const cells = new Map<string, Array<VizIndexedGeoPoint<TProperties>>>();
-
-  clusters.clear();
-
-  for (const point of points) {
-    const key = `${Math.floor(point.longitude / cellSize)}:${Math.floor(point.latitude / cellSize)}`;
-    const cell = cells.get(key) ?? [];
-    cell.push(point);
-    cells.set(key, cell);
-  }
-
-  return [...cells.values()].flatMap((cell): VizGeoAggregation<TProperties>["features"] => {
-    if (cell.length === 1) {
-      const point = cell[0]!;
-      return [
-        {
-          coordinates: [point.longitude, point.latitude],
-          kind: "point" as const,
-          metrics: point.metrics,
-          point,
-        },
-      ];
-    }
-
-    const clusterId = nextClusterId();
-    clusters.set(clusterId, { id: clusterId, leaves: cell });
-    const pointCount = cell.length;
-
-    return [
-      {
-        clusterId,
-        coordinates: [
-          cell.reduce((sum, point) => sum + point.longitude, 0) / pointCount,
-          cell.reduce((sum, point) => sum + point.latitude, 0) / pointCount,
-        ] as [number, number],
-        expansionZoom: Math.min(16, Math.ceil(query.zoom + 1)),
-        kind: "cluster" as const,
-        metrics: sumMetrics(cell.map((point) => point.metrics)),
-        pointCount,
-        pointCountAbbreviated: abbreviateCount(pointCount),
-      },
-    ];
-  });
 }
 
 function summarizeGeoFeatures<TProperties>(
@@ -306,10 +377,69 @@ export function getGeoWeight(metrics: VizMetricRecord, weightMetric: string | un
   return Number.isFinite(weight) ? Math.max(0, weight) : 0;
 }
 
-function abbreviateCount(count: number) {
-  if (count >= 1_000) {
-    return `${Number((count / 1_000).toFixed(1))}k`;
+function createGeoPointFeature<TProperties>(
+  point: VizIndexedGeoPoint<TProperties>,
+): GeoPointFeature {
+  return {
+    geometry: {
+      coordinates: [point.longitude, point.latitude],
+      type: "Point",
+    },
+    properties: {
+      ...point.metrics,
+      id: point.id,
+      label: point.label,
+      sourceIndex: point.sourceIndex,
+    },
+    type: "Feature",
+  };
+}
+
+function collectGeoMetricKeys<TProperties>(points: readonly VizIndexedGeoPoint<TProperties>[]) {
+  const keys = new Set<string>();
+
+  for (const point of points) {
+    for (const key of Object.keys(point.metrics)) {
+      keys.add(key);
+    }
   }
 
-  return count.toString();
+  return [...keys].sort();
+}
+
+function normalizeClusterOptions(options: VizGeoAggregationOptions): ClusterOptions {
+  return {
+    extent: Math.max(1, Math.floor(options.extent ?? 512)),
+    maxZoom: Math.max(0, Math.floor(options.maxZoom ?? 16)),
+    minZoom: Math.max(0, Math.floor(options.minZoom ?? 0)),
+    radius: Math.max(1, options.radius ?? 72),
+  };
+}
+
+function clusterOptionsKey(options: ClusterOptions) {
+  return `${options.radius}|${options.minZoom}|${options.maxZoom}|${options.extent}`;
+}
+
+function getClusterFeatures(index: GeoSupercluster, bounds: VizGeoBounds, zoom: number) {
+  const [west, south, east, north] = bounds;
+  const roundedZoom = Math.round(zoom);
+
+  if (west <= east) {
+    return index.getClusters([west, south, east, north], roundedZoom);
+  }
+
+  return [
+    ...index.getClusters([west, south, 180, north], roundedZoom),
+    ...index.getClusters([-180, south, east, north], roundedZoom),
+  ];
+}
+
+function pickMetrics(properties: GeoClusterProperties, metricKeys: readonly string[]) {
+  const metrics: VizMetricRecord = {};
+
+  for (const metricKey of metricKeys) {
+    metrics[metricKey] = properties[metricKey] ?? 0;
+  }
+
+  return metrics;
 }

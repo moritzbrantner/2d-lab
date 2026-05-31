@@ -26,9 +26,15 @@ export function createVizEngine<TProperties = Record<string, unknown>>(
   const backend = createVizEngineBackend<TProperties>(options.backend ?? "auto");
   const datasets = new Map<VizDatasetId, VizEngineDatasetRecord<TProperties>>();
   const layers = new Map<VizLayerId, VizLayer>();
+  const layerCache = new Map<string, VizRenderFrame<TProperties>["layers"][number]>();
   let nextDatasetId = 0;
   let nextLayerId = 0;
   let lastFrame: VizRenderFrame<TProperties> | null = null;
+
+  function invalidateFrames() {
+    layerCache.clear();
+    lastFrame = null;
+  }
 
   return {
     addDataset(dataset: VizDataset<TProperties>) {
@@ -38,7 +44,7 @@ export function createVizEngine<TProperties = Record<string, unknown>>(
         dataset,
         index: backend.createIndex(dataset),
       });
-      lastFrame = null;
+      invalidateFrames();
 
       return datasetId;
     },
@@ -47,13 +53,13 @@ export function createVizEngine<TProperties = Record<string, unknown>>(
       const layerId = `layer-${++nextLayerId}`;
 
       layers.set(layerId, layer);
-      lastFrame = null;
+      invalidateFrames();
 
       return layerId;
     },
 
     computeFrame(frameOptions: VizComputeFrameOptions) {
-      lastFrame = computeVizRenderFrame(datasets, layers, backend, frameOptions);
+      lastFrame = computeVizRenderFrame(datasets, layers, backend, frameOptions, layerCache);
 
       return lastFrame;
     },
@@ -68,9 +74,15 @@ export function createVizEngine<TProperties = Record<string, unknown>>(
 
     hitTest(hitOptions: VizHitTestOptions): VizHitTestResult<TProperties> | null {
       if (!lastFrame && hitOptions.viewport) {
-        lastFrame = computeVizRenderFrame(datasets, layers, backend, {
-          viewport: hitOptions.viewport,
-        });
+        lastFrame = computeVizRenderFrame(
+          datasets,
+          layers,
+          backend,
+          {
+            viewport: hitOptions.viewport,
+          },
+          layerCache,
+        );
       }
 
       return hitTestVizFrame(lastFrame, hitOptions);
@@ -78,7 +90,7 @@ export function createVizEngine<TProperties = Record<string, unknown>>(
 
     removeDataset(datasetId: VizDatasetId) {
       datasets.delete(datasetId);
-      lastFrame = null;
+      invalidateFrames();
 
       for (const [layerId, layer] of layers) {
         if (layer.datasetId === datasetId) {
@@ -89,7 +101,7 @@ export function createVizEngine<TProperties = Record<string, unknown>>(
 
     removeLayer(layerId: VizLayerId) {
       layers.delete(layerId);
-      lastFrame = null;
+      invalidateFrames();
     },
   };
 }

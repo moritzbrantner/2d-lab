@@ -73,6 +73,34 @@ describe("createVizEngine", () => {
     ).toHaveLength(0);
   });
 
+  test("reuses repeated layer output and clears cache on layer changes", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({ kind: "xy", points });
+    const layerId = engine.addLayer({
+      datasetId,
+      kind: "binned-series",
+      targetBinCount: 5,
+      xDomain: [0, 40],
+    });
+    const options = { viewport: { height: 320, width: 800, xDomain: [0, 40] as [number, number] } };
+    const firstLayer = engine.computeFrame(options).layers[0];
+    const secondLayer = engine.computeFrame(options).layers[0];
+
+    expect(secondLayer).toBe(firstLayer);
+
+    engine.removeLayer(layerId);
+    const nextLayerId = engine.addLayer({
+      datasetId,
+      kind: "binned-series",
+      targetBinCount: 5,
+      xDomain: [0, 40],
+    });
+    const afterChangeLayer = engine.computeFrame(options).layers[0];
+
+    expect(nextLayerId).toBe("layer-2");
+    expect(afterChangeLayer).not.toBe(firstLayer);
+  });
+
   test("computes hit tests lazily when a viewport is supplied", () => {
     const engine = createVizEngine({ backend: "js" });
     const datasetId = engine.addDataset({ kind: "xy", points });

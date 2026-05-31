@@ -234,57 +234,90 @@ export function createHeatmap<TProperties>(
   const xBinCount = clampCount(query.xBinCount);
   const yBinCount = clampCount(query.yBinCount);
   const xDomain = normalizeDomain(query.xDomain);
-  const selectedPoints = pointsInXDomain(points, xDomain);
-  const valuedPoints = selectedPoints
-    .map((point) => ({ point, value: pointAccessorValue(point, query.valueAccessor ?? "y") }))
-    .filter((item): item is { point: NormalizedSeriesPoint<TProperties>; value: number } =>
-      Number.isFinite(item.value),
-    );
-  const yDomain = normalizeDomain(query.yDomain ?? deriveValueDomain(valuedPoints));
+  const valueAccessor = query.valueAccessor ?? "y";
+  const start = lowerBoundX(points, xDomain[0]);
+  const end = upperBoundX(points, xDomain[1]);
+  const yDomain = normalizeDomain(
+    query.yDomain ?? deriveValueDomainFromRange(points, start, end, valueAccessor),
+  );
   const xWidth = binWidth(xDomain, xBinCount);
   const yWidth = binWidth(yDomain, yBinCount);
-  const cells = Array.from({ length: xBinCount * yBinCount }, (_, index) =>
-    createEmptyHeatmapCell<TProperties>(
-      index,
-      xBinCount,
-      yBinCount,
-      xDomain,
-      yDomain,
-      xWidth,
-      yWidth,
-      metricKeys,
-    ),
-  );
+  const cellCount = xBinCount * yBinCount;
+  const counts = new Uint32Array(cellCount);
+  const sums = new Float64Array(cellCount);
+  const firstPointIndexes = new Int32Array(cellCount);
+  const lastPointIndexes = new Int32Array(cellCount);
+  const metricSums = metricKeys.map(() => new Float64Array(cellCount));
+  firstPointIndexes.fill(-1);
+  lastPointIndexes.fill(-1);
 
-  for (const { point, value } of valuedPoints) {
-    if (value < yDomain[0] || value > yDomain[1]) {
+  let maxCellCount = 0;
+  let summaryPointCount = 0;
+  const summaryMetrics = zeroMetrics(metricKeys);
+
+  for (let pointIndex = start; pointIndex < end; pointIndex++) {
+    const point = points[pointIndex]!;
+    const value = pointAccessorValue(point, valueAccessor);
+
+    if (!Number.isFinite(value) || value < yDomain[0] || value > yDomain[1]) {
       continue;
     }
 
     const xIndex = bucketIndex(point.x, xDomain, xBinCount);
     const yIndex = bucketIndex(value, yDomain, yBinCount);
-    updateHeatmapCell(cells[yIndex * xBinCount + xIndex], point, value, metricKeys);
+    const cellIndex = yIndex * xBinCount + xIndex;
+    const nextCount = counts[cellIndex]! + 1;
+    counts[cellIndex] = nextCount;
+    sums[cellIndex] += value;
+    if (firstPointIndexes[cellIndex] === -1) {
+      firstPointIndexes[cellIndex] = pointIndex;
+    }
+    lastPointIndexes[cellIndex] = pointIndex;
+    maxCellCount = Math.max(maxCellCount, nextCount);
+    summaryPointCount += 1;
+
+    for (const [metricIndex, metricKey] of metricKeys.entries()) {
+      const metricValue = point.metrics?.[metricKey] ?? 0;
+      metricSums[metricIndex]![cellIndex] += metricValue;
+      summaryMetrics[metricKey] = (summaryMetrics[metricKey] ?? 0) + metricValue;
+    }
   }
 
-  let maxCellCount = 0;
+  const cells: Array<VizHeatmapCell<TProperties>> = [];
 
-  for (const cell of cells) {
-    maxCellCount = Math.max(maxCellCount, cell.pointCount);
+  for (let index = 0; index < cellCount; index++) {
+    const pointCount = counts[index]!;
+    if (query.includeEmptyCells === false && pointCount === 0) {
+      continue;
+    }
+
+    cells.push(
+      createHeatmapCellFromAccumulators(
+        index,
+        xBinCount,
+        yBinCount,
+        xDomain,
+        yDomain,
+        xWidth,
+        yWidth,
+        points,
+        metricKeys,
+        metricSums,
+        counts,
+        sums,
+        firstPointIndexes,
+        lastPointIndexes,
+        maxCellCount,
+      ),
+    );
   }
-
-  for (const cell of cells) {
-    cell.value = maxCellCount > 0 ? cell.pointCount / maxCellCount : 0;
-  }
-
-  const visibleCells =
-    query.includeEmptyCells === false ? cells.filter((cell) => cell.pointCount > 0) : cells;
 
   return {
-    cells: visibleCells,
+    cells,
     summary: {
       maxCellCount,
-      metrics: sumMetricRecords(visibleCells.map((cell) => cell.metrics)),
-      pointCount: visibleCells.reduce((sum, cell) => sum + cell.pointCount, 0),
+      metrics: summaryMetrics,
+      pointCount: summaryPointCount,
       xBinCount,
       xDomain,
       yBinCount,
@@ -591,7 +624,7 @@ function updateHistogramBucket<TProperties>(
   addMetrics(bucket.metrics, point.metrics, metricKeys);
 }
 
-function createEmptyHeatmapCell<TProperties>(
+function createHeatmapCellFromAccumulators<TProperties>(
   index: number,
   xBinCount: number,
   yBinCount: number,
@@ -599,24 +632,39 @@ function createEmptyHeatmapCell<TProperties>(
   yDomain: [number, number],
   xWidth: number,
   yWidth: number,
+  points: readonly NormalizedSeriesPoint<TProperties>[],
   metricKeys: readonly string[],
+  metricSums: readonly Float64Array[],
+  counts: Uint32Array,
+  sums: Float64Array,
+  firstPointIndexes: Int32Array,
+  lastPointIndexes: Int32Array,
+  maxCellCount: number,
 ): VizHeatmapCell<TProperties> {
   const xIndex = index % xBinCount;
   const yIndex = Math.floor(index / xBinCount);
   const x0 = xDomain[0] + xIndex * xWidth;
   const y0 = yDomain[0] + yIndex * yWidth;
+  const pointCount = counts[index]!;
+  const firstPointIndex = firstPointIndexes[index]!;
+  const lastPointIndex = lastPointIndexes[index]!;
+  const metrics: VizMetricRecord = {};
+
+  for (const [metricIndex, metricKey] of metricKeys.entries()) {
+    metrics[metricKey] = metricSums[metricIndex]?.[index] ?? 0;
+  }
 
   return {
-    averageValue: null,
-    firstPoint: null,
-    firstPointIndex: null,
+    averageValue: pointCount ? sums[index]! / pointCount : null,
+    firstPoint: firstPointIndex === -1 ? null : (points[firstPointIndex] ?? null),
+    firstPointIndex: firstPointIndex === -1 ? null : (points[firstPointIndex]?.sourceIndex ?? null),
     index,
-    lastPoint: null,
-    lastPointIndex: null,
-    metrics: zeroMetrics(metricKeys),
-    pointCount: 0,
-    sumValue: 0,
-    value: 0,
+    lastPoint: lastPointIndex === -1 ? null : (points[lastPointIndex] ?? null),
+    lastPointIndex: lastPointIndex === -1 ? null : (points[lastPointIndex]?.sourceIndex ?? null),
+    metrics,
+    pointCount,
+    sumValue: sums[index]!,
+    value: maxCellCount > 0 ? pointCount / maxCellCount : 0,
     x: x0 + xWidth / 2,
     x0,
     x1: xIndex + 1 === xBinCount ? xDomain[1] : x0 + xWidth,
@@ -626,22 +674,6 @@ function createEmptyHeatmapCell<TProperties>(
     y1: yIndex + 1 === yBinCount ? yDomain[1] : y0 + yWidth,
     yIndex,
   };
-}
-
-function updateHeatmapCell<TProperties>(
-  cell: VizHeatmapCell<TProperties>,
-  point: NormalizedSeriesPoint<TProperties>,
-  value: number,
-  metricKeys: readonly string[],
-) {
-  cell.firstPoint ??= point;
-  cell.firstPointIndex ??= point.sourceIndex;
-  cell.lastPoint = point;
-  cell.lastPointIndex = point.sourceIndex;
-  cell.pointCount += 1;
-  cell.sumValue += value;
-  cell.averageValue = cell.sumValue / cell.pointCount;
-  addMetrics(cell.metrics, point.metrics, metricKeys);
 }
 
 function pointAccessorValue<TProperties>(
@@ -662,6 +694,44 @@ function pointsInXDomain<TProperties>(
   return points.filter((point) => point.x >= xDomain[0] && point.x <= xDomain[1]);
 }
 
+function lowerBoundX<TProperties>(
+  points: readonly NormalizedSeriesPoint<TProperties>[],
+  value: number,
+) {
+  let low = 0;
+  let high = points.length;
+
+  while (low < high) {
+    const mid = low + Math.floor((high - low) / 2);
+    if (points[mid]!.x < value) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
+}
+
+function upperBoundX<TProperties>(
+  points: readonly NormalizedSeriesPoint<TProperties>[],
+  value: number,
+) {
+  let low = 0;
+  let high = points.length;
+
+  while (low < high) {
+    const mid = low + Math.floor((high - low) / 2);
+    if (points[mid]!.x <= value) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
+}
+
 function deriveValueDomain<TProperties>(
   valuedPoints: readonly { value: number }[],
 ): [number, number] {
@@ -670,6 +740,30 @@ function deriveValueDomain<TProperties>(
   let hasPoints = false;
 
   for (const { value } of valuedPoints) {
+    hasPoints = true;
+    min = Math.min(min, value);
+    max = Math.max(max, value);
+  }
+
+  return hasPoints ? [min, max] : [0, 0];
+}
+
+function deriveValueDomainFromRange<TProperties>(
+  points: readonly NormalizedSeriesPoint<TProperties>[],
+  start: number,
+  end: number,
+  valueAccessor: VizPointValueAccessor,
+): [number, number] {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  let hasPoints = false;
+
+  for (let index = start; index < end; index++) {
+    const value = pointAccessorValue(points[index]!, valueAccessor);
+    if (!Number.isFinite(value)) {
+      continue;
+    }
+
     hasPoints = true;
     min = Math.min(min, value);
     max = Math.max(max, value);

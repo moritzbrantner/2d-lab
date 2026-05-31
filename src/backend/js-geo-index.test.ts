@@ -106,6 +106,7 @@ describe("JsVizGeoPointIndex", () => {
       pointCount: 2,
       pointCountAbbreviated: "2",
     });
+    expect(cluster?.kind === "cluster" ? cluster.expansionZoom : 0).toBeGreaterThan(1);
     expect(cluster?.coordinates[0]).toBeCloseTo(13.0005);
     expect(cluster?.coordinates[1]).toBeCloseTo(52.0005);
     expect(aggregation.summary).toMatchObject({
@@ -119,9 +120,39 @@ describe("JsVizGeoPointIndex", () => {
       throw new Error("Expected a cluster");
     }
 
-    expect(index.getClusterExpansionZoom(cluster.clusterId)).toBe(16);
+    expect(index.getClusterExpansionZoom(cluster.clusterId)).toBeGreaterThan(1);
     expect(index.getClusterLeaves(cluster.clusterId, 1, 1).map((point) => point.id)).toEqual(["b"]);
     expect(index.getClusterExpansionZoom(999)).toBe(0);
     expect(index.getClusterLeaves(999)).toEqual([]);
+  });
+
+  test("returns represented counts for broad, city, dense, and antimeridian viewports", () => {
+    const densePoints = Array.from({ length: 100 }, (_, index) => ({
+      id: `dense-${index}`,
+      latitude: 52 + index * 0.00001,
+      longitude: 13 + index * 0.00001,
+      metrics: { demand: 1 },
+      properties: { group: "dense" },
+    }));
+    const index = new JsVizGeoPointIndex([...points, ...densePoints]);
+
+    const viewports: Array<[number, number, number, number]> = [
+      [-180, -90, 180, 90],
+      [12.9, 51.9, 13.1, 52.1],
+      [12.99, 51.99, 13.01, 52.01],
+      [170, 0, -170, 20],
+    ];
+
+    for (const bounds of viewports) {
+      const aggregation = index.getViewportAggregation({ bounds, zoom: 2 }, { radius: 80 });
+
+      expect(aggregation.summary.visiblePointCount).toBeGreaterThan(0);
+      expect(
+        aggregation.features.reduce(
+          (sum, feature) => sum + (feature.kind === "cluster" ? feature.pointCount : 1),
+          0,
+        ),
+      ).toBe(aggregation.summary.visiblePointCount);
+    }
   });
 });

@@ -75,7 +75,45 @@ export function barsInRange<TProperties>(
     return [];
   }
 
-  return bars.filter((bar) => bar.timestamp >= start && bar.timestamp <= end);
+  return bars.slice(lowerBoundTimestamp(bars, start), upperBoundTimestamp(bars, end));
+}
+
+export function lowerBoundTimestamp<TProperties>(
+  bars: readonly VizOhlcvBar<TProperties>[],
+  timestamp: number,
+) {
+  let low = 0;
+  let high = bars.length;
+
+  while (low < high) {
+    const mid = low + Math.floor((high - low) / 2);
+    if (bars[mid]!.timestamp < timestamp) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
+}
+
+export function upperBoundTimestamp<TProperties>(
+  bars: readonly VizOhlcvBar<TProperties>[],
+  timestamp: number,
+) {
+  let low = 0;
+  let high = bars.length;
+
+  while (low < high) {
+    const mid = low + Math.floor((high - low) / 2);
+    if (bars[mid]!.timestamp <= timestamp) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
 }
 
 export function downsampleOhlcvBars<TProperties>(
@@ -106,32 +144,36 @@ export function downsampleOhlcvBars<TProperties>(
 export function createFinanceReturnSeries<TProperties>(
   bars: readonly VizOhlcvBar<TProperties>[],
   query: VizFinanceReturnsQuery,
+  range: { end: number; start: number } = {
+    end: upperBoundTimestamp(bars, query.xDomain[1]),
+    start: lowerBoundTimestamp(bars, query.xDomain[0]),
+  },
 ): VizDensitySeries<TProperties> {
   const method = query.method ?? "simple";
-  const prices = priceValues(bars, query.priceMode ?? "raw");
-  const points: Array<VizIndexedSeriesPoint<TProperties>> = [];
+  const priceMode = query.priceMode ?? "raw";
+  const start = Math.max(0, Math.min(bars.length, range.start));
+  const end = Math.max(start, Math.min(bars.length, range.end));
+  const returnCount = Math.max(0, end - start - 1);
+  const targetBinCount = Math.max(1, query.targetPointCount ?? (returnCount || 1));
+  const bucketCount = returnCount > targetBinCount ? targetBinCount : returnCount;
+  const states = Array.from({ length: bucketCount }, () => createReturnBinState());
+  let bucketIndex = 0;
+  let bucketEnd = returnBucketEnd(bucketIndex, returnCount, bucketCount);
 
-  for (let index = 1; index < prices.length; index++) {
-    const previous = prices[index - 1];
-    const current = prices[index];
-    if (previous == null || current == null) {
-      continue;
+  for (let returnIndex = 0; returnIndex < returnCount; returnIndex++) {
+    const previous = financeReturnPrice(bars[start + returnIndex]!, priceMode);
+    const current = financeReturnPrice(bars[start + returnIndex + 1]!, priceMode);
+    const y = method === "log" ? Math.log(current / previous) : current / previous - 1;
+
+    while (returnIndex >= bucketEnd && bucketIndex < bucketCount - 1) {
+      bucketIndex += 1;
+      bucketEnd = returnBucketEnd(bucketIndex, returnCount, bucketCount);
     }
-    points.push({
-      id: `return-${index}`,
-      label: String(bars[index]?.timestamp ?? index),
-      properties: bars[index]?.properties,
-      sourceIndex: index,
-      x: bars[index]?.timestamp ?? index,
-      y: method === "log" ? Math.log(current / previous) : current / previous - 1,
-    });
+
+    updateReturnBinState(states[bucketIndex]!, returnIndex, y);
   }
 
-  const targetBinCount = Math.max(1, query.targetPointCount ?? (points.length || 1));
-  const bins =
-    points.length > targetBinCount
-      ? aggregateReturnPoints(points, targetBinCount)
-      : points.map((point, index) => createReturnBin([point], index));
+  const bins = states.map((state, index) => createReturnBinFromState(bars, start, state, index));
   const samples = bins.map(createReturnSample);
 
   return {
@@ -268,56 +310,114 @@ function aggregateOhlcvBucket<TProperties>(
   };
 }
 
-function aggregateReturnPoints<TProperties>(
-  points: Array<VizIndexedSeriesPoint<TProperties>>,
-  targetBinCount: number,
-): Array<VizDensityBin<TProperties>> {
-  const bins: Array<VizDensityBin<TProperties>> = [];
+type ReturnBinState = {
+  firstReturnIndex: number;
+  firstY: number;
+  lastReturnIndex: number;
+  lastY: number;
+  maxY: number;
+  minY: number;
+  pointCount: number;
+  sumY: number;
+};
 
-  for (let bucketIndex = 0; bucketIndex < targetBinCount; bucketIndex++) {
-    const start = Math.floor((bucketIndex * points.length) / targetBinCount);
-    const end = Math.max(
-      start + 1,
-      Math.floor(((bucketIndex + 1) * points.length) / targetBinCount),
-    );
-    bins.push(createReturnBin(points.slice(start, end), bucketIndex));
-  }
-
-  return bins;
+function createReturnBinState(): ReturnBinState {
+  return {
+    firstReturnIndex: -1,
+    firstY: 0,
+    lastReturnIndex: -1,
+    lastY: 0,
+    maxY: Number.NEGATIVE_INFINITY,
+    minY: Number.POSITIVE_INFINITY,
+    pointCount: 0,
+    sumY: 0,
+  };
 }
 
-function createReturnBin<TProperties>(
-  points: Array<VizIndexedSeriesPoint<TProperties>>,
-  index: number,
-): VizDensityBin<TProperties> {
-  const firstPoint = points[0] ?? null;
-  const lastPoint = points[points.length - 1] ?? null;
-  let maxY = Number.NEGATIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let sumY = 0;
-
-  for (const point of points) {
-    sumY += point.y;
-    maxY = Math.max(maxY, point.y);
-    minY = Math.min(minY, point.y);
+function updateReturnBinState(state: ReturnBinState, returnIndex: number, y: number) {
+  if (state.firstReturnIndex === -1) {
+    state.firstReturnIndex = returnIndex;
+    state.firstY = y;
   }
 
-  const pointCount = points.length;
+  state.lastReturnIndex = returnIndex;
+  state.lastY = y;
+  state.maxY = Math.max(state.maxY, y);
+  state.minY = Math.min(state.minY, y);
+  state.pointCount += 1;
+  state.sumY += y;
+}
+
+function returnBucketEnd(bucketIndex: number, returnCount: number, bucketCount: number) {
+  if (bucketCount <= 0) {
+    return 0;
+  }
+
+  const start = Math.floor((bucketIndex * returnCount) / bucketCount);
+  return Math.max(start + 1, Math.floor(((bucketIndex + 1) * returnCount) / bucketCount));
+}
+
+function createReturnBinFromState<TProperties>(
+  bars: readonly VizOhlcvBar<TProperties>[],
+  rangeStart: number,
+  state: ReturnBinState,
+  index: number,
+): VizDensityBin<TProperties> {
+  const firstPoint =
+    state.firstReturnIndex === -1
+      ? null
+      : createReturnPoint(
+          bars,
+          rangeStart,
+          state.firstReturnIndex,
+          state.firstReturnIndex,
+          state.firstY,
+        );
+  const lastPoint =
+    state.lastReturnIndex === -1
+      ? null
+      : createReturnPoint(
+          bars,
+          rangeStart,
+          state.lastReturnIndex,
+          state.lastReturnIndex,
+          state.lastY,
+        );
 
   return {
-    averageY: pointCount ? sumY / pointCount : null,
+    averageY: state.pointCount ? state.sumY / state.pointCount : null,
     firstPoint,
     firstPointIndex: firstPoint?.sourceIndex ?? null,
     index,
     lastPoint,
     lastPointIndex: lastPoint?.sourceIndex ?? null,
-    maxY: pointCount ? maxY : null,
+    maxY: state.pointCount ? state.maxY : null,
     metrics: {},
-    minY: pointCount ? minY : null,
-    pointCount,
-    sumY,
+    minY: state.pointCount ? state.minY : null,
+    pointCount: state.pointCount,
+    sumY: state.sumY,
     x0: firstPoint?.x ?? 0,
     x1: lastPoint?.x ?? firstPoint?.x ?? 0,
+  };
+}
+
+function createReturnPoint<TProperties>(
+  bars: readonly VizOhlcvBar<TProperties>[],
+  rangeStart: number,
+  returnIndex: number,
+  sourceReturnIndex: number,
+  y: number,
+): VizIndexedSeriesPoint<TProperties> {
+  const currentBarIndex = rangeStart + returnIndex + 1;
+  const current = bars[currentBarIndex];
+
+  return {
+    id: `return-${sourceReturnIndex + 1}`,
+    label: String(current?.timestamp ?? sourceReturnIndex + 1),
+    properties: current?.properties,
+    sourceIndex: sourceReturnIndex + 1,
+    x: current?.timestamp ?? sourceReturnIndex + 1,
+    y,
   };
 }
 
@@ -338,6 +438,13 @@ function priceValues<TProperties>(
   return bars.map((bar) =>
     priceMode === "adjusted" ? (bar.adjustedClose ?? bar.close) : bar.close,
   );
+}
+
+function financeReturnPrice<TProperties>(
+  bar: VizOhlcvBar<TProperties>,
+  priceMode: "adjusted" | "raw",
+) {
+  return priceMode === "adjusted" ? (bar.adjustedClose ?? bar.close) : bar.close;
 }
 
 function simpleReturns(prices: readonly number[]) {

@@ -4,8 +4,10 @@ import {
   downsampleOhlcvBars,
   getFinanceBounds,
   getFinanceRiskSummary,
+  lowerBoundTimestamp,
   normalizeFinanceInstrument,
   normalizeOhlcvBars,
+  upperBoundTimestamp,
 } from "./finance-utils";
 
 import type {
@@ -57,7 +59,10 @@ export class JsVizFinanceIndex<
   }
 
   getReturns(query: VizFinanceReturnsQuery) {
-    return createFinanceReturnSeries(this.getBars(query), query);
+    return createFinanceReturnSeries(this.bars, query, {
+      end: upperBoundTimestamp(this.bars, query.xDomain[1]),
+      start: lowerBoundTimestamp(this.bars, query.xDomain[0]),
+    });
   }
 
   getRiskSummary(query: VizFinanceRiskQuery): VizFinanceRiskSummary {

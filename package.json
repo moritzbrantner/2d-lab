@@ -42,6 +42,9 @@
     "test:wasm": "bun run test",
     "verify": "bun run check-types && bun run test && bun run test:rust && bun run build"
   },
+  "dependencies": {
+    "supercluster": "^8.0.1"
+  },
   "devDependencies": {
     "@moritzbrantner/ui": "^0.9.1",
     "@tailwindcss/vite": "^4.3.0",
@@ -60,7 +63,6 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "simple-statistics": "^7.8.9",
-    "supercluster": "^8.0.1",
     "tailwindcss": "^4.3.0",
     "tinybench": "^4.0.1",
     "tsup": "^8.5.0",

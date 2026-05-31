@@ -57,6 +57,36 @@ describe("JsVizFinanceIndex", () => {
     expect(index.getRiskSummary({ priceMode: "adjusted" }).annualizedVolatility).toBeGreaterThan(0);
   });
 
+  test("computes adjusted log returns over partial domains with downsampling", () => {
+    const index = new JsVizFinanceIndex(dataset);
+    const returns = index.getReturns({
+      method: "log",
+      priceMode: "adjusted",
+      targetPointCount: 1,
+      xDomain: [2, 4],
+    });
+
+    const expected = [Math.log(103 / 108), Math.log(118 / 103)];
+
+    expect(returns.summary).toMatchObject({
+      binCount: 1,
+      pointCount: 2,
+      sampleCount: 1,
+      valueMode: "average",
+      xDomain: [2, 4],
+    });
+    expect(returns.bins[0]).toMatchObject({
+      firstPointIndex: 1,
+      lastPointIndex: 2,
+      pointCount: 2,
+      x0: 3,
+      x1: 4,
+    });
+    expect(returns.samples[0]?.y).toBeCloseTo((expected[0]! + expected[1]!) / 2);
+    expect(returns.bins[0]?.minY).toBeCloseTo(Math.min(...expected));
+    expect(returns.bins[0]?.maxY).toBeCloseTo(Math.max(...expected));
+  });
+
   test("rejects invalid OHLCV input", () => {
     expect(
       () =>

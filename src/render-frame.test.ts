@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 
 import { RustWasmVizDensityIndex } from "./backend/rust-wasm-density-index";
 import { WasmVizGeoPointIndex } from "./backend/wasm-geo-index";
@@ -15,9 +15,13 @@ const points: VizSeriesPoint[] = [
   { id: "d", x: 30, y: 16, metrics: { count: 1 } },
   { id: "e", x: 40, y: 32, metrics: { count: 1 } },
 ];
+const originalPerformance = globalThis.performance;
 
 afterEach(() => {
-  vi.unstubAllGlobals();
+  Object.defineProperty(globalThis, "performance", {
+    configurable: true,
+    value: originalPerformance,
+  });
 });
 
 describe("computeVizRenderFrame", () => {
@@ -175,7 +179,10 @@ describe("computeVizRenderFrame", () => {
   });
 
   test("computes frame timing without a global performance object", () => {
-    vi.stubGlobal("performance", undefined);
+    Object.defineProperty(globalThis, "performance", {
+      configurable: true,
+      value: undefined,
+    });
     const engine = createVizEngine({ backend: "js" });
     const datasetId = engine.addDataset({ kind: "xy", points });
     engine.addLayer({
@@ -189,6 +196,77 @@ describe("computeVizRenderFrame", () => {
 
     expect(frame.stats.computeMs).toBeGreaterThanOrEqual(0);
     expect(frame.layers).toHaveLength(1);
+  });
+
+  test("reuses unchanged render layers from a shared cache", () => {
+    let calls = 0;
+    const series = {
+      bins: [],
+      samples: [],
+      summary: {
+        binCount: 0,
+        metrics: {},
+        pointCount: 0,
+        sampleCount: 0,
+        valueMode: "average" as const,
+        xDomain: [0, 40] as [number, number],
+      },
+    };
+    const index = {
+      getBackendCapabilities: () => ({
+        backend: "js" as const,
+        implementation: "js" as const,
+        usesWasm: false,
+      }),
+      getChartSeries: () => {
+        calls += 1;
+        return series;
+      },
+    };
+    const datasets = new Map<string, VizEngineDatasetRecord>([
+      [
+        "dataset",
+        {
+          dataset: { kind: "xy", points },
+          index: { index, kind: "xy" } as never,
+        },
+      ],
+    ]);
+    const layers = new Map<string, VizLayer>([
+      [
+        "layer",
+        {
+          datasetId: "dataset",
+          kind: "binned-series",
+          targetBinCount: 5,
+          xDomain: [0, 40],
+        },
+      ],
+    ]);
+    const backend = {
+      createIndex: () => {
+        throw new Error("not used");
+      },
+      option: "js" as const,
+      resolveBackend: () => "js" as const,
+    };
+    const cache = new Map();
+    const options = { viewport: { height: 320, width: 800, xDomain: [0, 40] as [number, number] } };
+    const firstFrame = computeVizRenderFrame(datasets, layers, backend, options, cache);
+    const secondFrame = computeVizRenderFrame(datasets, layers, backend, options, cache);
+
+    expect(calls).toBe(1);
+    expect(secondFrame.layers[0]).toBe(firstFrame.layers[0]);
+
+    layers.set("layer", {
+      datasetId: "dataset",
+      kind: "binned-series",
+      targetBinCount: 5,
+      xDomain: [10, 40],
+    });
+    computeVizRenderFrame(datasets, layers, backend, options, cache);
+
+    expect(calls).toBe(2);
   });
 
   test("reports incompatible viewport diagnostics", () => {

@@ -38,6 +38,27 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
       { name: "stdDev-128", statistic: "stdDev" as const, windowSize: 128 },
       { name: "zScore-128", statistic: "zScore" as const, windowSize: 128 },
     ] as const;
+    const wasmBoundaryQueries = {
+      binned: {
+        includeEmptyBins: false,
+        targetBinCount: 1024,
+        valueMode: "average" as const,
+        xDomain: fixture.domains.full,
+      },
+      heatmap: {
+        xBinCount: 128,
+        xDomain: fixture.domains.full,
+        yBinCount: 64,
+      },
+      histogram: {
+        bucketCount: 512,
+      },
+      rolling: {
+        statistic: "stdDev" as const,
+        windowSize: 128,
+        xDomain: fixture.domains.full,
+      },
+    };
 
     cases.push(
       createXyIndexCase("viz-engine js", size, () => new JsVizDensityIndex(fixture.points)),
@@ -199,6 +220,55 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
         },
         workload: `heatmap/${query.name}`,
       });
+
+      if (query.name === "full-128x64") {
+        cases.push({
+          category: "xy",
+          id: createCaseId(["xy", "heatmap-variant", query.name, sizeLabel, "typed-full-shape"]),
+          implementation: "viz-engine js typed-full-shape",
+          notes: ["Production typed-accumulator heatmap with full cell shape."],
+          prepare: () => new JsVizDensityIndex(fixture.points),
+          run: (prepared) => (prepared as JsVizDensityIndex).getHeatmap(query),
+          size: sizeLabel,
+          sizeValue: size,
+          validate: (prepared) => {
+            const output = (prepared as JsVizDensityIndex).getHeatmap(query);
+            assertPositive(output.cells.length, "typed heatmap cell count");
+            assertPositive(output.summary.pointCount, "typed heatmap point count");
+          },
+          workload: `heatmap-variant/${query.name}`,
+        });
+
+        cases.push({
+          category: "xy",
+          id: createCaseId([
+            "xy",
+            "heatmap-variant",
+            query.name,
+            sizeLabel,
+            "sparse-populated-cells",
+          ]),
+          implementation: "viz-engine js sparse-populated-cells",
+          notes: ["Production typed-accumulator heatmap with empty cells filtered."],
+          prepare: () => new JsVizDensityIndex(fixture.points),
+          run: (prepared) =>
+            (prepared as JsVizDensityIndex).getHeatmap({
+              ...query,
+              includeEmptyCells: false,
+            }),
+          size: sizeLabel,
+          sizeValue: size,
+          validate: (prepared) => {
+            const output = (prepared as JsVizDensityIndex).getHeatmap({
+              ...query,
+              includeEmptyCells: false,
+            });
+            assertPositive(output.cells.length, "sparse heatmap cell count");
+            assertPositive(output.summary.pointCount, "sparse heatmap point count");
+          },
+          workload: `heatmap-variant/${query.name}`,
+        });
+      }
     }
 
     for (const query of rollingQueries) {
@@ -259,9 +329,161 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
         workload: `rolling/${query.name}`,
       });
     }
+
+    cases.push(...createWasmBoundaryCases(size, sizeLabel, fixture.points, wasmBoundaryQueries));
   }
 
   return cases;
+}
+
+function createWasmBoundaryCases(
+  size: number,
+  sizeLabel: string,
+  points: ReturnType<typeof createXyFixture>["points"],
+  queries: {
+    binned: Parameters<RustWasmVizDensityIndex["getChartSeries"]>[0];
+    heatmap: Parameters<RustWasmVizDensityIndex["getHeatmap"]>[0];
+    histogram: Parameters<RustWasmVizDensityIndex["getHistogram"]>[0];
+    rolling: Parameters<RustWasmVizDensityIndex["getRollingSeries"]>[0];
+  },
+): BenchmarkCase[] {
+  return [
+    ...createWasmBoundaryCase({
+      hydrate: (index, raw) => ({
+        bins: raw.bins.map((bin: unknown) => index.mapBin(bin)),
+        samples: raw.samples.map((sample: unknown) => index.mapSample(sample)),
+        summary: index.mapDensitySummary(raw.summary),
+      }),
+      idParts: ["xy", "wasm-boundary", "binned", sizeLabel],
+      points,
+      raw: (index) =>
+        index.index.getBinnedSeries({
+          ...queries.binned,
+          includeEmptyBins: queries.binned.includeEmptyBins ?? false,
+          valueMode: queries.binned.valueMode ?? "average",
+        }),
+      size,
+      sizeLabel,
+      validate: (output) => assertPositive(output.summary.pointCount, "wasm binned point count"),
+      workload: "wasm-boundary/binned",
+      wrapper: (index) => index.getChartSeries(queries.binned),
+    }),
+    ...createWasmBoundaryCase({
+      hydrate: (index, raw) => ({
+        cells: raw.cells.map((cell: unknown) => index.mapHeatmapCell(cell)),
+        summary: { ...raw.summary, metrics: normalizeBoundaryMetrics(raw.summary.metrics) },
+      }),
+      idParts: ["xy", "wasm-boundary", "heatmap", sizeLabel],
+      points,
+      raw: (index) => index.index.getHeatmap(queries.heatmap),
+      size,
+      sizeLabel,
+      validate: (output) => assertPositive(output.summary.pointCount, "wasm heatmap point count"),
+      workload: "wasm-boundary/heatmap",
+      wrapper: (index) => index.getHeatmap(queries.heatmap),
+    }),
+    ...createWasmBoundaryCase({
+      hydrate: (index, raw) => ({
+        buckets: raw.buckets.map((bucket: unknown) => index.mapHistogramBucket(bucket)),
+        summary: { ...raw.summary, metrics: normalizeBoundaryMetrics(raw.summary.metrics) },
+      }),
+      idParts: ["xy", "wasm-boundary", "histogram", sizeLabel],
+      points,
+      raw: (index) =>
+        index.index.getHistogram({
+          ...queries.histogram,
+          includeEmptyBuckets: queries.histogram.includeEmptyBuckets ?? true,
+        }),
+      size,
+      sizeLabel,
+      validate: (output) => assertPositive(output.summary.pointCount, "wasm histogram point count"),
+      workload: "wasm-boundary/histogram",
+      wrapper: (index) => index.getHistogram(queries.histogram),
+    }),
+    ...createWasmBoundaryCase({
+      hydrate: (index, raw) => ({
+        points: raw.points.map((point: unknown) => index.mapRollingPoint(point)),
+        summary: raw.summary,
+      }),
+      idParts: ["xy", "wasm-boundary", "rolling", sizeLabel],
+      points,
+      raw: (index) =>
+        index.index.getRollingSeries({
+          ...queries.rolling,
+          statistic: queries.rolling.statistic ?? "mean",
+        }),
+      size,
+      sizeLabel,
+      validate: (output) => assertPositive(output.points.length, "wasm rolling point count"),
+      workload: "wasm-boundary/rolling",
+      wrapper: (index) => index.getRollingSeries(queries.rolling),
+    }),
+  ];
+}
+
+function createWasmBoundaryCase(options: {
+  hydrate: (index: any, raw: any) => unknown;
+  idParts: readonly string[];
+  points: ReturnType<typeof createXyFixture>["points"];
+  raw: (index: any) => unknown;
+  size: number;
+  sizeLabel: string;
+  validate: (output: any) => void;
+  workload: string;
+  wrapper: (index: RustWasmVizDensityIndex) => unknown;
+}): BenchmarkCase[] {
+  return [
+    {
+      category: "xy",
+      id: createCaseId([...options.idParts, "raw"]),
+      implementation: "viz-engine wasm raw",
+      notes: ["Benchmark-only direct call into the generated WASM density index."],
+      prepare: () => new RustWasmVizDensityIndex(options.points),
+      run: (prepared) => options.raw(prepared),
+      size: options.sizeLabel,
+      sizeValue: options.size,
+      validate: (prepared) => options.validate(options.raw(prepared)),
+      workload: options.workload,
+    },
+    {
+      category: "xy",
+      id: createCaseId([...options.idParts, "hydration-only"]),
+      implementation: "viz-engine wasm hydration-only",
+      notes: ["Benchmark-only wrapper hydration over a previously captured raw WASM result."],
+      prepare: () => {
+        const index = new RustWasmVizDensityIndex(options.points) as any;
+        return { index, raw: options.raw(index) };
+      },
+      run: (prepared) => {
+        const { index, raw } = prepared as { index: any; raw: any };
+        return options.hydrate(index, raw);
+      },
+      size: options.sizeLabel,
+      sizeValue: options.size,
+      validate: (prepared) => {
+        const { index, raw } = prepared as { index: any; raw: any };
+        options.validate(options.hydrate(index, raw));
+      },
+      workload: options.workload,
+    },
+    {
+      category: "xy",
+      id: createCaseId([...options.idParts, "wrapper-total"]),
+      implementation: "viz-engine wasm wrapper-total",
+      notes: ["Existing public wrapper path for comparison with raw and hydration-only timings."],
+      prepare: () => new RustWasmVizDensityIndex(options.points),
+      run: (prepared) => options.wrapper(prepared as RustWasmVizDensityIndex),
+      size: options.sizeLabel,
+      sizeValue: options.size,
+      validate: (prepared) =>
+        options.validate(options.wrapper(prepared as RustWasmVizDensityIndex)),
+      workload: options.workload,
+    },
+  ];
+}
+
+function normalizeBoundaryMetrics(metrics: unknown) {
+  return metrics instanceof Map ? Object.fromEntries(metrics) : metrics;
 }
 
 function createXyIndexCase(
