@@ -485,7 +485,7 @@ function createFocusedFrame(slug: VisualizationSlug, seed: number): FocusedFrame
 
   if (slug === "overview") {
     return {
-      frame: engine.computeFrame({ viewport: cartesianViewport }),
+      frame: engine.computeFrame({ frameFormat: "objects", viewport: cartesianViewport }),
       viewport: cartesianViewport,
     };
   }
@@ -496,7 +496,7 @@ function createFocusedFrame(slug: VisualizationSlug, seed: number): FocusedFrame
     engine.addLayer(createCartesianLayer(slug, datasetId));
 
     return {
-      frame: engine.computeFrame({ viewport: cartesianViewport }),
+      frame: engine.computeFrame({ frameFormat: "objects", viewport: cartesianViewport }),
       viewport: cartesianViewport,
     };
   }
@@ -511,7 +511,7 @@ function createFocusedFrame(slug: VisualizationSlug, seed: number): FocusedFrame
     engine.addLayer(createFinanceLayer(slug, datasetId));
 
     return {
-      frame: engine.computeFrame({ viewport: financeViewport }),
+      frame: engine.computeFrame({ frameFormat: "objects", viewport: financeViewport }),
       viewport: financeViewport,
     };
   }
@@ -522,7 +522,7 @@ function createFocusedFrame(slug: VisualizationSlug, seed: number): FocusedFrame
   engine.addLayer(createGeoLayer(slug, datasetId));
 
   return {
-    frame: engine.computeFrame({ viewport }),
+    frame: engine.computeFrame({ frameFormat: "objects", viewport }),
     viewport,
   };
 }

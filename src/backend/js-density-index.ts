@@ -11,7 +11,7 @@ import {
   createPointLookup,
   createRollingSeries,
   getSeriesBounds,
-  normalizeSeriesPoints,
+  normalizeSeriesInput,
   type NormalizedSeriesPoint,
 } from "./density-utils";
 
@@ -24,6 +24,7 @@ import type {
   VizIndexedSeriesPoint,
   VizRollingSeriesQuery,
   VizSeriesPoint,
+  VizXyDataset,
 } from "../types";
 
 export class JsVizDensityIndex<
@@ -33,8 +34,8 @@ export class JsVizDensityIndex<
   private readonly metricKeys: string[];
   private readonly points: Array<NormalizedSeriesPoint<TProperties>>;
 
-  constructor(points: readonly VizSeriesPoint<TProperties>[]) {
-    this.points = normalizeSeriesPoints(points);
+  constructor(points: readonly VizSeriesPoint<TProperties>[] | VizXyDataset<TProperties>) {
+    this.points = normalizeSeriesInput<TProperties>(points);
     this.metricKeys = collectMetricKeys(this.points);
     this.byId = createPointLookup(this.points).byId;
   }

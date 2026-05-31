@@ -76,6 +76,32 @@ describe("RustWasmVizDensityIndex", () => {
     expect(compactResults(wasm)).toEqual(compactResults(js));
   });
 
+  test("matches object input when constructed from typed xy arrays", () => {
+    const finitePoints = points.filter(
+      (point) => Number.isFinite(point.x) && Number.isFinite(point.y),
+    );
+    const typed = new RustWasmVizDensityIndex({
+      ids: finitePoints.map((point) => point.id ?? ""),
+      labels: finitePoints.map((point) => point.label ?? ""),
+      kind: "xy",
+      metricKeys: ["count", "weight"],
+      metrics: new Float64Array(
+        finitePoints.flatMap((point) => [
+          Number.isFinite(point.metrics?.count) ? point.metrics!.count : 0,
+          Number.isFinite(point.metrics?.weight) ? point.metrics!.weight : 0,
+        ]),
+      ),
+      sourceIndices: new Uint32Array(finitePoints.map((_, index) => index)),
+      x: new Float64Array(finitePoints.map((point) => point.x)),
+      y: new Float64Array(finitePoints.map((point) => point.y)),
+    });
+    const object = new RustWasmVizDensityIndex(
+      finitePoints.map((point, sourceIndex) => ({ ...point, sourceIndex })),
+    );
+
+    expect(compactResults(typed)).toEqual(compactResults(object));
+  });
+
   test("handles empty input like the JS density index", () => {
     expect(publicResults(new RustWasmVizDensityIndex([]))).toEqual(
       publicResults(new JsVizDensityIndex([])),

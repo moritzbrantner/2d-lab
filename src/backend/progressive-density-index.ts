@@ -10,6 +10,7 @@ import type {
   VizIndexedSeriesPoint,
   VizRollingSeriesQuery,
   VizSeriesPoint,
+  VizXyDataset,
 } from "../types";
 
 export class ProgressiveVizDensityIndex<
@@ -20,9 +21,9 @@ export class ProgressiveVizDensityIndex<
   private warmupPromise: Promise<void> | null = null;
 
   constructor(
-    private readonly points: readonly VizSeriesPoint<TProperties>[],
+    private readonly points: readonly VizSeriesPoint<TProperties>[] | VizXyDataset<TProperties>,
     private readonly createWasmIndex: (
-      points: readonly VizSeriesPoint<TProperties>[],
+      points: readonly VizSeriesPoint<TProperties>[] | VizXyDataset<TProperties>,
     ) => VizDensityIndex<TProperties> = (points) => new RustWasmVizDensityIndex(points),
   ) {
     this.activeIndex = new JsVizDensityIndex(points);

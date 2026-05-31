@@ -2,7 +2,14 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { useMemo, type ReactNode } from "react";
 import { describe, expect, test, vi } from "vitest";
 
-import { VizEngineProvider, useVizDataset, useVizEngine, useVizFrame, useVizLayer } from "./react";
+import {
+  VizEngineProvider,
+  useVizDataset,
+  useVizEngine,
+  useVizFrame,
+  useVizLayer,
+  useVizTypedFrame,
+} from "./react";
 
 import type { VizEngine, VizRenderFrame, VizSeriesPoint } from "./types";
 
@@ -32,6 +39,8 @@ function createFakeEngine(): VizEngine {
     computeFrame: vi.fn(() => createFrame()),
     getDatasetCount: vi.fn(() => 0),
     getLayerCount: vi.fn(() => 0),
+    hydrateFrame: vi.fn((frame) => frame),
+    hydrateLayer: vi.fn(() => null),
     hitTest: vi.fn(() => null),
     removeDataset: vi.fn(),
     removeLayer: vi.fn(),
@@ -173,6 +182,35 @@ describe("React viz engine bindings", () => {
 
     rerender({ deps: ["dataset-2"] });
     expect(engine.computeFrame).toHaveBeenCalledTimes(2);
+  });
+
+  test("computes frames from object options", () => {
+    const engine = createFakeEngine();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <VizEngineProvider engine={engine}>{children}</VizEngineProvider>
+    );
+    const viewport = { height: 320, width: 800, xDomain: [0, 40] as [number, number] };
+
+    renderHook(
+      () => useVizFrame({ dependencies: ["dataset-1"], frameFormat: "objects", viewport }),
+      {
+        wrapper,
+      },
+    );
+
+    expect(engine.computeFrame).toHaveBeenCalledWith({ frameFormat: "objects", viewport });
+  });
+
+  test("computes typed frames from the convenience hook", () => {
+    const engine = createFakeEngine();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <VizEngineProvider engine={engine}>{children}</VizEngineProvider>
+    );
+    const viewport = { height: 320, width: 800, xDomain: [0, 40] as [number, number] };
+
+    renderHook(() => useVizTypedFrame({ dependencies: ["dataset-1"], viewport }), { wrapper });
+
+    expect(engine.computeFrame).toHaveBeenCalledWith({ frameFormat: "typed", viewport });
   });
 
   test("supports the thin lifecycle integration with a real engine", async () => {

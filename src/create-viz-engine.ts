@@ -1,10 +1,12 @@
 import { hitTestVizFrame } from "./hit-test";
+import { hydrateVizRenderFrame, hydrateVizRenderLayer } from "./hydrate-frame";
 import { createVizEngineBackend } from "./js-backend";
 import { computeVizRenderFrame } from "./render-frame";
 
 import type {
   VizAnyRenderFrame,
   VizAnyRenderLayer,
+  VizBackendConfig,
   VizBackendOption,
   VizCompactComputeFrameOptions,
   VizCompactRenderFrame,
@@ -18,10 +20,12 @@ import type {
   VizLayerId,
   VizObjectComputeFrameOptions,
   VizRenderFrame,
+  VizTypedComputeFrameOptions,
+  VizTypedRenderFrame,
 } from "./types";
 
 export type CreateVizEngineOptions = {
-  backend?: VizBackendOption;
+  backend?: VizBackendOption | VizBackendConfig;
 };
 
 export function createVizEngine<TProperties = Record<string, unknown>>(
@@ -40,17 +44,28 @@ export function createVizEngine<TProperties = Record<string, unknown>>(
     lastFrame = null;
   }
 
+  function computeFrame(frameOptions: VizObjectComputeFrameOptions): VizRenderFrame<TProperties>;
   function computeFrame(
     frameOptions: VizCompactComputeFrameOptions,
   ): VizCompactRenderFrame<TProperties>;
-  function computeFrame(frameOptions: VizObjectComputeFrameOptions): VizRenderFrame<TProperties>;
   function computeFrame(
-    frameOptions: VizCompactComputeFrameOptions | VizObjectComputeFrameOptions,
+    frameOptions: VizTypedComputeFrameOptions,
+  ): VizTypedRenderFrame<TProperties>;
+  function computeFrame(
+    frameOptions:
+      | VizCompactComputeFrameOptions
+      | VizObjectComputeFrameOptions
+      | VizTypedComputeFrameOptions,
   ): VizAnyRenderFrame<TProperties> {
-    lastFrame =
-      frameOptions.outputMode === "compact"
-        ? computeVizRenderFrame(datasets, layers, backend, frameOptions, layerCache)
-        : computeVizRenderFrame(datasets, layers, backend, frameOptions, layerCache);
+    lastFrame = (
+      computeVizRenderFrame as (
+        datasets: Map<string, VizEngineDatasetRecord<TProperties>>,
+        layers: Map<VizLayerId, VizLayer>,
+        backend: import("./types").VizEngineBackend<TProperties>,
+        options: typeof frameOptions,
+        layerCache?: Map<string, VizAnyRenderLayer<TProperties>>,
+      ) => VizAnyRenderFrame<TProperties>
+    )(datasets, layers, backend, frameOptions, layerCache);
 
     return lastFrame;
   }
@@ -85,6 +100,14 @@ export function createVizEngine<TProperties = Record<string, unknown>>(
 
     getLayerCount() {
       return layers.size;
+    },
+
+    hydrateFrame(frame: VizAnyRenderFrame<TProperties>) {
+      return hydrateVizRenderFrame(frame);
+    },
+
+    hydrateLayer(layer: VizAnyRenderLayer<TProperties>) {
+      return hydrateVizRenderLayer(layer);
     },
 
     hitTest(hitOptions: VizHitTestOptions): VizHitTestResult<TProperties> | null {

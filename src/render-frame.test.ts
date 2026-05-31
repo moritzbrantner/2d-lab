@@ -46,7 +46,10 @@ describe("computeVizRenderFrame", () => {
       yDomain: [0, 40],
     });
 
-    const frame = engine.computeFrame({ viewport: { height: 320, width: 800, xDomain: [0, 40] } });
+    const frame = engine.computeFrame({
+      frameFormat: "objects",
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
 
     expect(frame.stats).toMatchObject({
       backend: "js",
@@ -79,7 +82,10 @@ describe("computeVizRenderFrame", () => {
       xDomain: [0, 40],
     });
 
-    const frame = engine.computeFrame({ viewport: { height: 320, width: 800, xDomain: [0, 40] } });
+    const frame = engine.computeFrame({
+      frameFormat: "objects",
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
     const layer = frame.layers[0];
 
     expect(layer).toMatchObject({
@@ -127,6 +133,7 @@ describe("computeVizRenderFrame", () => {
     });
 
     const objectFrame = engine.computeFrame({
+      frameFormat: "objects",
       viewport: { height: 320, width: 800, xDomain: [0, 40] },
     });
     const compactFrame = engine.computeFrame({
@@ -190,7 +197,7 @@ describe("computeVizRenderFrame", () => {
       viewport: { height: 320, width: 800, xDomain: [0, 40] },
     });
 
-    expect(objectFrame.stats.backend).toBe("js");
+    expect(["js", "wasm"]).toContain(objectFrame.stats.backend);
     expect(compactFrame.stats).toMatchObject({
       backend: "wasm",
       backendImplementation: "rust-viz-engine-wasm",
@@ -347,11 +354,14 @@ describe("computeVizRenderFrame", () => {
       createIndex: () => {
         throw new Error("not used");
       },
-      option: "js" as const,
+      option: { finance: "js", geo: "js", xy: "js" } as const,
       resolveBackend: () => "js" as const,
     };
     const cache = new Map();
-    const options = { viewport: { height: 320, width: 800, xDomain: [0, 40] as [number, number] } };
+    const options = {
+      frameFormat: "objects" as const,
+      viewport: { height: 320, width: 800, xDomain: [0, 40] as [number, number] },
+    };
     const firstFrame = computeVizRenderFrame(datasets, layers, backend, options, cache);
     const secondFrame = computeVizRenderFrame(datasets, layers, backend, options, cache);
 

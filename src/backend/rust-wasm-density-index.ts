@@ -3,7 +3,8 @@ import { initVizEngineWasm, VizEngineWasmDensityIndex } from "../wasm/viz-engine
 import {
   collectMetricKeys,
   createPointLookup,
-  normalizeSeriesPoints,
+  isVizXyTypedDataset,
+  normalizeSeriesInput,
   type NormalizedSeriesPoint,
 } from "./density-utils";
 
@@ -30,6 +31,8 @@ import type {
   VizRollingSeriesPoint,
   VizRollingSeriesQuery,
   VizSeriesPoint,
+  VizXyDataset,
+  VizXyTypedDataset,
 } from "../types";
 
 type RustWasmDensityIndex = InstanceType<typeof VizEngineWasmDensityIndex>;
@@ -71,16 +74,20 @@ export class RustWasmVizDensityIndex<
   private readonly bySourceIndex: Map<number, NormalizedSeriesPoint<TProperties>>;
   private readonly index: RustWasmDensityIndex;
 
-  constructor(points: readonly VizSeriesPoint<TProperties>[]) {
+  constructor(points: readonly VizSeriesPoint<TProperties>[] | VizXyDataset<TProperties>) {
     initVizEngineWasm();
 
-    const normalizedPoints = normalizeSeriesPoints(points);
-    const metricKeys = collectMetricKeys(normalizedPoints);
+    const normalizedPoints = normalizeSeriesInput<TProperties>(points);
+    const metricKeys = isVizXyTypedDataset(points)
+      ? [...(points.metricKeys ?? [])]
+      : collectMetricKeys(normalizedPoints);
     const lookup = createPointLookup(normalizedPoints);
 
     this.byId = lookup.byId;
     this.bySourceIndex = lookup.bySourceIndex;
-    this.index = createWasmDensityIndex(normalizedPoints, metricKeys);
+    this.index = isVizXyTypedDataset(points)
+      ? createWasmDensityIndexFromTyped(points, normalizedPoints, metricKeys)
+      : createWasmDensityIndex(normalizedPoints, metricKeys);
   }
 
   getBackendCapabilities() {
@@ -343,12 +350,47 @@ function metricValues(metrics: VizMetricRecord | undefined, metricKeys: readonly
   return metricKeys.map((key) => metrics?.[key] ?? 0);
 }
 
+function createWasmDensityIndexFromTyped<TProperties>(
+  dataset: VizXyTypedDataset,
+  normalizedPoints: readonly NormalizedSeriesPoint<TProperties>[],
+  metricKeys: readonly string[],
+) {
+  const constructor = VizEngineWasmDensityIndex as RustWasmDensityIndexConstructor;
+  const pointCount = Math.min(dataset.x.length, dataset.y.length);
+  const canUseTypedConstructor =
+    !isBrowserRuntime() &&
+    typeof constructor.fromArrays === "function" &&
+    dataset.ids?.length === pointCount &&
+    dataset.labels?.length === pointCount;
+
+  if (!canUseTypedConstructor) {
+    return createWasmDensityIndex(normalizedPoints, metricKeys);
+  }
+
+  const metricCount = metricKeys.length;
+
+  return constructor.fromArrays(
+    dataset.x.length === pointCount ? dataset.x : dataset.x.slice(0, pointCount),
+    dataset.y.length === pointCount ? dataset.y : dataset.y.slice(0, pointCount),
+    dataset.sourceIndices?.length === pointCount
+      ? dataset.sourceIndices
+      : createSequentialSourceIndices(pointCount),
+    metricKeys,
+    dataset.metrics?.length === pointCount * metricCount
+      ? dataset.metrics
+      : new Float64Array(pointCount * metricCount),
+    metricCount,
+    fillStringValues(dataset.ids, pointCount),
+    fillStringValues(dataset.labels, pointCount),
+  ) as RustWasmDensityIndex;
+}
+
 function createWasmDensityIndex<TProperties>(
   points: readonly NormalizedSeriesPoint<TProperties>[],
   metricKeys: readonly string[],
 ) {
   const constructor = VizEngineWasmDensityIndex as RustWasmDensityIndexConstructor;
-  if (constructor.fromArrays) {
+  if (!isBrowserRuntime() && constructor.fromArrays) {
     return constructor.fromArrays(
       new Float64Array(points.map((point) => point.x)),
       new Float64Array(points.map((point) => point.y)),
@@ -372,6 +414,14 @@ function createWasmDensityIndex<TProperties>(
   }) as RustWasmDensityIndex;
 }
 
+function isBrowserRuntime() {
+  return (
+    typeof window !== "undefined" &&
+    typeof document !== "undefined" &&
+    !globalThis.navigator?.userAgent.toLowerCase().includes("jsdom")
+  );
+}
+
 function createFlatMetricArray<TProperties>(
   points: readonly NormalizedSeriesPoint<TProperties>[],
   metricKeys: readonly string[],
@@ -385,6 +435,18 @@ function createFlatMetricArray<TProperties>(
   }
 
   return metrics;
+}
+
+function createSequentialSourceIndices(length: number) {
+  const sourceIndices = new Uint32Array(length);
+  for (let index = 0; index < length; index += 1) {
+    sourceIndices[index] = index;
+  }
+  return sourceIndices;
+}
+
+function fillStringValues(values: readonly string[] | undefined, length: number) {
+  return Array.from({ length }, (_, index) => values?.[index] ?? "");
 }
 
 function normalizeRustMetrics(metrics: VizMetricRecord | Map<string, number>): VizMetricRecord {

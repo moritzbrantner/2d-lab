@@ -22,6 +22,9 @@ import type {
   VizSeriesBounds,
   VizSeriesPoint,
   VizValueMode,
+  VizXyDataset,
+  VizXyObjectDataset,
+  VizXyTypedDataset,
 } from "../types";
 
 export type NormalizedSeriesPoint<TProperties> = VizIndexedSeriesPoint<TProperties>;
@@ -51,6 +54,63 @@ export function normalizeSeriesPoints<TProperties>(
       ...point,
       metrics: normalizeMetrics(point.metrics),
       sourceIndex,
+    });
+  }
+
+  return normalized.sort((left, right) => left.x - right.x || left.sourceIndex - right.sourceIndex);
+}
+
+export function isVizXyTypedDataset(value: unknown): value is VizXyTypedDataset {
+  return (
+    value != null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    (value as { kind?: unknown }).kind === "xy" &&
+    (value as { x?: unknown }).x instanceof Float64Array &&
+    (value as { y?: unknown }).y instanceof Float64Array
+  );
+}
+
+export function normalizeSeriesInput<TProperties>(
+  input: readonly VizSeriesPoint<TProperties>[] | VizXyDataset<TProperties>,
+): Array<NormalizedSeriesPoint<TProperties>> {
+  if (isVizXyTypedDataset(input)) {
+    return normalizeTypedSeriesPoints(input);
+  }
+
+  return normalizeSeriesPoints(
+    Array.isArray(input) ? input : (input as VizXyObjectDataset<TProperties>).points,
+  );
+}
+
+export function normalizeTypedSeriesPoints<TProperties>(
+  dataset: VizXyTypedDataset,
+): Array<NormalizedSeriesPoint<TProperties>> {
+  const pointCount = Math.min(dataset.x.length, dataset.y.length);
+  const metricKeys = dataset.metricKeys ?? [];
+  const metricCount = metricKeys.length;
+  const normalized: Array<NormalizedSeriesPoint<TProperties>> = [];
+
+  for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+    const x = dataset.x[pointIndex]!;
+    const y = dataset.y[pointIndex]!;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      continue;
+    }
+
+    const metrics: VizMetricRecord = {};
+    for (let metricIndex = 0; metricIndex < metricCount; metricIndex += 1) {
+      const value = dataset.metrics?.[pointIndex * metricCount + metricIndex] ?? 0;
+      metrics[metricKeys[metricIndex]!] = Number.isFinite(value) ? value : 0;
+    }
+
+    normalized.push({
+      id: dataset.ids?.[pointIndex],
+      label: dataset.labels?.[pointIndex],
+      metrics,
+      sourceIndex: dataset.sourceIndices?.[pointIndex] ?? pointIndex,
+      x,
+      y,
     });
   }
 

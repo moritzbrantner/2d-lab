@@ -101,6 +101,79 @@ describe("createVizEngine", () => {
     expect(afterChangeLayer).not.toBe(firstLayer);
   });
 
+  test("returns typed cartesian frames by default and hydrates object layers explicitly", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({ kind: "xy", points });
+    engine.addLayer({
+      datasetId,
+      kind: "binned-series",
+      targetBinCount: 5,
+      xDomain: [0, 40],
+    });
+
+    const frame = engine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+    const layer = frame.layers[0];
+
+    expect(layer).toMatchObject({ kind: "binned-series", outputMode: "compact" });
+    if (layer?.kind === "binned-series" && "typedSeries" in layer) {
+      expect(layer.typedSeries).toBe(layer.compactSeries);
+      expect([...layer.typedSeries.pointCount]).toEqual([1, 1, 1, 1, 1]);
+      expect("rows" in layer).toBe(false);
+    } else {
+      throw new Error("Expected typed binned-series layer.");
+    }
+
+    const hydrated = engine.hydrateFrame(frame);
+    expect(hydrated.layers[0]).toMatchObject({ kind: "binned-series" });
+    expect(
+      hydrated.layers[0]?.kind === "binned-series" ? hydrated.layers[0].rows[0] : null,
+    ).toMatchObject({ value: 2, x: 4 });
+  });
+
+  test("accepts typed xy datasets", () => {
+    const objectEngine = createVizEngine({ backend: "js" });
+    const typedEngine = createVizEngine({ backend: "js" });
+    const objectDatasetId = objectEngine.addDataset({ kind: "xy", points });
+    const typedDatasetId = typedEngine.addDataset({
+      ids: ["a", "b", "c", "d", "e"],
+      kind: "xy",
+      x: new Float64Array(points.map((point) => point.x)),
+      y: new Float64Array(points.map((point) => point.y)),
+    });
+
+    objectEngine.addLayer({
+      datasetId: objectDatasetId,
+      kind: "binned-series",
+      targetBinCount: 5,
+      xDomain: [0, 40],
+    });
+    typedEngine.addLayer({
+      datasetId: typedDatasetId,
+      kind: "binned-series",
+      targetBinCount: 5,
+      xDomain: [0, 40],
+    });
+
+    const objectLayer = objectEngine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    }).layers[0];
+    const typedLayer = typedEngine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    }).layers[0];
+
+    expect(
+      objectLayer?.kind === "binned-series" && "typedSeries" in objectLayer
+        ? [...objectLayer.typedSeries.y]
+        : [],
+    ).toEqual(
+      typedLayer?.kind === "binned-series" && "typedSeries" in typedLayer
+        ? [...typedLayer.typedSeries.y]
+        : [],
+    );
+  });
+
   test("computes hit tests lazily when a viewport is supplied", () => {
     const engine = createVizEngine({ backend: "js" });
     const datasetId = engine.addDataset({ kind: "xy", points });
@@ -122,7 +195,7 @@ describe("createVizEngine", () => {
       datasetId,
       layerId,
       pointCount: 1,
-      sourcePointId: "c",
+      sourcePointId: null,
     });
   });
 
@@ -185,7 +258,10 @@ describe("createVizEngine", () => {
       xDomain: [1, 4],
     });
 
-    const frame = engine.computeFrame({ viewport: { height: 320, width: 800, xDomain: [1, 4] } });
+    const frame = engine.computeFrame({
+      frameFormat: "objects",
+      viewport: { height: 320, width: 800, xDomain: [1, 4] },
+    });
 
     expect(frame.layers).toHaveLength(3);
     expect(frame.layers[0]).toMatchObject({

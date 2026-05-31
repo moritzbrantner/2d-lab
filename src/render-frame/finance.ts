@@ -1,9 +1,10 @@
 import { priceValue } from "../backend/finance-utils";
-import { getFinanceIndex, isCartesianViewport } from "./utils";
+import { getFinanceIndex, isCartesianViewport, resolveFrameFormat } from "./utils";
 
 import type {
   VizComputeFrameOptions,
   VizCompactFinanceReturns,
+  VizCompactOhlcvBars,
   VizEngineDatasetRecord,
   VizFrameDiagnostic,
   VizLayer,
@@ -11,7 +12,7 @@ import type {
   VizOhlcvBar,
   VizRenderBounds,
   VizRenderDatum,
-  VizRenderLayer,
+  VizAnyRenderLayer,
 } from "../types";
 
 type FinanceLayer = Extract<
@@ -25,12 +26,30 @@ export function computeFinanceRenderLayer<TProperties>(
   datasetRecord: VizEngineDatasetRecord<TProperties>,
   options: VizComputeFrameOptions,
   diagnostics: VizFrameDiagnostic[],
-): VizRenderLayer<TProperties> | null {
+): VizAnyRenderLayer<TProperties> | null {
   switch (layer.kind) {
     case "finance-candles": {
       const index = getFinanceIndex(layerId, layer.kind, datasetRecord, diagnostics);
       if (!index || !isCartesianViewport(options.viewport, layerId, diagnostics)) {
         return null;
+      }
+      if (resolveFrameFormat(options) === "typed") {
+        const typedCandles = index.getCompactDownsampledBars({
+          targetBarCount: layer.targetBarCount ?? 120,
+          xDomain: layer.xDomain,
+        });
+
+        return {
+          bounds: getCompactFinanceCandleBounds(typedCandles),
+          datasetId: layer.datasetId,
+          instrument:
+            datasetRecord.dataset.kind === "finance-ohlcv"
+              ? datasetRecord.dataset.instrument
+              : { symbol: "" },
+          kind: "finance-candles",
+          layerId,
+          typedCandles,
+        };
       }
       const bars = index.getDownsampledBars({
         targetBarCount: layer.targetBarCount ?? 120,
@@ -53,6 +72,23 @@ export function computeFinanceRenderLayer<TProperties>(
       const index = getFinanceIndex(layerId, layer.kind, datasetRecord, diagnostics);
       if (!index || !isCartesianViewport(options.viewport, layerId, diagnostics)) {
         return null;
+      }
+      if (resolveFrameFormat(options) === "typed") {
+        const compactBars = layer.targetPointCount
+          ? index.getCompactDownsampledBars({
+              targetBarCount: layer.targetPointCount,
+              xDomain: layer.xDomain,
+            })
+          : index.getCompactBars({ xDomain: layer.xDomain });
+        const typedFinanceLine = createCompactFinanceLine(compactBars, layer.value ?? "close");
+
+        return {
+          bounds: getCompactFinanceRowsBounds(typedFinanceLine),
+          datasetId: layer.datasetId,
+          kind: "finance-line",
+          layerId,
+          typedFinanceLine,
+        };
       }
       const bars = layer.targetPointCount
         ? index.getDownsampledBars({
@@ -81,6 +117,15 @@ export function computeFinanceRenderLayer<TProperties>(
         targetPointCount: layer.targetPointCount,
         xDomain: layer.xDomain,
       });
+      if (resolveFrameFormat(options) === "typed") {
+        return {
+          bounds: getCompactFinanceRowsBounds(returns),
+          datasetId: layer.datasetId,
+          kind: "finance-returns",
+          layerId,
+          typedReturns: returns,
+        };
+      }
       const rows = createFinanceReturnRows<TProperties>(returns);
 
       return {
@@ -92,6 +137,23 @@ export function computeFinanceRenderLayer<TProperties>(
       };
     }
   }
+}
+
+function getCompactFinanceCandleBounds(bars: VizCompactOhlcvBars): VizRenderBounds | null {
+  const barCount = bars.timestamp.length;
+  if (barCount === 0) {
+    return null;
+  }
+
+  let minLow = Number.POSITIVE_INFINITY;
+  let maxHigh = Number.NEGATIVE_INFINITY;
+
+  for (let index = 0; index < barCount; index += 1) {
+    minLow = Math.min(minLow, bars.low[index]!);
+    maxHigh = Math.max(maxHigh, bars.high[index]!);
+  }
+
+  return [bars.timestamp[0]!, minLow, bars.timestamp[barCount - 1]!, maxHigh];
 }
 
 function getFinanceCandleBounds<TProperties>(
@@ -162,6 +224,76 @@ function getFinanceRowsBounds<TProperties>(
   }
 
   return hasRows ? [minX, minY, maxX, maxY] : null;
+}
+
+function getCompactFinanceRowsBounds(series: VizCompactFinanceReturns): VizRenderBounds | null {
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  let hasRows = false;
+
+  for (let index = 0; index < series.x.length; index += 1) {
+    const value = series.y[index]!;
+    if (!Number.isFinite(value)) {
+      continue;
+    }
+
+    const x = series.x[index]!;
+    hasRows = true;
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, value);
+    maxY = Math.max(maxY, value);
+  }
+
+  return hasRows ? [minX, minY, maxX, maxY] : null;
+}
+
+function createCompactFinanceLine(
+  bars: VizCompactOhlcvBars,
+  value: "adjustedClose" | "close" | "high" | "low" | "open" | "volume",
+): VizCompactFinanceReturns {
+  const y = new Float64Array(bars.timestamp.length);
+  const pointCount = new Uint32Array(bars.timestamp.length);
+
+  for (let index = 0; index < bars.timestamp.length; index += 1) {
+    const nextValue = compactPriceValue(bars, index, value);
+    y[index] = Number.isFinite(nextValue) ? nextValue : Number.NaN;
+    pointCount[index] = Number.isFinite(nextValue) ? 1 : 0;
+  }
+
+  return {
+    pointCount,
+    x: bars.timestamp,
+    y,
+    summary: {
+      pointCount: bars.timestamp.length,
+      sampleCount: bars.timestamp.length,
+      xDomain: bars.summary.xDomain,
+    },
+  };
+}
+
+function compactPriceValue(
+  bars: VizCompactOhlcvBars,
+  index: number,
+  value: "adjustedClose" | "close" | "high" | "low" | "open" | "volume",
+) {
+  switch (value) {
+    case "adjustedClose":
+      return bars.adjustedClose[index]!;
+    case "close":
+      return bars.close[index]!;
+    case "high":
+      return bars.high[index]!;
+    case "low":
+      return bars.low[index]!;
+    case "open":
+      return bars.open[index]!;
+    case "volume":
+      return bars.volume[index]!;
+  }
 }
 
 function createFinanceReturnRows<TProperties>(

@@ -23,48 +23,95 @@ export function hitTestVizFrame<TProperties = Record<string, unknown>>(
   let nearestDistance = Number.POSITIVE_INFINITY;
 
   for (const layer of frame.layers) {
-    const samples =
-      layer.kind === "binned-series"
-        ? "compactSeries" in layer
-          ? compactBinnedSamples(layer.compactSeries)
-          : layer.series.samples.map((sample) => ({
-              pointCount: sample.pointCount,
-              sampleIndex: sample.index,
-              sourcePointId: sample.firstPoint?.id ?? sample.lastPoint?.id ?? null,
-              x: sample.x,
-              y: sample.y,
-            }))
-        : layer.kind === "rolling-series"
-          ? "compactRollingSeries" in layer
-            ? compactRollingSamples(layer.compactRollingSeries)
-            : layer.series.points.map((point) => ({
-                pointCount: point.pointCount,
-                sampleIndex: point.index,
-                sourcePointId: point.sourcePoint?.id ?? null,
-                x: point.x,
-                y: point.y,
-              }))
-          : [];
-
-    for (const sample of samples) {
-      if (sample.pointCount <= 0 || sample.y == null) {
+    if (layer.kind === "binned-series") {
+      if ("typedSeries" in layer || "compactSeries" in layer) {
+        const typedLayer = layer as {
+          compactSeries: VizCompactDensitySeries;
+          typedSeries?: VizCompactDensitySeries;
+        };
+        const result = nearestTypedBinnedSample(
+          typedLayer.typedSeries ?? typedLayer.compactSeries,
+          xValue,
+        );
+        if (result && result.distance < nearestDistance) {
+          nearestDistance = result.distance;
+          nearest = {
+            datasetId: layer.datasetId,
+            kind: "cartesian",
+            layerId: layer.layerId,
+            pointCount: result.pointCount,
+            sampleIndex: result.sampleIndex,
+            sourcePointId: null,
+            x: result.x,
+            y: result.y,
+          };
+        }
         continue;
       }
 
-      const distance = Math.abs(sample.x - xValue);
-
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearest = {
-          datasetId: layer.datasetId,
-          kind: "cartesian",
-          layerId: layer.layerId,
-          pointCount: sample.pointCount,
-          sampleIndex: sample.sampleIndex,
-          sourcePointId: sample.sourcePointId,
-          x: sample.x,
-          y: sample.y,
+      for (const sample of layer.series.samples) {
+        if (sample.pointCount <= 0 || sample.y == null) {
+          continue;
+        }
+        const distance = Math.abs(sample.x - xValue);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearest = {
+            datasetId: layer.datasetId,
+            kind: "cartesian",
+            layerId: layer.layerId,
+            pointCount: sample.pointCount,
+            sampleIndex: sample.index,
+            sourcePointId: sample.firstPoint?.id ?? sample.lastPoint?.id ?? null,
+            x: sample.x,
+            y: sample.y,
+          };
+        }
+      }
+    } else if (layer.kind === "rolling-series") {
+      if ("typedRollingSeries" in layer || "compactRollingSeries" in layer) {
+        const typedLayer = layer as {
+          compactRollingSeries: VizCompactRollingSeries;
+          typedRollingSeries?: VizCompactRollingSeries;
         };
+        const result = nearestTypedRollingSample(
+          typedLayer.typedRollingSeries ?? typedLayer.compactRollingSeries,
+          xValue,
+        );
+        if (result && result.distance < nearestDistance) {
+          nearestDistance = result.distance;
+          nearest = {
+            datasetId: layer.datasetId,
+            kind: "cartesian",
+            layerId: layer.layerId,
+            pointCount: result.pointCount,
+            sampleIndex: result.sampleIndex,
+            sourcePointId: null,
+            x: result.x,
+            y: result.y,
+          };
+        }
+        continue;
+      }
+
+      for (const point of layer.series.points) {
+        if (point.pointCount <= 0 || point.y == null) {
+          continue;
+        }
+        const distance = Math.abs(point.x - xValue);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearest = {
+            datasetId: layer.datasetId,
+            kind: "cartesian",
+            layerId: layer.layerId,
+            pointCount: point.pointCount,
+            sampleIndex: point.index,
+            sourcePointId: point.sourcePoint?.id ?? null,
+            x: point.x,
+            y: point.y,
+          };
+        }
       }
     }
   }
@@ -72,24 +119,56 @@ export function hitTestVizFrame<TProperties = Record<string, unknown>>(
   return nearest;
 }
 
-function compactBinnedSamples(series: VizCompactDensitySeries) {
-  return Array.from({ length: series.y.length }, (_, index) => ({
-    pointCount: series.pointCount[index] ?? 0,
-    sampleIndex: index,
-    sourcePointId: null,
-    x: (series.x0[index]! + series.x1[index]!) / 2,
-    y: Number.isFinite(series.y[index]) ? series.y[index]! : null,
-  }));
+function nearestTypedBinnedSample(series: VizCompactDensitySeries, xValue: number) {
+  let nearest: {
+    distance: number;
+    pointCount: number;
+    sampleIndex: number;
+    x: number;
+    y: number;
+  } | null = null;
+
+  for (let index = 0; index < series.y.length; index += 1) {
+    const pointCount = series.pointCount[index] ?? 0;
+    const y = series.y[index]!;
+    if (pointCount <= 0 || !Number.isFinite(y)) {
+      continue;
+    }
+
+    const x = (series.x0[index]! + series.x1[index]!) / 2;
+    const distance = Math.abs(x - xValue);
+    if (!nearest || distance < nearest.distance) {
+      nearest = { distance, pointCount, sampleIndex: index, x, y };
+    }
+  }
+
+  return nearest;
 }
 
-function compactRollingSamples(series: VizCompactRollingSeries) {
-  return Array.from({ length: series.y.length }, (_, index) => ({
-    pointCount: series.pointCount[index] ?? 0,
-    sampleIndex: index,
-    sourcePointId: null,
-    x: series.x[index]!,
-    y: Number.isFinite(series.y[index]) ? series.y[index]! : null,
-  }));
+function nearestTypedRollingSample(series: VizCompactRollingSeries, xValue: number) {
+  let nearest: {
+    distance: number;
+    pointCount: number;
+    sampleIndex: number;
+    x: number;
+    y: number;
+  } | null = null;
+
+  for (let index = 0; index < series.y.length; index += 1) {
+    const pointCount = series.pointCount[index] ?? 0;
+    const y = series.y[index]!;
+    if (pointCount <= 0 || !Number.isFinite(y)) {
+      continue;
+    }
+
+    const x = series.x[index]!;
+    const distance = Math.abs(x - xValue);
+    if (!nearest || distance < nearest.distance) {
+      nearest = { distance, pointCount, sampleIndex: index, x, y };
+    }
+  }
+
+  return nearest;
 }
 
 function hitTestGeoFrame<TProperties>(

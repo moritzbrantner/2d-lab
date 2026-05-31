@@ -16,6 +16,13 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
 
   for (const size of config.xySizes) {
     const fixture = createXyFixture(size, config.settings.seed);
+    const typedDataset = {
+      kind: "xy" as const,
+      x: new Float64Array(fixture.points.map((point) => point.x)),
+      y: new Float64Array(fixture.points.map((point) => point.y)),
+    };
+    const implementations =
+      config.runtime === "browser" ? (["js"] as const) : (["js", "wasm"] as const);
     const sizeLabel = formatSize(size);
     const binnedQueries = [
       { name: "full-256", targetBinCount: 256, xDomain: fixture.domains.full },
@@ -60,9 +67,14 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
       },
     };
 
-    cases.push(
+    const indexCases = [
       createXyIndexCase("viz-engine js", size, () => new JsVizDensityIndex(fixture.points)),
       createXyIndexCase("viz-engine wasm", size, () => new RustWasmVizDensityIndex(fixture.points)),
+      createXyIndexCase(
+        "viz-engine js typed-dataset",
+        size,
+        () => new JsVizDensityIndex(typedDataset),
+      ),
       createXyIndexCase("viz-engine engine-js", size, () => {
         const engine = createVizEngine({ backend: "js" });
         engine.addDataset({ kind: "xy", points: fixture.points });
@@ -73,10 +85,24 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
         engine.addDataset({ kind: "xy", points: fixture.points });
         return engine;
       }),
-    );
+    ];
+
+    if (config.runtime !== "browser") {
+      indexCases.splice(
+        3,
+        0,
+        createXyIndexCase(
+          "viz-engine wasm typed-dataset",
+          size,
+          () => new RustWasmVizDensityIndex(typedDataset),
+        ),
+      );
+    }
+
+    cases.push(...indexCases);
 
     for (const query of binnedQueries) {
-      for (const implementation of ["js", "wasm"] as const) {
+      for (const implementation of implementations) {
         cases.push({
           category: "xy",
           id: createCaseId(["xy", "binned", query.name, sizeLabel, implementation]),
@@ -108,7 +134,7 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
         });
       }
 
-      for (const implementation of ["js", "wasm"] as const) {
+      for (const implementation of implementations) {
         cases.push({
           category: "xy",
           id: createCaseId(["xy", "binned-compact", query.name, sizeLabel, implementation]),
@@ -164,7 +190,7 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
     }
 
     for (const query of histogramQueries) {
-      for (const implementation of ["js", "wasm"] as const) {
+      for (const implementation of implementations) {
         cases.push({
           category: "xy",
           id: createCaseId(["xy", "histogram", query.name, sizeLabel, implementation]),
@@ -191,7 +217,7 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
         });
       }
 
-      for (const implementation of ["js", "wasm"] as const) {
+      for (const implementation of implementations) {
         cases.push({
           category: "xy",
           id: createCaseId(["xy", "histogram-compact", query.name, sizeLabel, implementation]),
@@ -238,7 +264,7 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
     }
 
     for (const query of heatmapQueries) {
-      for (const implementation of ["js", "wasm"] as const) {
+      for (const implementation of implementations) {
         cases.push({
           category: "xy",
           id: createCaseId(["xy", "heatmap", query.name, sizeLabel, implementation]),
@@ -262,7 +288,7 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
         });
       }
 
-      for (const implementation of ["js", "wasm"] as const) {
+      for (const implementation of implementations) {
         cases.push({
           category: "xy",
           id: createCaseId(["xy", "heatmap-compact", query.name, sizeLabel, implementation]),
@@ -355,7 +381,7 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
     }
 
     for (const query of rollingQueries) {
-      for (const implementation of ["js", "wasm"] as const) {
+      for (const implementation of implementations) {
         cases.push({
           category: "xy",
           id: createCaseId(["xy", "rolling", query.name, sizeLabel, implementation]),
@@ -386,7 +412,7 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
         });
       }
 
-      for (const implementation of ["js", "wasm"] as const) {
+      for (const implementation of implementations) {
         cases.push({
           category: "xy",
           id: createCaseId(["xy", "rolling-compact", query.name, sizeLabel, implementation]),
@@ -444,7 +470,17 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
       });
     }
 
-    cases.push(...createWasmBoundaryCases(size, sizeLabel, fixture.points, wasmBoundaryQueries));
+    if (config.runtime !== "browser") {
+      cases.push(
+        ...createWasmBoundaryCases(
+          size,
+          sizeLabel,
+          fixture.points,
+          wasmBoundaryQueries,
+          config.runtime,
+        ),
+      );
+    }
   }
 
   return cases;
@@ -460,8 +496,9 @@ function createWasmBoundaryCases(
     histogram: Parameters<RustWasmVizDensityIndex["getHistogram"]>[0];
     rolling: Parameters<RustWasmVizDensityIndex["getRollingSeries"]>[0];
   },
+  runtime: BenchmarkConfig["runtime"],
 ): BenchmarkCase[] {
-  return [
+  const cases = [
     ...createWasmBoundaryCase({
       hydrate: (index, raw) => ({
         bins: raw.bins.map((bin: unknown) => index.mapBin(bin)),
@@ -514,25 +551,32 @@ function createWasmBoundaryCases(
       workload: "wasm-boundary/histogram",
       wrapper: (index) => index.getHistogram(queries.histogram),
     }),
-    ...createWasmBoundaryCase({
-      hydrate: (index, raw) => ({
-        points: raw.points.map((point: unknown) => index.mapRollingPoint(point)),
-        summary: raw.summary,
-      }),
-      idParts: ["xy", "wasm-boundary", "rolling", sizeLabel],
-      points,
-      raw: (index) =>
-        index.index.getRollingSeries({
-          ...queries.rolling,
-          statistic: queries.rolling.statistic ?? "mean",
-        }),
-      size,
-      sizeLabel,
-      validate: (output) => assertPositive(output.points.length, "wasm rolling point count"),
-      workload: "wasm-boundary/rolling",
-      wrapper: (index) => index.getRollingSeries(queries.rolling),
-    }),
   ];
+
+  if (runtime !== "browser") {
+    cases.push(
+      ...createWasmBoundaryCase({
+        hydrate: (index, raw) => ({
+          points: raw.points.map((point: unknown) => index.mapRollingPoint(point)),
+          summary: raw.summary,
+        }),
+        idParts: ["xy", "wasm-boundary", "rolling", sizeLabel],
+        points,
+        raw: (index) =>
+          index.index.getRollingSeries({
+            ...queries.rolling,
+            statistic: queries.rolling.statistic ?? "mean",
+          }),
+        size,
+        sizeLabel,
+        validate: (output) => assertPositive(output.points.length, "wasm rolling point count"),
+        workload: "wasm-boundary/rolling",
+        wrapper: (index) => index.getRollingSeries(queries.rolling),
+      }),
+    );
+  }
+
+  return cases;
 }
 
 function createWasmBoundaryCase(options: {

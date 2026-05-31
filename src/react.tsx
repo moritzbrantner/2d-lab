@@ -11,13 +11,17 @@ import { createVizEngine } from "./create-viz-engine";
 
 import type {
   VizBackendOption,
+  VizBackendConfig,
+  VizAnyRenderFrame,
   VizComputeFrameOptions,
   VizDataset,
   VizDatasetId,
   VizEngine,
   VizLayer,
   VizLayerId,
+  VizObjectComputeFrameOptions,
   VizRenderFrame,
+  VizTypedRenderFrame,
   VizSeriesPoint,
   VizViewport,
 } from "./types";
@@ -58,7 +62,7 @@ function createIdStore<TId extends string>(): IdStore<TId> {
 }
 
 export type VizEngineProviderProps = {
-  backend?: VizBackendOption;
+  backend?: VizBackendOption | VizBackendConfig;
   children: ReactNode;
   engine?: VizEngine;
 };
@@ -140,15 +144,52 @@ export function useVizLayer(layer: VizLayer | null): VizLayerId | null {
   return useSyncExternalStore(idStore.subscribe, idStore.getSnapshot, idStore.getSnapshot);
 }
 
+export type UseVizFrameOptions = VizComputeFrameOptions & {
+  dependencies?: readonly unknown[];
+};
+
+export function useVizFrame<TProperties = Record<string, unknown>>(
+  options: UseVizFrameOptions & VizObjectComputeFrameOptions,
+): VizRenderFrame<TProperties>;
+export function useVizFrame<TProperties = Record<string, unknown>>(
+  options: UseVizFrameOptions,
+): VizTypedRenderFrame<TProperties> | VizRenderFrame<TProperties>;
+/** @deprecated Pass a UseVizFrameOptions object instead. */
 export function useVizFrame<TProperties = Record<string, unknown>>(
   viewport: VizViewport,
-  dependencies: readonly unknown[] = [],
-): VizRenderFrame<TProperties> {
+  dependencies?: readonly unknown[],
+): VizTypedRenderFrame<TProperties>;
+export function useVizFrame<TProperties = Record<string, unknown>>(
+  input: UseVizFrameOptions | VizViewport,
+  legacyDependencies: readonly unknown[] = [],
+): VizRenderFrame<TProperties> | VizTypedRenderFrame<TProperties> {
   const engine = useVizEngine<TProperties>();
+  const options = isViewport(input)
+    ? {
+        dependencies: legacyDependencies,
+        viewport: input,
+      }
+    : input;
 
   return useMemo(() => {
-    void dependencies;
+    void options.dependencies;
 
-    return engine.computeFrame({ viewport } satisfies VizComputeFrameOptions);
-  }, [engine, viewport, dependencies]);
+    const { dependencies: _dependencies, ...frameOptions } = options;
+    return (
+      engine.computeFrame as (options: VizComputeFrameOptions) => VizAnyRenderFrame<TProperties>
+    )(frameOptions satisfies VizComputeFrameOptions);
+  }, [engine, options]);
+}
+
+export function useVizTypedFrame<TProperties = Record<string, unknown>>(
+  options: Omit<UseVizFrameOptions, "frameFormat" | "outputMode">,
+): VizTypedRenderFrame<TProperties> {
+  return useVizFrame<TProperties>({
+    ...options,
+    frameFormat: "typed",
+  }) as VizTypedRenderFrame<TProperties>;
+}
+
+function isViewport(input: UseVizFrameOptions | VizViewport): input is VizViewport {
+  return "width" in input && "height" in input && !("viewport" in input);
 }

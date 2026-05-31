@@ -2,6 +2,11 @@ export type VizDatasetId = string;
 export type VizLayerId = string;
 
 export type VizBackendOption = "auto" | "js" | "wasm";
+export type VizBackendConfig = {
+  finance?: "js";
+  geo?: "js";
+  xy?: VizBackendOption;
+};
 export type VizResolvedBackend = "js" | "mixed" | "wasm";
 export type VizBackendImplementation =
   | "js"
@@ -26,6 +31,26 @@ export type VizSeriesPoint<TProperties = Record<string, unknown>> = {
   x: number;
   y: number;
 };
+
+export type VizXyObjectDataset<TProperties = Record<string, unknown>> = {
+  kind: "xy";
+  points: readonly VizSeriesPoint<TProperties>[];
+};
+
+export type VizXyTypedDataset = {
+  ids?: readonly string[];
+  kind: "xy";
+  labels?: readonly string[];
+  metricKeys?: readonly string[];
+  metrics?: Float64Array;
+  sourceIndices?: Uint32Array;
+  x: Float64Array;
+  y: Float64Array;
+};
+
+export type VizXyDataset<TProperties = Record<string, unknown>> =
+  | VizXyObjectDataset<TProperties>
+  | VizXyTypedDataset;
 
 export type VizIndexedSeriesPoint<TProperties = Record<string, unknown>> =
   VizSeriesPoint<TProperties> & {
@@ -302,14 +327,18 @@ export type VizBackendCapabilities = {
 export type VizDensityIndex<TProperties = Record<string, unknown>> = {
   getBackendCapabilities(): VizBackendCapabilities;
   getBinnedSeries(query: VizBinnedSeriesQuery): { bins: Array<VizDensityBin<TProperties>> };
+  /** @deprecated Use getCompactChartSeries for render workloads, or hydrate typed frames for debugging. */
   getChartSeries(query: VizDensityQuery): VizDensitySeries<TProperties>;
   getCompactChartSeries(query: VizDensityQuery): VizCompactDensitySeries;
   getCompactHeatmap(query: VizHeatmapQuery): VizCompactHeatmap;
   getCompactHistogram(query: VizHistogramQuery): VizCompactHistogram;
   getCompactRollingSeries(query: VizRollingSeriesQuery): VizCompactRollingSeries;
+  /** @deprecated Use getCompactHeatmap for render workloads, or hydrate typed frames for debugging. */
   getHeatmap(query: VizHeatmapQuery): VizHeatmap<TProperties>;
+  /** @deprecated Use getCompactHistogram for render workloads, or hydrate typed frames for debugging. */
   getHistogram(query: VizHistogramQuery): VizHistogram<TProperties>;
   getPointById(pointId: string): VizIndexedSeriesPoint<TProperties> | null;
+  /** @deprecated Use getCompactRollingSeries for render workloads, or hydrate typed frames for debugging. */
   getRollingSeries(query: VizRollingSeriesQuery): VizRollingSeries<TProperties>;
   getSeriesBounds(): VizSeriesBounds | null;
 };

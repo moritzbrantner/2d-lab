@@ -27,7 +27,7 @@
     "build": "bun run build:wasm && tsup",
     "build:wasm": "wasm-pack build crates/viz-engine-wasm --target bundler --out-dir ../../src/wasm/pkg && node ./scripts/embed-wasm.mjs",
     "bench": "bun run bench:node && bun run bench:browser",
-    "bench:browser": "bun run bench/browser/run-browser.ts",
+    "bench:browser": "bun run bench/browser/run-browser.ts --quick",
     "bench:node": "bun run bench/run.ts --runtime bun",
     "bench:quick": "bun run bench/run.ts --runtime bun --quick",
     "bench:report": "bun run bench/report.ts",

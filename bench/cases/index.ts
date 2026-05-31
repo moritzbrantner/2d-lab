@@ -13,7 +13,7 @@ export function createBenchmarkCases(config: BenchmarkConfig): BenchmarkCase[] {
     ...createGeoCases(config),
     ...createFinanceCases(config),
     ...createFrameCases(config),
-    ...createWasmStartupCases(config),
+    ...(config.runtime === "browser" ? [] : createWasmStartupCases(config)),
   ];
 
   return limitCasesForBrowser(cases, config);

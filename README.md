@@ -38,20 +38,51 @@ const frame = engine.computeFrame({
 });
 ```
 
-For high-frequency rendering, especially with the Rust/WASM XY backend, request
-typed-array cartesian layer payloads:
+Backend selection can also be scoped by domain:
 
 ```ts
-const compactFrame = engine.computeFrame({
-  outputMode: "compact",
+const engine = createVizEngine({
+  backend: { xy: "auto", geo: "js", finance: "js" },
+});
+```
+
+Only XY currently has a real Rust/WASM backend. Geo and finance requests report
+JS backend capabilities until dedicated Rust/WASM implementations exist.
+
+For high-frequency rendering, typed-array frame payloads are the default:
+
+```ts
+const typedFrame = engine.computeFrame({
   viewport: { height: 320, width: 800, xDomain: [0, 1_440] },
 });
 ```
 
-Compact mode keeps the existing frame API but returns compact cartesian layer
-fields such as `compactSeries`, `compactHistogram`, `compactHeatmap`, and
-`compactRollingSeries`. Object mode remains the default for compatibility and
-debuggability.
+Typed cartesian layers expose fields such as `typedSeries`, `typedHistogram`,
+`typedHeatmap`, and `typedRollingSeries`. The older `outputMode: "compact"` and
+`compact*` field names remain as deprecated aliases during the pre-1.0
+migration.
+
+Request object-shaped layers only when debugging, inspecting data, or using a
+renderer that has not migrated yet:
+
+```ts
+const objectFrame = engine.computeFrame({
+  frameFormat: "objects",
+  viewport: { height: 320, width: 800, xDomain: [0, 1_440] },
+});
+
+const hydratedFrame = engine.hydrateFrame(typedFrame);
+```
+
+Large XY datasets can avoid object allocation by providing typed arrays:
+
+```ts
+const datasetId = engine.addDataset({
+  kind: "xy",
+  x: new Float64Array(xValues),
+  y: new Float64Array(yValues),
+});
+```
 
 Financial OHLCV data can use the same frame API:
 
@@ -90,7 +121,8 @@ engine.addLayer({
   GeoJSON viewport filtering, heat features, and flow filtering until the geo
   WASM package is published and wired in.
 - Renderers consume returned renderable data. They can request object-shaped
-  frame layers for ergonomics or compact typed-array layers for lower overhead.
+  frame layers for ergonomics or use the default typed-array layers for lower
+  overhead.
 - React hooks coordinate lifecycle and small UI state only.
 
 ## Rust-first engine direction
@@ -145,6 +177,19 @@ Dataset, layer, viewport, and frame dependency inputs are identity-sensitive:
 memoize objects and arrays passed to these hooks with React's memo helpers when
 they are derived during render. The example app follows this pattern for layer
 objects and frame dependencies.
+
+`useVizFrame` now accepts an options object:
+
+```ts
+const frame = useVizFrame({
+  frameFormat: "typed",
+  viewport,
+  dependencies: [datasetId, layerId],
+});
+```
+
+The legacy `useVizFrame(viewport, dependencies)` signature still works during
+the migration window and returns typed frames by default.
 
 ## CI
 

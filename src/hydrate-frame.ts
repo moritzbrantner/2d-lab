@@ -1,0 +1,383 @@
+import { createRollingRenderRows, createVizRenderRows } from "./render-frame/utils";
+
+import type {
+  VizAnyRenderFrame,
+  VizAnyRenderLayer,
+  VizCompactDensitySeries,
+  VizCompactFinanceReturns,
+  VizCompactHeatmap,
+  VizCompactHistogram,
+  VizCompactOhlcvBars,
+  VizCompactRollingSeries,
+  VizDensityBin,
+  VizDensitySample,
+  VizHeatmapCell,
+  VizHistogramBucket,
+  VizOhlcvBar,
+  VizRenderDatum,
+  VizRenderFrame,
+  VizRenderLayer,
+} from "./types";
+
+export function hydrateVizRenderFrame<TProperties = Record<string, unknown>>(
+  frame: VizAnyRenderFrame<TProperties>,
+): VizRenderFrame<TProperties> {
+  return {
+    layers: frame.layers
+      .map((layer) => hydrateVizRenderLayer(layer))
+      .filter((layer): layer is VizRenderLayer<TProperties> => layer != null),
+    stats: frame.stats,
+  };
+}
+
+export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
+  layer: VizAnyRenderLayer<TProperties>,
+): VizRenderLayer<TProperties> | null {
+  const record = layer as Record<string, unknown>;
+
+  if ("typedSeries" in record || "compactSeries" in record) {
+    const typedLayer = layer as {
+      compactSeries: VizCompactDensitySeries;
+      typedSeries?: VizCompactDensitySeries;
+      valueMode: VizCompactDensitySeries["summary"]["valueMode"];
+    };
+    const series = densitySeriesFromTyped<TProperties>(
+      typedLayer.typedSeries ?? typedLayer.compactSeries,
+    );
+    return {
+      bounds: layer.bounds,
+      datasetId: layer.datasetId,
+      kind: "binned-series",
+      layerId: layer.layerId,
+      rows: createVizRenderRows(series, typedLayer.valueMode),
+      series,
+    };
+  }
+
+  if ("typedHistogram" in record || "compactHistogram" in record) {
+    const typedLayer = layer as {
+      compactHistogram: VizCompactHistogram;
+      typedHistogram?: VizCompactHistogram;
+    };
+    const histogram = histogramFromTyped<TProperties>(
+      typedLayer.typedHistogram ?? typedLayer.compactHistogram,
+    );
+    return {
+      bounds: layer.bounds,
+      buckets: histogram.buckets,
+      datasetId: layer.datasetId,
+      kind: "histogram",
+      layerId: layer.layerId,
+    };
+  }
+
+  if ("typedHeatmap" in record || "compactHeatmap" in record) {
+    const typedLayer = layer as {
+      compactHeatmap: VizCompactHeatmap;
+      typedHeatmap?: VizCompactHeatmap;
+    };
+    const heatmap = heatmapFromTyped<TProperties>(
+      typedLayer.typedHeatmap ?? typedLayer.compactHeatmap,
+    );
+    return {
+      bounds: layer.bounds,
+      cells: heatmap.cells,
+      datasetId: layer.datasetId,
+      kind: "heatmap",
+      layerId: layer.layerId,
+    };
+  }
+
+  if ("typedRollingSeries" in record || "compactRollingSeries" in record) {
+    const typedLayer = layer as {
+      compactRollingSeries: VizCompactRollingSeries;
+      statistic: VizCompactRollingSeries["summary"]["statistic"];
+      typedRollingSeries?: VizCompactRollingSeries;
+    };
+    const series = rollingSeriesFromTyped<TProperties>(
+      typedLayer.typedRollingSeries ?? typedLayer.compactRollingSeries,
+    );
+    return {
+      bounds: layer.bounds,
+      datasetId: layer.datasetId,
+      kind: "rolling-series",
+      layerId: layer.layerId,
+      rows: createRollingRenderRows(series),
+      series,
+      statistic: typedLayer.statistic,
+    };
+  }
+
+  if ("typedCandles" in record) {
+    const typedLayer = layer as {
+      instrument: Extract<
+        VizAnyRenderLayer<TProperties>,
+        { kind: "finance-candles" }
+      >["instrument"];
+      typedCandles: VizCompactOhlcvBars;
+    };
+    return {
+      bars: ohlcvBarsFromTyped<TProperties>(typedLayer.typedCandles),
+      bounds: layer.bounds,
+      datasetId: layer.datasetId,
+      instrument: typedLayer.instrument,
+      kind: "finance-candles",
+      layerId: layer.layerId,
+    };
+  }
+
+  if ("typedFinanceLine" in record) {
+    const typedLayer = layer as Extract<VizAnyRenderLayer<TProperties>, { kind: "finance-line" }>;
+    return {
+      bounds: layer.bounds,
+      datasetId: layer.datasetId,
+      kind: "finance-line",
+      layerId: layer.layerId,
+      rows: rowsFromTypedFinance<TProperties>(typedLayer.typedFinanceLine),
+    };
+  }
+
+  if ("typedReturns" in record) {
+    const typedLayer = layer as Extract<
+      VizAnyRenderLayer<TProperties>,
+      { kind: "finance-returns" }
+    >;
+    return {
+      bounds: layer.bounds,
+      datasetId: layer.datasetId,
+      kind: "finance-returns",
+      layerId: layer.layerId,
+      rows: rowsFromTypedFinance<TProperties>(typedLayer.typedReturns),
+    };
+  }
+
+  return layer as VizRenderLayer<TProperties>;
+}
+
+function densitySeriesFromTyped<TProperties>(series: VizCompactDensitySeries): {
+  bins: Array<VizDensityBin<TProperties>>;
+  samples: Array<VizDensitySample<TProperties>>;
+  summary: {
+    binCount: number;
+    metrics: Record<string, number>;
+    pointCount: number;
+    sampleCount: number;
+    valueMode: VizCompactDensitySeries["summary"]["valueMode"];
+    xDomain: [number, number];
+  };
+} {
+  const bins = Array.from({ length: series.y.length }, (_, index) => {
+    const metrics = metricsAt(series.metrics, series.summary.metricKeys, index);
+    const bin: VizDensityBin<TProperties> = {
+      averageY: finiteOrNull(series.averageY[index]),
+      firstPoint: null,
+      firstPointIndex: nullableIndex(series.firstPointIndex[index]),
+      index,
+      lastPoint: null,
+      lastPointIndex: nullableIndex(series.lastPointIndex[index]),
+      maxY: finiteOrNull(series.maxY[index]),
+      metrics,
+      minY: finiteOrNull(series.minY[index]),
+      pointCount: series.pointCount[index] ?? 0,
+      sumY: series.sumY[index] ?? 0,
+      x0: series.x0[index] ?? 0,
+      x1: series.x1[index] ?? 0,
+    };
+
+    return bin;
+  });
+  const samples = bins.map(
+    (bin): VizDensitySample<TProperties> => ({
+      ...bin,
+      x: (bin.x0 + bin.x1) / 2,
+      y: finiteOrNull(series.y[bin.index]),
+    }),
+  );
+
+  return {
+    bins,
+    samples,
+    summary: {
+      ...series.summary,
+      metrics: sumTypedMetrics(series.metrics, series.summary.metricKeys),
+    },
+  };
+}
+
+function histogramFromTyped<TProperties>(histogram: VizCompactHistogram) {
+  const buckets = Array.from({ length: histogram.value.length }, (_, index) => {
+    const bucket: VizHistogramBucket<TProperties> = {
+      averageValue: finiteOrNull(histogram.averageValue[index]),
+      firstPoint: null,
+      firstPointIndex: nullableIndex(histogram.firstPointIndex[index]),
+      index,
+      lastPoint: null,
+      lastPointIndex: nullableIndex(histogram.lastPointIndex[index]),
+      maxValue: finiteOrNull(histogram.maxValue[index]),
+      metrics: metricsAt(histogram.metrics, histogram.summary.metricKeys, index),
+      minValue: finiteOrNull(histogram.minValue[index]),
+      pointCount: histogram.pointCount[index] ?? 0,
+      sumValue: histogram.sumValue[index] ?? 0,
+      value: histogram.value[index] ?? 0,
+      value0: histogram.value0[index] ?? 0,
+      value1: histogram.value1[index] ?? 0,
+    };
+
+    return bucket;
+  });
+
+  return {
+    buckets,
+    summary: {
+      ...histogram.summary,
+      metrics: sumTypedMetrics(histogram.metrics, histogram.summary.metricKeys),
+    },
+  };
+}
+
+function heatmapFromTyped<TProperties>(heatmap: VizCompactHeatmap) {
+  const xWidth =
+    (heatmap.summary.xDomain[1] - heatmap.summary.xDomain[0]) / heatmap.summary.xBinCount;
+  const yWidth =
+    (heatmap.summary.yDomain[1] - heatmap.summary.yDomain[0]) / heatmap.summary.yBinCount;
+  const cells = Array.from({ length: heatmap.value.length }, (_, index) => {
+    const xIndex = heatmap.xIndex[index] ?? 0;
+    const yIndex = heatmap.yIndex[index] ?? 0;
+    const x0 = heatmap.summary.xDomain[0] + xIndex * xWidth;
+    const y0 = heatmap.summary.yDomain[0] + yIndex * yWidth;
+    const cell: VizHeatmapCell<TProperties> = {
+      averageValue: finiteOrNull(heatmap.averageValue[index]),
+      firstPoint: null,
+      firstPointIndex: nullableIndex(heatmap.firstPointIndex[index]),
+      index,
+      lastPoint: null,
+      lastPointIndex: nullableIndex(heatmap.lastPointIndex[index]),
+      metrics: metricsAt(heatmap.metrics, heatmap.summary.metricKeys, index),
+      pointCount: heatmap.pointCount[index] ?? 0,
+      sumValue: heatmap.sumValue[index] ?? 0,
+      value: heatmap.value[index] ?? 0,
+      x: x0 + xWidth / 2,
+      x0,
+      x1: x0 + xWidth,
+      xIndex,
+      y: y0 + yWidth / 2,
+      y0,
+      y1: y0 + yWidth,
+      yIndex,
+    };
+
+    return cell;
+  });
+
+  return {
+    cells,
+    summary: {
+      ...heatmap.summary,
+      metrics: sumTypedMetrics(heatmap.metrics, heatmap.summary.metricKeys),
+    },
+  };
+}
+
+function rollingSeriesFromTyped<TProperties>(series: VizCompactRollingSeries) {
+  const points = Array.from({ length: series.x.length }, (_, index) => ({
+    ema: finiteOrNull(series.ema[index]),
+    index,
+    max: finiteOrNull(series.max[index]),
+    mean: finiteOrNull(series.mean[index]),
+    min: finiteOrNull(series.min[index]),
+    pointCount: series.pointCount[index] ?? 0,
+    sourcePoint: null,
+    sourcePointIndex: nullableIndex(series.sourcePointIndex[index]),
+    statistic: series.summary.statistic,
+    stdDev: finiteOrNull(series.stdDev[index]),
+    sum: finiteOrNull(series.sum[index]),
+    windowSize: series.summary.windowSize,
+    x: series.x[index] ?? 0,
+    y: finiteOrNull(series.y[index]),
+    zScore: finiteOrNull(series.zScore[index]),
+  }));
+
+  return {
+    points,
+    summary: series.summary,
+  };
+}
+
+function ohlcvBarsFromTyped<TProperties>(
+  bars: VizCompactOhlcvBars,
+): Array<VizOhlcvBar<TProperties>> {
+  return Array.from({ length: bars.timestamp.length }, (_, index) => ({
+    adjustedClose: finiteOrUndefined(bars.adjustedClose[index]),
+    close: bars.close[index] ?? 0,
+    high: bars.high[index] ?? 0,
+    low: bars.low[index] ?? 0,
+    open: bars.open[index] ?? 0,
+    timestamp: bars.timestamp[index] ?? 0,
+    volume: finiteOrUndefined(bars.volume[index]),
+  }));
+}
+
+function rowsFromTypedFinance<TProperties>(
+  series: VizCompactFinanceReturns,
+): Array<VizRenderDatum<TProperties>> {
+  return Array.from({ length: series.x.length }, (_, index) => {
+    const value = finiteOrNull(series.y[index]);
+    const x = series.x[index] ?? 0;
+    const pointCount = series.pointCount[index] ?? 0;
+
+    return {
+      average: value,
+      count: pointCount,
+      index,
+      label: String(x),
+      max: value,
+      metrics: {},
+      min: value,
+      pointCount,
+      sum: value == null ? 0 : value * pointCount,
+      value,
+      x,
+      x0: x,
+      x1: x,
+    };
+  });
+}
+
+function metricsAt(
+  metrics: Record<string, Float64Array> | undefined,
+  metricKeys: readonly string[],
+  index: number,
+) {
+  const output: Record<string, number> = {};
+  for (const metricKey of metricKeys) {
+    output[metricKey] = metrics?.[metricKey]?.[index] ?? 0;
+  }
+  return output;
+}
+
+function sumTypedMetrics(
+  metrics: Record<string, Float64Array> | undefined,
+  metricKeys: readonly string[],
+) {
+  const output: Record<string, number> = {};
+  for (const metricKey of metricKeys) {
+    let sum = 0;
+    for (const value of metrics?.[metricKey] ?? []) {
+      sum += value;
+    }
+    output[metricKey] = sum;
+  }
+  return output;
+}
+
+function nullableIndex(value: number | undefined) {
+  return value == null || value < 0 ? null : value;
+}
+
+function finiteOrNull(value: number | undefined) {
+  return value == null || Number.isNaN(value) ? null : value;
+}
+
+function finiteOrUndefined(value: number | undefined) {
+  return value == null || Number.isNaN(value) ? undefined : value;
+}

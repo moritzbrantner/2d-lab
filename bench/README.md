@@ -8,7 +8,7 @@ It compares the engine against libraries that perform similar data work, not ful
 - XY index construction
 - XY binned series, histograms, heatmaps, and rolling series
 - Full cartesian `computeFrame` calls with binned, histogram, heatmap, and rolling layers
-- Object and compact typed-array `computeFrame` output modes
+- Object and typed-array `computeFrame` frame formats
 - Geo viewport clustering and heat feature generation
 - Finance OHLCV downsampling and return series
 - Rust/WASM density index construction, first query, and warm query costs
@@ -63,7 +63,8 @@ Relative values use `viz-engine js` as the baseline when it exists for a workloa
 - `downsample` is a visual close-price downsampler. It does not preserve OHLC semantics, so the suite also includes a local OHLC aggregation baseline.
 - Geo and finance `wasm-fallback` cases currently use classes that delegate to JS implementations in this package. They are included to make fallback behavior explicit.
 - WASM startup cases run in one process, so module import is not isolated for every iteration. The suite separates construction, first-query, and warm-query costs.
-- Compact frame cases measure the typed-array render path. They are the preferred signal for high-frequency WASM-backed cartesian rendering because they avoid object hydration.
+- Typed frame cases measure the typed-array render path. They are the preferred signal for high-frequency WASM-backed cartesian rendering because they avoid object hydration.
+- Shifting viewport frame cases use viewport-derived layer domains, so they measure recomputation instead of same-domain cache hits.
 
 ## Fixture Data
 

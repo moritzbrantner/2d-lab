@@ -52,6 +52,13 @@ export class JsVizFinanceIndex<
     return getFinanceBounds(this.bars);
   }
 
+  getCompactBars(query: VizFinanceBarsQuery) {
+    return downsampleOhlcvBarsCompact(this.bars, {
+      targetBarCount: Number.MAX_SAFE_INTEGER,
+      xDomain: query.xDomain,
+    });
+  }
+
   getCompactDownsampledBars(query: VizFinanceDownsampleQuery) {
     return downsampleOhlcvBarsCompact(this.bars, query);
   }

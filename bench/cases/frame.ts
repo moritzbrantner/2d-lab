@@ -4,7 +4,7 @@ import { createXyFixture } from "../fixtures/xy";
 import { assert, assertPositive, createCaseId } from "./utils";
 
 import type { BenchmarkCase, BenchmarkConfig } from "../types";
-import type { VizBackendOption, VizComputeFrameOptions, VizLayer } from "../../src/types";
+import type { VizBackendOption, VizFrameFormat, VizLayer } from "../../src/types";
 
 export function createFrameCases(config: BenchmarkConfig): BenchmarkCase[] {
   const cases: BenchmarkCase[] = [];
@@ -18,19 +18,16 @@ export function createFrameCases(config: BenchmarkConfig): BenchmarkCase[] {
         kind: "binned-series",
         targetBinCount: 512,
         valueMode: "average",
-        xDomain: fixture.domains.viewport,
       },
       {
         bucketCount: 256,
         datasetId: "dataset",
         kind: "histogram",
-        xDomain: fixture.domains.viewport,
       },
       {
         datasetId: "dataset",
         kind: "heatmap",
         xBinCount: 96,
-        xDomain: fixture.domains.viewport,
         yBinCount: 48,
       },
       {
@@ -38,17 +35,19 @@ export function createFrameCases(config: BenchmarkConfig): BenchmarkCase[] {
         kind: "rolling-series",
         statistic: "mean",
         windowSize: 64,
-        xDomain: fixture.domains.viewport,
       },
     ];
 
-    for (const outputMode of ["object", "compact"] as const) {
-      for (const backend of ["js", "wasm", "auto"] as const) {
-        cases.push(createFirstFrameCase(backend, outputMode, sizeLabel, size, fixture, layers));
+    const backends =
+      config.runtime === "browser" ? (["js", "auto"] as const) : (["js", "wasm", "auto"] as const);
+
+    for (const frameFormat of ["objects", "typed"] as const) {
+      for (const backend of backends) {
+        cases.push(createFirstFrameCase(backend, frameFormat, sizeLabel, size, fixture, layers));
         cases.push(
           createRepeatedFrameCase(
             backend,
-            outputMode,
+            frameFormat,
             "same-viewport",
             sizeLabel,
             size,
@@ -59,7 +58,7 @@ export function createFrameCases(config: BenchmarkConfig): BenchmarkCase[] {
         cases.push(
           createRepeatedFrameCase(
             backend,
-            outputMode,
+            frameFormat,
             "shifting-viewport",
             sizeLabel,
             size,
@@ -76,7 +75,7 @@ export function createFrameCases(config: BenchmarkConfig): BenchmarkCase[] {
 
 function createFirstFrameCase(
   backend: VizBackendOption,
-  outputMode: NonNullable<VizComputeFrameOptions["outputMode"]>,
+  frameFormat: VizFrameFormat,
   sizeLabel: string,
   size: number,
   fixture: ReturnType<typeof createXyFixture>,
@@ -84,7 +83,7 @@ function createFirstFrameCase(
 ): BenchmarkCase {
   return {
     category: "frame",
-    id: createCaseId(["frame", outputMode, "first", sizeLabel, backend]),
+    id: createCaseId(["frame", frameFormat, "first", sizeLabel, backend]),
     implementation: `viz-engine ${backend}`,
     prepare: () => null,
     run: () =>
@@ -92,7 +91,7 @@ function createFirstFrameCase(
         backend,
         dataset: { kind: "xy", points: fixture.points },
         frameOptions: {
-          outputMode,
+          frameFormat,
           viewport: { height: 360, width: 960, xDomain: fixture.domains.viewport },
         },
         layers,
@@ -104,21 +103,21 @@ function createFirstFrameCase(
         backend,
         dataset: { kind: "xy", points: fixture.points },
         frameOptions: {
-          outputMode,
+          frameFormat,
           viewport: { height: 360, width: 960, xDomain: fixture.domains.viewport },
         },
         layers,
       }).compute();
       assertPositive(frame.layers.length, "first frame layer count");
-      assertFrameOutputMode(frame, outputMode);
+      assertFrameFormat(frame, frameFormat);
     },
-    workload: `computeFrame/${outputMode}/first`,
+    workload: `computeFrame/${frameFormat}/first`,
   };
 }
 
 function createRepeatedFrameCase(
   backend: VizBackendOption,
-  outputMode: NonNullable<VizComputeFrameOptions["outputMode"]>,
+  frameFormat: VizFrameFormat,
   mode: "same-viewport" | "shifting-viewport",
   sizeLabel: string,
   size: number,
@@ -129,14 +128,14 @@ function createRepeatedFrameCase(
 
   return {
     category: "frame",
-    id: createCaseId(["frame", outputMode, mode, sizeLabel, backend]),
+    id: createCaseId(["frame", frameFormat, mode, sizeLabel, backend]),
     implementation: `viz-engine ${backend}`,
     prepare: () =>
       createPreparedFrame({
         backend,
         dataset: { kind: "xy", points: fixture.points },
         frameOptions: {
-          outputMode,
+          frameFormat,
           viewport: { height: 360, width: 960, xDomain: fixture.domains.viewport },
         },
         layers,
@@ -151,7 +150,7 @@ function createRepeatedFrameCase(
       const start =
         fixture.domains.full[0] + ((offset++ % 20) / 20) * (fixture.domains.full[1] - span);
       return frame.engine.computeFrame({
-        outputMode,
+        frameFormat,
         viewport: {
           height: 360,
           width: 960,
@@ -164,17 +163,17 @@ function createRepeatedFrameCase(
     validate: (prepared) => {
       const frame = (prepared as ReturnType<typeof createPreparedFrame>).compute();
       assertPositive(frame.layers.length, "repeated frame layer count");
-      assertFrameOutputMode(frame, outputMode);
+      assertFrameFormat(frame, frameFormat);
     },
-    workload: `computeFrame/${outputMode}/${mode}`,
+    workload: `computeFrame/${frameFormat}/${mode}`,
   };
 }
 
-function assertFrameOutputMode(
+function assertFrameFormat(
   frame: ReturnType<ReturnType<typeof createPreparedFrame>["compute"]>,
-  outputMode: NonNullable<VizComputeFrameOptions["outputMode"]>,
+  frameFormat: VizFrameFormat,
 ) {
-  if (outputMode === "object") {
+  if (frameFormat === "objects") {
     return;
   }
 
@@ -185,7 +184,13 @@ function assertFrameOutputMode(
       layer.kind === "heatmap" ||
       layer.kind === "rolling-series"
     ) {
-      assert("outputMode" in layer && layer.outputMode === "compact", "compact frame layer");
+      assert(
+        "typedSeries" in layer ||
+          "typedHistogram" in layer ||
+          "typedHeatmap" in layer ||
+          "typedRollingSeries" in layer,
+        "typed frame layer",
+      );
     }
   }
 }

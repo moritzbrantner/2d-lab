@@ -5,21 +5,25 @@ import { JsVizGeoPointIndex } from "./js-geo-index";
 import { JsVizGeoJsonIndex } from "./js-geojson-index";
 import { ProgressiveVizDensityIndex } from "./progressive-density-index";
 import { RustWasmVizDensityIndex } from "./rust-wasm-density-index";
-import { WasmVizGeoFlowIndex } from "./wasm-geo-flow-index";
-import { WasmVizFinanceIndex } from "./wasm-finance-index";
-import { WasmVizGeoPointIndex } from "./wasm-geo-index";
-import { WasmVizGeoJsonIndex } from "./wasm-geojson-index";
 
-import type { VizBackendOption, VizDataset, VizDatasetIndex, VizEngineBackend } from "../types";
+import type {
+  VizBackendConfig,
+  VizBackendOption,
+  VizDataset,
+  VizDatasetIndex,
+  VizEngineBackend,
+} from "../types";
 
 export function createVizEngineBackend<TProperties = Record<string, unknown>>(
-  option: VizBackendOption,
+  option: VizBackendOption | VizBackendConfig,
 ): VizEngineBackend<TProperties> {
+  const config = normalizeBackendConfig(option);
+
   return {
     createIndex(dataset: VizDataset<TProperties>) {
-      return createDatasetIndex(dataset, option);
+      return createDatasetIndex(dataset, config);
     },
-    option,
+    option: config,
     resolveBackend(index: VizDatasetIndex<TProperties>): "js" | "wasm" {
       return index.index.getBackendCapabilities().backend;
     },
@@ -28,49 +32,66 @@ export function createVizEngineBackend<TProperties = Record<string, unknown>>(
 
 function createDatasetIndex<TProperties>(
   dataset: VizDataset<TProperties>,
-  option: VizBackendOption,
+  config: Required<VizBackendConfig>,
 ): VizDatasetIndex<TProperties> {
   switch (dataset.kind) {
     case "geo-points":
       return {
-        index:
-          option === "js"
-            ? new JsVizGeoPointIndex(dataset.points)
-            : new WasmVizGeoPointIndex(dataset.points),
+        index: new JsVizGeoPointIndex(dataset.points),
         kind: "geo-points",
       };
     case "geojson":
       return {
-        index:
-          option === "js"
-            ? new JsVizGeoJsonIndex(dataset.featureCollection)
-            : new WasmVizGeoJsonIndex(dataset.featureCollection),
+        index: new JsVizGeoJsonIndex(dataset.featureCollection),
         kind: "geojson",
       };
     case "geo-flows":
       return {
-        index:
-          option === "js"
-            ? new JsVizGeoFlowIndex(dataset.flows)
-            : new WasmVizGeoFlowIndex(dataset.flows),
+        index: new JsVizGeoFlowIndex(dataset.flows),
         kind: "geo-flows",
       };
     case "finance-ohlcv":
       return {
-        index: option === "js" ? new JsVizFinanceIndex(dataset) : new WasmVizFinanceIndex(dataset),
+        index: new JsVizFinanceIndex(dataset),
         kind: "finance-ohlcv",
       };
     case "xy":
       return {
         index:
-          option === "js"
-            ? new JsVizDensityIndex(dataset.points)
-            : option === "wasm"
-              ? new RustWasmVizDensityIndex(dataset.points)
-              : new ProgressiveVizDensityIndex(dataset.points),
+          config.xy === "js" || isBrowserRuntime()
+            ? new JsVizDensityIndex(dataset)
+            : config.xy === "wasm"
+              ? new RustWasmVizDensityIndex(dataset)
+              : new ProgressiveVizDensityIndex(dataset),
         kind: "xy",
       };
   }
+}
+
+function normalizeBackendConfig(
+  option: VizBackendOption | VizBackendConfig,
+): Required<VizBackendConfig> {
+  if (typeof option === "string") {
+    return {
+      finance: "js",
+      geo: "js",
+      xy: option,
+    };
+  }
+
+  return {
+    finance: "js",
+    geo: "js",
+    xy: option.xy ?? "auto",
+  };
+}
+
+function isBrowserRuntime() {
+  return (
+    typeof window !== "undefined" &&
+    typeof document !== "undefined" &&
+    !globalThis.navigator?.userAgent.toLowerCase().includes("jsdom")
+  );
 }
 
 export function resolveFrameBackend<TProperties>(

@@ -177,7 +177,7 @@ function VizEngineDemoLayers({
       histogramLayerId,
     ],
   );
-  const frame = useVizFrame(viewport, frameDependencies);
+  const frame = useVizFrame({ dependencies: frameDependencies, frameFormat: "objects", viewport });
   const chartYDomain = useMemo(() => deriveChartYDomain(frame.layers), [frame.layers]);
 
   const summary = {

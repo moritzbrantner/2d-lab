@@ -5,6 +5,7 @@ import {
   getRenderRowsBounds,
   getSeriesBounds,
   isCartesianViewport,
+  resolveFrameFormat,
 } from "./utils";
 
 import type {
@@ -42,7 +43,7 @@ export function computeCartesianRenderLayer<TProperties>(
         return null;
       }
       const valueMode = layer.valueMode ?? "average";
-      if (options.outputMode === "compact") {
+      if (resolveFrameFormat(options) === "typed") {
         preferWasmForCompactOutput(index);
         const compactSeries = index.getCompactChartSeries({
           includeEmptyBins: layer.includeEmptyBins ?? true,
@@ -58,6 +59,7 @@ export function computeCartesianRenderLayer<TProperties>(
           kind: "binned-series",
           layerId,
           outputMode: "compact",
+          typedSeries: compactSeries,
           valueMode,
         };
       }
@@ -82,7 +84,7 @@ export function computeCartesianRenderLayer<TProperties>(
       if (!index || !isCartesianViewport(options.viewport, layerId, diagnostics)) {
         return null;
       }
-      if (options.outputMode === "compact") {
+      if (resolveFrameFormat(options) === "typed") {
         preferWasmForCompactOutput(index);
         const compactHistogram = index.getCompactHistogram({
           bucketCount: layer.bucketCount,
@@ -97,6 +99,7 @@ export function computeCartesianRenderLayer<TProperties>(
           kind: "histogram",
           layerId,
           outputMode: "compact",
+          typedHistogram: compactHistogram,
         };
       }
       const histogram = index.getHistogram({
@@ -118,12 +121,12 @@ export function computeCartesianRenderLayer<TProperties>(
       if (!index || !isCartesianViewport(options.viewport, layerId, diagnostics)) {
         return null;
       }
-      if (options.outputMode === "compact") {
+      if (resolveFrameFormat(options) === "typed") {
         preferWasmForCompactOutput(index);
         const compactHeatmap = index.getCompactHeatmap({
           includeEmptyCells: true,
           xBinCount: layer.xBinCount,
-          xDomain: layer.xDomain,
+          xDomain: layer.xDomain ?? options.viewport.xDomain,
           yBinCount: layer.yBinCount,
           yDomain: layer.yDomain,
         });
@@ -135,12 +138,13 @@ export function computeCartesianRenderLayer<TProperties>(
           kind: "heatmap",
           layerId,
           outputMode: "compact",
+          typedHeatmap: compactHeatmap,
         };
       }
       const heatmap = index.getHeatmap({
         includeEmptyCells: true,
         xBinCount: layer.xBinCount,
-        xDomain: layer.xDomain,
+        xDomain: layer.xDomain ?? options.viewport.xDomain,
         yBinCount: layer.yBinCount,
         yDomain: layer.yDomain,
       });
@@ -159,14 +163,14 @@ export function computeCartesianRenderLayer<TProperties>(
         return null;
       }
       const statistic = layer.statistic ?? "mean";
-      if (options.outputMode === "compact") {
+      if (resolveFrameFormat(options) === "typed") {
         preferWasmForCompactOutput(index);
         const compactRollingSeries = index.getCompactRollingSeries({
           alpha: layer.alpha,
           minPeriods: layer.minPeriods,
           statistic,
           windowSize: layer.windowSize,
-          xDomain: layer.xDomain,
+          xDomain: layer.xDomain ?? options.viewport.xDomain,
         });
 
         return {
@@ -177,6 +181,7 @@ export function computeCartesianRenderLayer<TProperties>(
           layerId,
           outputMode: "compact",
           statistic,
+          typedRollingSeries: compactRollingSeries,
         };
       }
       const series = index.getRollingSeries({
@@ -184,7 +189,7 @@ export function computeCartesianRenderLayer<TProperties>(
         minPeriods: layer.minPeriods,
         statistic,
         windowSize: layer.windowSize,
-        xDomain: layer.xDomain,
+        xDomain: layer.xDomain ?? options.viewport.xDomain,
       });
       const rows = createRollingRenderRows(series);
 

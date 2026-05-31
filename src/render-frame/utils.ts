@@ -24,6 +24,14 @@ export function now() {
     : Date.now();
 }
 
+export function resolveFrameFormat(options: VizComputeFrameOptions) {
+  if (options.frameFormat) {
+    return options.frameFormat;
+  }
+
+  return options.outputMode === "object" ? "objects" : "typed";
+}
+
 export function createVizRenderRows<TProperties>(
   series: VizDensitySeries<TProperties>,
   valueMode: VizValueMode = "average",

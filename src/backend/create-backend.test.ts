@@ -12,8 +12,6 @@ import { JsVizGeoPointIndex } from "./js-geo-index";
 import { JsVizGeoJsonIndex } from "./js-geojson-index";
 import { ProgressiveVizDensityIndex } from "./progressive-density-index";
 import { RustWasmVizDensityIndex } from "./rust-wasm-density-index";
-import { WasmVizGeoPointIndex } from "./wasm-geo-index";
-import { WasmVizFinanceIndex } from "./wasm-finance-index";
 
 import type { VizDatasetIndex } from "../types";
 
@@ -43,11 +41,11 @@ describe("createVizEngineBackend", () => {
       kind: "geo-points",
     });
     expect(createVizEngineBackend("wasm").createIndex(dataset)).toMatchObject({
-      index: expect.any(WasmVizGeoPointIndex),
+      index: expect.any(JsVizGeoPointIndex),
       kind: "geo-points",
     });
     expect(createVizEngineBackend("auto").createIndex(dataset)).toMatchObject({
-      index: expect.any(WasmVizGeoPointIndex),
+      index: expect.any(JsVizGeoPointIndex),
       kind: "geo-points",
     });
   });
@@ -79,11 +77,11 @@ describe("createVizEngineBackend", () => {
       kind: "finance-ohlcv",
     });
     expect(createVizEngineBackend("wasm").createIndex(dataset)).toMatchObject({
-      index: expect.any(WasmVizFinanceIndex),
+      index: expect.any(JsVizFinanceIndex),
       kind: "finance-ohlcv",
     });
     expect(createVizEngineBackend("auto").createIndex(dataset)).toMatchObject({
-      index: expect.any(WasmVizFinanceIndex),
+      index: expect.any(JsVizFinanceIndex),
       kind: "finance-ohlcv",
     });
   });

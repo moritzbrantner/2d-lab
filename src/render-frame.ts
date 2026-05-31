@@ -2,7 +2,7 @@ import { resolveFrameBackend, resolveFrameBackendImplementation } from "./js-bac
 import { computeCartesianRenderLayer } from "./render-frame/cartesian";
 import { computeFinanceRenderLayer } from "./render-frame/finance";
 import { computeGeoRenderLayer } from "./render-frame/geo";
-import { now } from "./render-frame/utils";
+import { now, resolveFrameFormat } from "./render-frame/utils";
 
 export { createVizRenderRows } from "./render-frame/utils";
 
@@ -19,8 +19,17 @@ import type {
   VizLayerId,
   VizObjectComputeFrameOptions,
   VizRenderFrame,
+  VizTypedComputeFrameOptions,
+  VizTypedRenderFrame,
 } from "./types";
 
+export function computeVizRenderFrame<TProperties>(
+  datasets: Map<string, VizEngineDatasetRecord<TProperties>>,
+  layers: Map<VizLayerId, VizLayer>,
+  backend: VizEngineBackend<TProperties>,
+  options: VizObjectComputeFrameOptions,
+  layerCache?: Map<string, VizAnyRenderLayer<TProperties>>,
+): VizRenderFrame<TProperties>;
 export function computeVizRenderFrame<TProperties>(
   datasets: Map<string, VizEngineDatasetRecord<TProperties>>,
   layers: Map<VizLayerId, VizLayer>,
@@ -32,9 +41,9 @@ export function computeVizRenderFrame<TProperties>(
   datasets: Map<string, VizEngineDatasetRecord<TProperties>>,
   layers: Map<VizLayerId, VizLayer>,
   backend: VizEngineBackend<TProperties>,
-  options: VizObjectComputeFrameOptions,
+  options: VizTypedComputeFrameOptions,
   layerCache?: Map<string, VizAnyRenderLayer<TProperties>>,
-): VizRenderFrame<TProperties>;
+): VizTypedRenderFrame<TProperties>;
 export function computeVizRenderFrame<TProperties>(
   datasets: Map<string, VizEngineDatasetRecord<TProperties>>,
   layers: Map<VizLayerId, VizLayer>,
@@ -124,9 +133,9 @@ function getRenderLayerCacheKey(
 ) {
   const base = {
     datasetId: layer.datasetId,
+    frameFormat: resolveFrameFormat(options),
     kind: layer.kind,
     layerId,
-    outputMode: options.outputMode ?? "object",
   };
 
   switch (layer.kind) {
@@ -159,7 +168,7 @@ function getRenderLayerCacheKey(
         ...base,
         includeEmptyCells: true,
         xBinCount: layer.xBinCount,
-        xDomain: layer.xDomain,
+        xDomain: layer.xDomain ?? options.viewport.xDomain,
         yBinCount: layer.yBinCount,
         yDomain: layer.yDomain,
       });
@@ -173,7 +182,7 @@ function getRenderLayerCacheKey(
         minPeriods: layer.minPeriods,
         statistic: layer.statistic ?? "mean",
         windowSize: layer.windowSize,
-        xDomain: layer.xDomain,
+        xDomain: layer.xDomain ?? options.viewport.xDomain,
       });
     case "geo-clusters":
       if (options.viewport.kind !== "geo") {
