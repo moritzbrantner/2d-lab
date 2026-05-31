@@ -1,6 +1,6 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { JsVizDensityIndex } from "./backend/js-density-index";
+import { RustWasmVizDensityIndex } from "./backend/rust-wasm-density-index";
 import { WasmVizGeoPointIndex } from "./backend/wasm-geo-index";
 import { createVizEngine } from "./create-viz-engine";
 import { createVizEngineBackend } from "./js-backend";
@@ -15,6 +15,10 @@ const points: VizSeriesPoint[] = [
   { id: "d", x: 30, y: 16, metrics: { count: 1 } },
   { id: "e", x: 40, y: 32, metrics: { count: 1 } },
 ];
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("computeVizRenderFrame", () => {
   test("renders binned-series, histogram, and heatmap layers", () => {
@@ -136,6 +140,23 @@ describe("computeVizRenderFrame", () => {
       "missing-dataset",
       "incompatible-layer-dataset",
     ]);
+  });
+
+  test("computes frame timing without a global performance object", () => {
+    vi.stubGlobal("performance", undefined);
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({ kind: "xy", points });
+    engine.addLayer({
+      datasetId,
+      kind: "binned-series",
+      targetBinCount: 2,
+      xDomain: [0, 40],
+    });
+
+    const frame = engine.computeFrame({ viewport: { height: 320, width: 800, xDomain: [0, 40] } });
+
+    expect(frame.stats.computeMs).toBeGreaterThanOrEqual(0);
+    expect(frame.layers).toHaveLength(1);
   });
 
   test("reports incompatible viewport diagnostics", () => {
@@ -265,7 +286,7 @@ describe("computeVizRenderFrame", () => {
         "xy",
         {
           dataset: { kind: "xy", points },
-          index: { index: new JsVizDensityIndex(points), kind: "xy" },
+          index: { index: new RustWasmVizDensityIndex(points), kind: "xy" },
         },
       ],
       [

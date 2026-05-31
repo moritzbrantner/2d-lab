@@ -1,50 +1,19 @@
-import { GeoFlowIndex } from "@mb-rust/geo-viz-wasm";
+import { JsVizGeoFlowIndex } from "./js-geo-flow-index";
 
-import type {
-  VizGeoBounds,
-  VizGeoFlow,
-  VizGeoFlowAggregation,
-  VizGeoFlowIndex,
-  VizGeoFlowOptions,
-  VizGeoViewportQuery,
-} from "../types";
-
-type WasmGeoFlowIndex = InstanceType<typeof GeoFlowIndex>;
+import type { VizGeoFlow } from "../types";
 
 export class WasmVizGeoFlowIndex<
   TProperties = Record<string, unknown>,
-> implements VizGeoFlowIndex<TProperties> {
-  private readonly index: WasmGeoFlowIndex;
-
+> extends JsVizGeoFlowIndex<TProperties> {
   constructor(flows: readonly VizGeoFlow<TProperties>[]) {
-    this.index = new GeoFlowIndex(
-      flows.map((flow) => ({
-        from: flow.from,
-        id: flow.id,
-        label: flow.label,
-        metrics: flow.metrics ?? {},
-        properties: flow.properties ?? {},
-        to: flow.to,
-      })),
-    ) as WasmGeoFlowIndex;
+    super(flows);
   }
 
   getBackendCapabilities() {
     return {
-      backend: "wasm" as const,
-      implementation: "legacy-wasm" as const,
-      usesWasm: true,
+      backend: "js" as const,
+      implementation: "js" as const,
+      usesWasm: false,
     };
-  }
-
-  getBounds(): VizGeoBounds | null {
-    return this.index.getBounds() as VizGeoBounds | null;
-  }
-
-  getViewportFlows(
-    query: VizGeoViewportQuery,
-    options: VizGeoFlowOptions = {},
-  ): VizGeoFlowAggregation<TProperties> {
-    return this.index.getViewportFlows(query, options) as VizGeoFlowAggregation<TProperties>;
   }
 }

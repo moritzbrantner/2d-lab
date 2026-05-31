@@ -11,9 +11,9 @@ export class WasmVizFinanceIndex<
 
   getBackendCapabilities(): ReturnType<VizFinanceIndex<TProperties>["getBackendCapabilities"]> {
     return {
-      backend: "wasm" as const,
-      implementation: "rust-finance-data-wasm" as const,
-      usesWasm: true,
+      backend: "js" as const,
+      implementation: "js" as const,
+      usesWasm: false,
     };
   }
 }

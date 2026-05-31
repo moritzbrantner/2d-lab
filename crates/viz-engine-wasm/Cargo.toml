@@ -1,6 +1,7 @@
 [package]
 name = "viz-engine-wasm"
 version = "0.1.0"
+description = "WASM bindings for viz-engine browser computation kernels."
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

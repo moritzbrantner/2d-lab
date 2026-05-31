@@ -1,6 +1,5 @@
 pub mod density;
 pub mod frame;
-pub mod geo;
 pub mod hit_test;
 pub mod types;
 

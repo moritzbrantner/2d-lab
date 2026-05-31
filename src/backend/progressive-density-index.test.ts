@@ -50,6 +50,27 @@ describe("ProgressiveVizDensityIndex", () => {
     expect(publicDensityResult(index)).toEqual(before);
     expect(index.getPointById("c")).toMatchObject({ id: "c", sourceIndex: 2 });
   });
+
+  test("keeps the JS index active when wasm warmup fails", async () => {
+    vi.stubGlobal("requestIdleCallback", vi.fn());
+    const error = new Error("wasm unavailable");
+    const index = new ProgressiveVizDensityIndex(points, () => {
+      throw error;
+    });
+
+    await index.warmWasmIndex();
+
+    expect(index.getBackendCapabilities()).toEqual({
+      backend: "js",
+      implementation: "js",
+      usesWasm: false,
+    });
+    expect(index.getWarmupError()).toBe(error);
+    expect(index.getChartSeries({ targetBinCount: 4, xDomain: [0, 40] }).summary).toMatchObject({
+      pointCount: 5,
+      sampleCount: 4,
+    });
+  });
 });
 
 function publicDensityResult(index: ProgressiveVizDensityIndex) {

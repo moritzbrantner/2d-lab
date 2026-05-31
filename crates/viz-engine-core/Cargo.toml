@@ -1,6 +1,7 @@
 [package]
 name = "viz-engine-core"
 version = "0.1.0"
+description = "Browser-independent computation kernels for viz-engine."
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

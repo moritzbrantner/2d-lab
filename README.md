@@ -1,8 +1,7 @@
 # @moritzbrantner/viz-engine
 
 Experimental renderer-agnostic visualization engine layer backed by
-JavaScript fallbacks, local Rust/WASM XY kernels, and published Rust geo
-packages.
+JavaScript fallbacks and local Rust/WASM XY kernels.
 
 `createVizEngine` lets multiple chart layers share datasets and density indexes,
 then returns a render frame that SVG, Canvas, WebGL, React chart components, or
@@ -65,9 +64,9 @@ engine.addLayer({
   XY data/math/indexing logic.
 - `viz-engine-wasm` exposes selected Rust APIs to the browser through
   `wasm-bindgen`.
-- Published `@mb-rust/*-wasm` packages own geo computation such as map
-  clustering, GeoJSON viewport filtering, heat features, flow filtering, and
-  future projection helpers.
+- JavaScript fallbacks currently own geo computation such as map clustering,
+  GeoJSON viewport filtering, heat features, and flow filtering until the geo
+  WASM package is published and wired in.
 - Renderers consume returned renderable data.
 - React hooks coordinate lifecycle and small UI state only.
 
@@ -78,7 +77,6 @@ The package boundary is:
 ```txt
 viz-engine-core: local Rust XY computation
 viz-engine-wasm: local browser binding for XY computation
-@mb-rust/geo-viz-core-wasm: published Rust geo computation
 finance-data: reusable Rust financial market-data core in rust-packages
 finance-statistics: reusable Rust return/risk/statistics crate in rust-packages
 @moritzbrantner/viz-engine: TypeScript runtime wrapper
@@ -95,15 +93,14 @@ charts/maps/future packages own visuals.
 
 The current Rust MVP supports XY datasets, binned series, histograms, heatmaps,
 series bounds, and simple x-based hit testing. Geo point clustering, geo heat
-features, GeoJSON viewport filtering, and flow filtering/aggregation are routed
-through `@mb-rust/geo-viz-core-wasm`, with JavaScript fallbacks retained for
-tests and non-WASM environments. Financial OHLCV modeling, validation,
-downsampling, provider-neutral data contracts, and derived return/risk helpers
-live in the reusable `finance-data` and `finance-statistics` Rust crates under
-`/home/moenarch/moritzbrantner/rust-packages`; `viz-engine` exposes those
-concepts as renderer-facing finance datasets and layers. React lifecycle,
-renderer-facing frame assembly, dynamic backend selection, and fallback routing
-remain in TypeScript.
+features, GeoJSON viewport filtering, and flow filtering/aggregation are
+currently JavaScript-backed in this package. Financial OHLCV modeling,
+validation, downsampling, provider-neutral data contracts, and derived
+return/risk helpers live in the reusable `finance-data` and `finance-statistics`
+Rust crates under `/home/moenarch/moritzbrantner/rust-packages`; `viz-engine`
+exposes those concepts as renderer-facing finance datasets and layers. React
+lifecycle, renderer-facing frame assembly, dynamic backend selection, and
+fallback routing remain in TypeScript.
 
 Do not move React, DOM, Leaflet, Recharts, SVG rendering, Canvas rendering, UI
 controls, or renderer integrations into Rust.
@@ -120,6 +117,10 @@ The React bindings are intentionally thin:
 
 They register datasets and layers, then ask the engine for render frames. The
 engine keeps ownership of large point arrays, indexes, and computed data.
+Dataset, layer, viewport, and frame dependency inputs are identity-sensitive:
+memoize objects and arrays passed to these hooks with React's memo helpers when
+they are derived during render. The example app follows this pattern for layer
+objects and frame dependencies.
 
 ## CI
 
@@ -157,6 +158,10 @@ Run the example project with:
 ```sh
 bun dev
 ```
+
+Do not commit package-manager overrides for sibling checkouts. If a future geo
+WASM package is wired in before it is published, link or install it locally in
+your checkout and keep that configuration out of version control.
 
 The Vite app in `examples/` renders the current engine through React, including
 binned series, histogram, heatmap, frame stats, and hit testing.

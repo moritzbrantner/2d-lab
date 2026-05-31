@@ -15,9 +15,15 @@ export class ProgressiveVizDensityIndex<
   TProperties = Record<string, unknown>,
 > implements VizDensityIndex<TProperties> {
   private activeIndex: VizDensityIndex<TProperties>;
+  private warmupError: unknown = null;
   private warmupPromise: Promise<void> | null = null;
 
-  constructor(private readonly points: readonly VizSeriesPoint<TProperties>[]) {
+  constructor(
+    private readonly points: readonly VizSeriesPoint<TProperties>[],
+    private readonly createWasmIndex: (
+      points: readonly VizSeriesPoint<TProperties>[],
+    ) => VizDensityIndex<TProperties> = (points) => new RustWasmVizDensityIndex(points),
+  ) {
     this.activeIndex = new JsVizDensityIndex(points);
     this.scheduleWarmup();
   }
@@ -51,11 +57,20 @@ export class ProgressiveVizDensityIndex<
   }
 
   warmWasmIndex() {
-    this.warmupPromise ??= Promise.resolve().then(() => {
-      this.activeIndex = new RustWasmVizDensityIndex(this.points);
-    });
+    this.warmupPromise ??= Promise.resolve()
+      .then(() => {
+        this.activeIndex = this.createWasmIndex(this.points);
+        this.warmupError = null;
+      })
+      .catch((error: unknown) => {
+        this.warmupError = error;
+      });
 
     return this.warmupPromise;
+  }
+
+  getWarmupError() {
+    return this.warmupError;
   }
 
   private scheduleWarmup() {

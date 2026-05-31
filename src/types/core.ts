@@ -1,0 +1,177 @@
+export type VizDatasetId = string;
+export type VizLayerId = string;
+
+export type VizBackendOption = "auto" | "js" | "wasm";
+export type VizResolvedBackend = "js" | "mixed" | "wasm";
+export type VizBackendImplementation =
+  | "js"
+  | "legacy-wasm"
+  | "mixed"
+  | "rust-finance-data-wasm"
+  | "rust-viz-engine-wasm";
+
+export type VizMetricRecord = Record<string, number>;
+export type VizValueMode = "average" | "count" | "max" | "min" | "sum";
+export type VizGeoBounds = [west: number, south: number, east: number, north: number];
+export type VizRenderBounds = [number, number, number, number];
+
+export type VizSeriesPoint<TProperties = Record<string, unknown>> = {
+  id?: string;
+  label?: string;
+  metrics?: VizMetricRecord;
+  properties?: TProperties;
+  x: number;
+  y: number;
+};
+
+export type VizIndexedSeriesPoint<TProperties = Record<string, unknown>> =
+  VizSeriesPoint<TProperties> & {
+    sourceIndex: number;
+  };
+
+export type VizDensityBin<TProperties = Record<string, unknown>> = {
+  averageY: number | null;
+  firstPoint: VizIndexedSeriesPoint<TProperties> | null;
+  firstPointIndex: number | null;
+  index: number;
+  lastPoint: VizIndexedSeriesPoint<TProperties> | null;
+  lastPointIndex: number | null;
+  maxY: number | null;
+  metrics: VizMetricRecord;
+  minY: number | null;
+  pointCount: number;
+  sumY: number;
+  x0: number;
+  x1: number;
+};
+
+export type VizDensitySample<TProperties = Record<string, unknown>> = VizDensityBin<TProperties> & {
+  x: number;
+  y: number | null;
+};
+
+export type VizDensitySeries<TProperties = Record<string, unknown>> = {
+  bins: Array<VizDensityBin<TProperties>>;
+  samples: Array<VizDensitySample<TProperties>>;
+  summary: {
+    binCount: number;
+    metrics: VizMetricRecord;
+    pointCount: number;
+    sampleCount: number;
+    valueMode: VizValueMode;
+    xDomain: [number, number];
+  };
+};
+
+export type VizHistogramBucket<TProperties = Record<string, unknown>> = {
+  averageValue: number | null;
+  firstPoint: VizIndexedSeriesPoint<TProperties> | null;
+  firstPointIndex: number | null;
+  index: number;
+  lastPoint: VizIndexedSeriesPoint<TProperties> | null;
+  lastPointIndex: number | null;
+  maxValue: number | null;
+  metrics: VizMetricRecord;
+  minValue: number | null;
+  pointCount: number;
+  sumValue: number;
+  value: number;
+  value0: number;
+  value1: number;
+};
+
+export type VizHistogram<TProperties = Record<string, unknown>> = {
+  buckets: Array<VizHistogramBucket<TProperties>>;
+  summary: {
+    bucketCount: number;
+    metrics: VizMetricRecord;
+    pointCount: number;
+    valueDomain: [number, number];
+    xDomain: [number, number] | null;
+  };
+};
+
+export type VizHeatmapCell<TProperties = Record<string, unknown>> = {
+  averageValue: number | null;
+  firstPoint: VizIndexedSeriesPoint<TProperties> | null;
+  firstPointIndex: number | null;
+  index: number;
+  lastPoint: VizIndexedSeriesPoint<TProperties> | null;
+  lastPointIndex: number | null;
+  metrics: VizMetricRecord;
+  pointCount: number;
+  sumValue: number;
+  value: number;
+  x: number;
+  x0: number;
+  x1: number;
+  xIndex: number;
+  y: number;
+  y0: number;
+  y1: number;
+  yIndex: number;
+};
+
+export type VizHeatmap<TProperties = Record<string, unknown>> = {
+  cells: Array<VizHeatmapCell<TProperties>>;
+  summary: {
+    maxCellCount: number;
+    metrics: VizMetricRecord;
+    pointCount: number;
+    xBinCount: number;
+    xDomain: [number, number];
+    yBinCount: number;
+    yDomain: [number, number];
+  };
+};
+
+export type VizDensityQuery = {
+  includeEmptyBins?: boolean;
+  targetBinCount: number;
+  valueMode?: VizValueMode;
+  xDomain: [number, number];
+};
+
+export type VizBinnedSeriesQuery = {
+  includeEmptyBins?: boolean;
+  targetBinCount: number;
+  xDomain: [number, number];
+};
+
+export type VizHistogramQuery = {
+  bucketCount: number;
+  includeEmptyBuckets?: boolean;
+  valueDomain?: [number, number];
+  xDomain?: [number, number];
+};
+
+export type VizHeatmapQuery = {
+  includeEmptyCells?: boolean;
+  xBinCount: number;
+  xDomain: [number, number];
+  yBinCount: number;
+  yDomain?: [number, number];
+};
+
+export type VizSeriesBounds = {
+  maxX: number;
+  maxY: number;
+  minX: number;
+  minY: number;
+};
+
+export type VizBackendCapabilities = {
+  backend: Exclude<VizResolvedBackend, "mixed">;
+  implementation?: Exclude<VizBackendImplementation, "mixed">;
+  usesWasm: boolean;
+};
+
+export type VizDensityIndex<TProperties = Record<string, unknown>> = {
+  getBackendCapabilities(): VizBackendCapabilities;
+  getBinnedSeries(query: VizBinnedSeriesQuery): { bins: Array<VizDensityBin<TProperties>> };
+  getChartSeries(query: VizDensityQuery): VizDensitySeries<TProperties>;
+  getHeatmap(query: VizHeatmapQuery): VizHeatmap<TProperties>;
+  getHistogram(query: VizHistogramQuery): VizHistogram<TProperties>;
+  getPointById(pointId: string): VizIndexedSeriesPoint<TProperties> | null;
+  getSeriesBounds(): VizSeriesBounds | null;
+};

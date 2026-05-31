@@ -77,6 +77,62 @@ describe("React viz engine bindings", () => {
     expect(engine.removeDataset).toHaveBeenCalledTimes(2);
   });
 
+  test("keeps dataset and layer registrations stable for memoized inputs", async () => {
+    const engine = createFakeEngine();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <VizEngineProvider engine={engine}>{children}</VizEngineProvider>
+    );
+    const layer = { datasetId: "dataset-1", kind: "histogram" as const, bucketCount: 2 };
+    const { rerender } = renderHook(
+      () => ({
+        datasetId: useVizDataset(points),
+        layerId: useVizLayer(layer),
+      }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(engine.addDataset).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(engine.addLayer).toHaveBeenCalledTimes(1));
+
+    rerender();
+
+    expect(engine.addDataset).toHaveBeenCalledTimes(1);
+    expect(engine.addLayer).toHaveBeenCalledTimes(1);
+  });
+
+  test("re-registers when callers pass new object identities", async () => {
+    const engine = createFakeEngine();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <VizEngineProvider engine={engine}>{children}</VizEngineProvider>
+    );
+    const { rerender } = renderHook(
+      ({ dataset, layer }) => ({
+        datasetId: useVizDataset(dataset),
+        layerId: useVizLayer(layer),
+      }),
+      {
+        initialProps: {
+          dataset: [{ id: "p-1", x: 1, y: 1 }],
+          layer: { datasetId: "dataset-1", kind: "histogram" as const, bucketCount: 2 },
+        },
+        wrapper,
+      },
+    );
+
+    await waitFor(() => expect(engine.addDataset).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(engine.addLayer).toHaveBeenCalledTimes(1));
+
+    rerender({
+      dataset: [{ id: "p-2", x: 2, y: 2 }],
+      layer: { datasetId: "dataset-1", kind: "histogram" as const, bucketCount: 2 },
+    });
+
+    await waitFor(() => expect(engine.addDataset).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(engine.addLayer).toHaveBeenCalledTimes(2));
+    expect(engine.removeDataset).toHaveBeenCalledWith("dataset-1");
+    expect(engine.removeLayer).toHaveBeenCalledWith("layer-1");
+  });
+
   test("registers, clears, and removes layers", async () => {
     const engine = createFakeEngine();
     const wrapper = ({ children }: { children: ReactNode }) => (

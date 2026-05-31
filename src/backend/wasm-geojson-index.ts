@@ -1,41 +1,19 @@
-import { GeoJsonIndex } from "@mb-rust/geo-viz-wasm";
+import { JsVizGeoJsonIndex } from "./js-geojson-index";
 
-import type {
-  VizGeoBounds,
-  VizGeoJsonFeatureCollection,
-  VizGeoJsonIndex,
-  VizGeoJsonOptions,
-  VizGeoJsonViewport,
-  VizGeoViewportQuery,
-} from "../types";
-
-type WasmGeoJsonIndex = InstanceType<typeof GeoJsonIndex>;
+import type { VizGeoJsonFeatureCollection } from "../types";
 
 export class WasmVizGeoJsonIndex<
   TProperties = Record<string, unknown>,
-> implements VizGeoJsonIndex<TProperties> {
-  private readonly index: WasmGeoJsonIndex;
-
+> extends JsVizGeoJsonIndex<TProperties> {
   constructor(featureCollection: VizGeoJsonFeatureCollection<TProperties>) {
-    this.index = new GeoJsonIndex(featureCollection) as WasmGeoJsonIndex;
+    super(featureCollection);
   }
 
   getBackendCapabilities() {
     return {
-      backend: "wasm" as const,
-      implementation: "legacy-wasm" as const,
-      usesWasm: true,
+      backend: "js" as const,
+      implementation: "js" as const,
+      usesWasm: false,
     };
-  }
-
-  getBounds(): VizGeoBounds | null {
-    return this.index.getBounds() as VizGeoBounds | null;
-  }
-
-  getViewportFeatures(
-    query: VizGeoViewportQuery,
-    options: VizGeoJsonOptions = {},
-  ): VizGeoJsonViewport<TProperties> {
-    return this.index.getViewportFeatures(query, options) as VizGeoJsonViewport<TProperties>;
   }
 }
