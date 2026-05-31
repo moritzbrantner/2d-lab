@@ -77,11 +77,20 @@ export class ProgressiveVizDensityIndex<
     return this.activeIndex.getSeriesBounds();
   }
 
+  useWasmIndex() {
+    if (this.activeIndex.getBackendCapabilities().backend === "wasm") {
+      return;
+    }
+
+    this.activeIndex = this.createWasmIndex(this.points);
+    this.warmupError = null;
+    this.warmupPromise = Promise.resolve();
+  }
+
   warmWasmIndex() {
     this.warmupPromise ??= Promise.resolve()
       .then(() => {
-        this.activeIndex = this.createWasmIndex(this.points);
-        this.warmupError = null;
+        this.useWasmIndex();
       })
       .catch((error: unknown) => {
         this.warmupError = error;

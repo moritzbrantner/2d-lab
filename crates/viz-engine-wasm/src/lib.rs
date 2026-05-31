@@ -33,30 +33,50 @@ impl VizEngineWasmDensityIndex {
     #[wasm_bindgen(constructor)]
     pub fn new(input: JsValue) -> Result<VizEngineWasmDensityIndex, JsValue> {
         let input: VizEngineWasmDensityIndexInit = serde_wasm_bindgen::from_value(input)?;
-        let point_count = input.x.len().min(input.y.len());
-        let points = (0..point_count)
-            .map(|source_index| VizSeriesPoint {
-                id: input.ids.get(source_index).cloned().unwrap_or_default(),
-                label: input.labels.get(source_index).cloned().unwrap_or_default(),
-                x: input.x[source_index],
-                y: input.y[source_index],
-                metrics: input.metrics.get(source_index).cloned().unwrap_or_default(),
-                source_index: input
-                    .source_indices
-                    .get(source_index)
-                    .copied()
-                    .unwrap_or(source_index),
-            })
-            .collect();
+        Ok(Self::from_parts(
+            input.metric_keys,
+            input.x,
+            input.y,
+            input.ids,
+            input.labels,
+            input.metrics,
+            input.source_indices,
+        ))
+    }
 
-        Ok(Self {
-            index: VizDensityIndex::new(
-                points,
-                VizMetricSchema {
-                    keys: input.metric_keys,
-                },
-            ),
-        })
+    #[wasm_bindgen(js_name = fromArrays)]
+    pub fn from_arrays(
+        x: Float64Array,
+        y: Float64Array,
+        source_indices: Uint32Array,
+        metric_keys: JsValue,
+        metrics: Float64Array,
+        metric_count: usize,
+        ids: JsValue,
+        labels: JsValue,
+    ) -> Result<VizEngineWasmDensityIndex, JsValue> {
+        let metric_keys: Vec<String> = serde_wasm_bindgen::from_value(metric_keys)?;
+        let ids: Vec<String> = serde_wasm_bindgen::from_value(ids)?;
+        let labels: Vec<String> = serde_wasm_bindgen::from_value(labels)?;
+        let x = x.to_vec();
+        let y = y.to_vec();
+        let point_count = x.len().min(y.len());
+        let source_indices = source_indices
+            .to_vec()
+            .into_iter()
+            .map(|index| index as usize)
+            .collect();
+        let metrics = inflate_metric_rows(metrics.to_vec(), point_count, metric_count);
+
+        Ok(Self::from_parts(
+            metric_keys,
+            x,
+            y,
+            ids,
+            labels,
+            metrics,
+            source_indices,
+        ))
     }
 
     #[wasm_bindgen(js_name = getBinnedSeries)]
@@ -618,6 +638,61 @@ impl VizEngineWasmDensityIndex {
         let query: VizHitTestQuery = serde_wasm_bindgen::from_value(query)?;
         serde_wasm_bindgen::to_value(&self.index.hit_test_x(query)).map_err(|error| error.into())
     }
+}
+
+impl VizEngineWasmDensityIndex {
+    fn from_parts(
+        metric_keys: Vec<String>,
+        x: Vec<f64>,
+        y: Vec<f64>,
+        ids: Vec<String>,
+        labels: Vec<String>,
+        metrics: Vec<Vec<f64>>,
+        source_indices: Vec<usize>,
+    ) -> VizEngineWasmDensityIndex {
+        let point_count = x.len().min(y.len());
+        let points = (0..point_count)
+            .map(|source_index| VizSeriesPoint {
+                id: ids.get(source_index).cloned().unwrap_or_default(),
+                label: labels.get(source_index).cloned().unwrap_or_default(),
+                x: x[source_index],
+                y: y[source_index],
+                metrics: metrics.get(source_index).cloned().unwrap_or_default(),
+                source_index: source_indices
+                    .get(source_index)
+                    .copied()
+                    .unwrap_or(source_index),
+            })
+            .collect();
+
+        Self {
+            index: VizDensityIndex::new(points, VizMetricSchema { keys: metric_keys }),
+        }
+    }
+}
+
+fn inflate_metric_rows(
+    flat_metrics: Vec<f64>,
+    point_count: usize,
+    metric_count: usize,
+) -> Vec<Vec<f64>> {
+    if metric_count == 0 {
+        return Vec::new();
+    }
+
+    (0..point_count)
+        .map(|point_index| {
+            let row_start = point_index * metric_count;
+            (0..metric_count)
+                .map(|metric_index| {
+                    flat_metrics
+                        .get(row_start + metric_index)
+                        .copied()
+                        .unwrap_or_default()
+                })
+                .collect()
+        })
+        .collect()
 }
 
 struct CompactDensityObject<'a> {

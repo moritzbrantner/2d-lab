@@ -33,6 +33,18 @@ import type {
 } from "../types";
 
 type RustWasmDensityIndex = InstanceType<typeof VizEngineWasmDensityIndex>;
+type RustWasmDensityIndexConstructor = typeof VizEngineWasmDensityIndex & {
+  fromArrays?: (
+    x: Float64Array,
+    y: Float64Array,
+    sourceIndices: Uint32Array,
+    metricKeys: readonly string[],
+    metrics: Float64Array,
+    metricCount: number,
+    ids: readonly string[],
+    labels: readonly string[],
+  ) => RustWasmDensityIndex;
+};
 type RustResult<T> = Omit<T, "firstPoint" | "lastPoint">;
 type RustDensitySeries<TProperties> = {
   bins: Array<RustResult<VizDensityBin<TProperties>>>;
@@ -68,15 +80,7 @@ export class RustWasmVizDensityIndex<
 
     this.byId = lookup.byId;
     this.bySourceIndex = lookup.bySourceIndex;
-    this.index = new VizEngineWasmDensityIndex({
-      ids: normalizedPoints.map((point) => point.id ?? ""),
-      labels: normalizedPoints.map((point) => point.label ?? ""),
-      metricKeys,
-      metrics: normalizedPoints.map((point) => metricValues(point.metrics, metricKeys)),
-      sourceIndices: normalizedPoints.map((point) => point.sourceIndex),
-      x: normalizedPoints.map((point) => point.x),
-      y: normalizedPoints.map((point) => point.y),
-    }) as RustWasmDensityIndex;
+    this.index = createWasmDensityIndex(normalizedPoints, metricKeys);
   }
 
   getBackendCapabilities() {
@@ -337,6 +341,50 @@ export class RustWasmVizDensityIndex<
 
 function metricValues(metrics: VizMetricRecord | undefined, metricKeys: readonly string[]) {
   return metricKeys.map((key) => metrics?.[key] ?? 0);
+}
+
+function createWasmDensityIndex<TProperties>(
+  points: readonly NormalizedSeriesPoint<TProperties>[],
+  metricKeys: readonly string[],
+) {
+  const constructor = VizEngineWasmDensityIndex as RustWasmDensityIndexConstructor;
+  if (constructor.fromArrays) {
+    return constructor.fromArrays(
+      new Float64Array(points.map((point) => point.x)),
+      new Float64Array(points.map((point) => point.y)),
+      new Uint32Array(points.map((point) => point.sourceIndex)),
+      metricKeys,
+      createFlatMetricArray(points, metricKeys),
+      metricKeys.length,
+      points.map((point) => point.id ?? ""),
+      points.map((point) => point.label ?? ""),
+    ) as RustWasmDensityIndex;
+  }
+
+  return new VizEngineWasmDensityIndex({
+    ids: points.map((point) => point.id ?? ""),
+    labels: points.map((point) => point.label ?? ""),
+    metricKeys,
+    metrics: points.map((point) => metricValues(point.metrics, metricKeys)),
+    sourceIndices: points.map((point) => point.sourceIndex),
+    x: points.map((point) => point.x),
+    y: points.map((point) => point.y),
+  }) as RustWasmDensityIndex;
+}
+
+function createFlatMetricArray<TProperties>(
+  points: readonly NormalizedSeriesPoint<TProperties>[],
+  metricKeys: readonly string[],
+) {
+  const metrics = new Float64Array(points.length * metricKeys.length);
+
+  for (const [pointIndex, point] of points.entries()) {
+    for (const [metricIndex, metricKey] of metricKeys.entries()) {
+      metrics[pointIndex * metricKeys.length + metricIndex] = point.metrics?.[metricKey] ?? 0;
+    }
+  }
+
+  return metrics;
 }
 
 function normalizeRustMetrics(metrics: VizMetricRecord | Map<string, number>): VizMetricRecord {

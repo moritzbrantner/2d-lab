@@ -38,6 +38,21 @@ const frame = engine.computeFrame({
 });
 ```
 
+For high-frequency rendering, especially with the Rust/WASM XY backend, request
+typed-array cartesian layer payloads:
+
+```ts
+const compactFrame = engine.computeFrame({
+  outputMode: "compact",
+  viewport: { height: 320, width: 800, xDomain: [0, 1_440] },
+});
+```
+
+Compact mode keeps the existing frame API but returns compact cartesian layer
+fields such as `compactSeries`, `compactHistogram`, `compactHeatmap`, and
+`compactRollingSeries`. Object mode remains the default for compatibility and
+debuggability.
+
 Financial OHLCV data can use the same frame API:
 
 ```ts
@@ -74,7 +89,8 @@ engine.addLayer({
 - JavaScript fallbacks currently own geo computation such as map clustering,
   GeoJSON viewport filtering, heat features, and flow filtering until the geo
   WASM package is published and wired in.
-- Renderers consume returned renderable data.
+- Renderers consume returned renderable data. They can request object-shaped
+  frame layers for ergonomics or compact typed-array layers for lower overhead.
 - React hooks coordinate lifecycle and small UI state only.
 
 ## Rust-first engine direction

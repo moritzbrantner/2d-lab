@@ -7,25 +7,43 @@ import { now } from "./render-frame/utils";
 export { createVizRenderRows } from "./render-frame/utils";
 
 import type {
+  VizAnyRenderFrame,
+  VizAnyRenderLayer,
+  VizCompactComputeFrameOptions,
+  VizCompactRenderFrame,
   VizComputeFrameOptions,
   VizEngineBackend,
   VizEngineDatasetRecord,
   VizFrameDiagnostic,
   VizLayer,
   VizLayerId,
+  VizObjectComputeFrameOptions,
   VizRenderFrame,
-  VizRenderLayer,
 } from "./types";
 
 export function computeVizRenderFrame<TProperties>(
   datasets: Map<string, VizEngineDatasetRecord<TProperties>>,
   layers: Map<VizLayerId, VizLayer>,
   backend: VizEngineBackend<TProperties>,
+  options: VizCompactComputeFrameOptions,
+  layerCache?: Map<string, VizAnyRenderLayer<TProperties>>,
+): VizCompactRenderFrame<TProperties>;
+export function computeVizRenderFrame<TProperties>(
+  datasets: Map<string, VizEngineDatasetRecord<TProperties>>,
+  layers: Map<VizLayerId, VizLayer>,
+  backend: VizEngineBackend<TProperties>,
+  options: VizObjectComputeFrameOptions,
+  layerCache?: Map<string, VizAnyRenderLayer<TProperties>>,
+): VizRenderFrame<TProperties>;
+export function computeVizRenderFrame<TProperties>(
+  datasets: Map<string, VizEngineDatasetRecord<TProperties>>,
+  layers: Map<VizLayerId, VizLayer>,
+  backend: VizEngineBackend<TProperties>,
   options: VizComputeFrameOptions,
-  layerCache?: Map<string, VizRenderLayer<TProperties>>,
-): VizRenderFrame<TProperties> {
+  layerCache?: Map<string, VizAnyRenderLayer<TProperties>>,
+): VizAnyRenderFrame<TProperties> {
   const startedAt = now();
-  const renderLayers: Array<VizRenderLayer<TProperties>> = [];
+  const renderLayers: Array<VizAnyRenderLayer<TProperties>> = [];
   const usedIndexes: Array<VizEngineDatasetRecord<TProperties>["index"]> = [];
   const diagnostics: VizFrameDiagnostic[] = [];
 
@@ -79,7 +97,7 @@ function computeVizRenderLayer<TProperties>(
   datasetRecord: VizEngineDatasetRecord<TProperties>,
   options: VizComputeFrameOptions,
   diagnostics: VizFrameDiagnostic[],
-): VizRenderLayer<TProperties> | null {
+): VizAnyRenderLayer<TProperties> | null {
   switch (layer.kind) {
     case "binned-series":
     case "histogram":
@@ -108,6 +126,7 @@ function getRenderLayerCacheKey(
     datasetId: layer.datasetId,
     kind: layer.kind,
     layerId,
+    outputMode: options.outputMode ?? "object",
   };
 
   switch (layer.kind) {

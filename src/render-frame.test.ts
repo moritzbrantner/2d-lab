@@ -97,6 +97,106 @@ describe("computeVizRenderFrame", () => {
     ]);
   });
 
+  test("renders compact cartesian frame layers with typed-array payloads", () => {
+    const engine = createVizEngine({ backend: "wasm" });
+    const datasetId = engine.addDataset({ kind: "xy", points });
+
+    engine.addLayer({
+      datasetId,
+      kind: "binned-series",
+      targetBinCount: 4,
+      valueMode: "average",
+      xDomain: [0, 40],
+    });
+    engine.addLayer({ bucketCount: 4, datasetId, kind: "histogram", xDomain: [0, 40] });
+    engine.addLayer({
+      datasetId,
+      kind: "heatmap",
+      xBinCount: 4,
+      xDomain: [0, 40],
+      yBinCount: 4,
+      yDomain: [0, 40],
+    });
+    engine.addLayer({
+      datasetId,
+      kind: "rolling-series",
+      minPeriods: 2,
+      statistic: "mean",
+      windowSize: 3,
+      xDomain: [0, 40],
+    });
+
+    const objectFrame = engine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+    const compactFrame = engine.computeFrame({
+      outputMode: "compact",
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+
+    expect(compactFrame.stats).toMatchObject({
+      backend: "wasm",
+      backendImplementation: "rust-viz-engine-wasm",
+      diagnostics: [],
+      layerCount: 4,
+    });
+    expect(compactFrame.layers.map((layer) => layer.bounds)).toEqual(
+      objectFrame.layers.map((layer) => layer.bounds),
+    );
+    expect(compactFrame.layers[0]).toMatchObject({
+      kind: "binned-series",
+      outputMode: "compact",
+    });
+    expect(
+      compactFrame.layers[0]?.kind === "binned-series" && "compactSeries" in compactFrame.layers[0]
+        ? [...compactFrame.layers[0].compactSeries.pointCount]
+        : [],
+    ).toEqual([1, 1, 1, 2]);
+    expect(
+      compactFrame.layers[1]?.kind === "histogram" && "compactHistogram" in compactFrame.layers[1]
+        ? [...compactFrame.layers[1].compactHistogram.pointCount]
+        : [],
+    ).toEqual([3, 1, 0, 1]);
+    expect(
+      compactFrame.layers[2]?.kind === "heatmap" && "compactHeatmap" in compactFrame.layers[2]
+        ? compactFrame.layers[2].compactHeatmap.pointCount.length
+        : 0,
+    ).toBe(16);
+    expect(
+      compactFrame.layers[3]?.kind === "rolling-series" &&
+        "compactRollingSeries" in compactFrame.layers[3]
+        ? [...compactFrame.layers[3].compactRollingSeries.y]
+        : [],
+    ).toEqual([Number.NaN, 3, 14 / 3, 28 / 3, 56 / 3]);
+  });
+
+  test("auto backend promotes to wasm for compact cartesian frames", () => {
+    const engine = createVizEngine({ backend: "auto" });
+    const datasetId = engine.addDataset({ kind: "xy", points });
+
+    engine.addLayer({
+      datasetId,
+      kind: "binned-series",
+      targetBinCount: 4,
+      valueMode: "average",
+      xDomain: [0, 40],
+    });
+
+    const objectFrame = engine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+    const compactFrame = engine.computeFrame({
+      outputMode: "compact",
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+
+    expect(objectFrame.stats.backend).toBe("js");
+    expect(compactFrame.stats).toMatchObject({
+      backend: "wasm",
+      backendImplementation: "rust-viz-engine-wasm",
+    });
+  });
+
   test("creates render rows for every value mode", () => {
     const sample = {
       averageY: 4,

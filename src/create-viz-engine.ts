@@ -3,8 +3,11 @@ import { createVizEngineBackend } from "./js-backend";
 import { computeVizRenderFrame } from "./render-frame";
 
 import type {
+  VizAnyRenderFrame,
+  VizAnyRenderLayer,
   VizBackendOption,
-  VizComputeFrameOptions,
+  VizCompactComputeFrameOptions,
+  VizCompactRenderFrame,
   VizDataset,
   VizDatasetId,
   VizEngine,
@@ -13,6 +16,7 @@ import type {
   VizHitTestResult,
   VizLayer,
   VizLayerId,
+  VizObjectComputeFrameOptions,
   VizRenderFrame,
 } from "./types";
 
@@ -26,14 +30,29 @@ export function createVizEngine<TProperties = Record<string, unknown>>(
   const backend = createVizEngineBackend<TProperties>(options.backend ?? "auto");
   const datasets = new Map<VizDatasetId, VizEngineDatasetRecord<TProperties>>();
   const layers = new Map<VizLayerId, VizLayer>();
-  const layerCache = new Map<string, VizRenderFrame<TProperties>["layers"][number]>();
+  const layerCache = new Map<string, VizAnyRenderLayer<TProperties>>();
   let nextDatasetId = 0;
   let nextLayerId = 0;
-  let lastFrame: VizRenderFrame<TProperties> | null = null;
+  let lastFrame: VizAnyRenderFrame<TProperties> | null = null;
 
   function invalidateFrames() {
     layerCache.clear();
     lastFrame = null;
+  }
+
+  function computeFrame(
+    frameOptions: VizCompactComputeFrameOptions,
+  ): VizCompactRenderFrame<TProperties>;
+  function computeFrame(frameOptions: VizObjectComputeFrameOptions): VizRenderFrame<TProperties>;
+  function computeFrame(
+    frameOptions: VizCompactComputeFrameOptions | VizObjectComputeFrameOptions,
+  ): VizAnyRenderFrame<TProperties> {
+    lastFrame =
+      frameOptions.outputMode === "compact"
+        ? computeVizRenderFrame(datasets, layers, backend, frameOptions, layerCache)
+        : computeVizRenderFrame(datasets, layers, backend, frameOptions, layerCache);
+
+    return lastFrame;
   }
 
   return {
@@ -58,11 +77,7 @@ export function createVizEngine<TProperties = Record<string, unknown>>(
       return layerId;
     },
 
-    computeFrame(frameOptions: VizComputeFrameOptions) {
-      lastFrame = computeVizRenderFrame(datasets, layers, backend, frameOptions, layerCache);
-
-      return lastFrame;
-    },
+    computeFrame,
 
     getDatasetCount() {
       return datasets.size;

@@ -58,8 +58,13 @@ writeFileSync(
   [
     "export class VizEngineWasmDensityIndex {",
     "  constructor(input: unknown);",
+    "  static fromArrays(x: Float64Array, y: Float64Array, sourceIndices: Uint32Array, metricKeys: readonly string[], metrics: Float64Array, metricCount: number, ids: readonly string[], labels: readonly string[]): VizEngineWasmDensityIndex;",
     "  free(): void;",
     "  getBinnedSeries(query: unknown): unknown;",
+    "  getCompactChartSeries(xMin: number, xMax: number, targetBinCount: number, includeEmptyBins: boolean, valueMode: string): unknown;",
+    "  getCompactHeatmap(xMin: number, xMax: number, xBinCount: number, yBinCount: number, includeEmptyCells: boolean, yMin: number, yMax: number): unknown;",
+    "  getCompactHistogram(bucketCount: number, includeEmptyBuckets: boolean, xMin: number, xMax: number, valueMin: number, valueMax: number): unknown;",
+    "  getCompactRollingSeries(xMin: number, xMax: number, windowSize: number, minPeriods: number, alpha: number, statistic: string): unknown;",
     "  getHeatmap(query: unknown): unknown;",
     "  getHistogram(query: unknown): unknown;",
     "  getRollingSeries(query: unknown): unknown;",

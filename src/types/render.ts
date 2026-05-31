@@ -1,6 +1,10 @@
 import type {
   VizBackendOption,
   VizBackendImplementation,
+  VizCompactDensitySeries,
+  VizCompactHeatmap,
+  VizCompactHistogram,
+  VizCompactRollingSeries,
   VizDensityIndex,
   VizDensitySample,
   VizDensitySeries,
@@ -164,9 +168,17 @@ export type VizGeoViewport = {
 
 export type VizViewport = VizCartesianViewport | VizGeoViewport;
 
-export type VizComputeFrameOptions = {
+export type VizObjectComputeFrameOptions = {
+  outputMode?: "object";
   viewport: VizViewport;
 };
+
+export type VizCompactComputeFrameOptions = {
+  outputMode: "compact";
+  viewport: VizViewport;
+};
+
+export type VizComputeFrameOptions = VizObjectComputeFrameOptions | VizCompactComputeFrameOptions;
 
 export type VizRenderDatum<TProperties = Record<string, unknown>> = {
   average: number | null;
@@ -273,6 +285,46 @@ export type VizRenderLayer<TProperties = Record<string, unknown>> =
       rows: Array<VizRenderDatum<TProperties>>;
     };
 
+export type VizCompactCartesianRenderLayer =
+  | {
+      bounds: VizRenderBounds | null;
+      compactSeries: VizCompactDensitySeries;
+      datasetId: VizDatasetId;
+      kind: "binned-series";
+      layerId: VizLayerId;
+      outputMode: "compact";
+      valueMode: VizValueMode;
+    }
+  | {
+      bounds: VizRenderBounds | null;
+      compactHistogram: VizCompactHistogram;
+      datasetId: VizDatasetId;
+      kind: "histogram";
+      layerId: VizLayerId;
+      outputMode: "compact";
+    }
+  | {
+      bounds: VizRenderBounds | null;
+      compactHeatmap: VizCompactHeatmap;
+      datasetId: VizDatasetId;
+      kind: "heatmap";
+      layerId: VizLayerId;
+      outputMode: "compact";
+    }
+  | {
+      bounds: VizRenderBounds | null;
+      compactRollingSeries: VizCompactRollingSeries;
+      datasetId: VizDatasetId;
+      kind: "rolling-series";
+      layerId: VizLayerId;
+      outputMode: "compact";
+      statistic: VizRollingStatistic;
+    };
+
+export type VizAnyRenderLayer<TProperties = Record<string, unknown>> =
+  | VizRenderLayer<TProperties>
+  | VizCompactCartesianRenderLayer;
+
 export type VizFrameDiagnostic = {
   code: string;
   layerId?: VizLayerId;
@@ -291,6 +343,17 @@ export type VizRenderFrame<TProperties = Record<string, unknown>> = {
     layerCount: number;
   };
 };
+
+export type VizCompactRenderFrame<TProperties = Record<string, unknown>> = Omit<
+  VizRenderFrame<TProperties>,
+  "layers"
+> & {
+  layers: Array<VizRenderLayer<TProperties> | VizCompactCartesianRenderLayer>;
+};
+
+export type VizAnyRenderFrame<TProperties = Record<string, unknown>> =
+  | VizRenderFrame<TProperties>
+  | VizCompactRenderFrame<TProperties>;
 
 export type VizHitTestOptions = {
   viewport?: VizViewport;
@@ -340,7 +403,8 @@ export type VizHitTestResult<TProperties = Record<string, unknown>> =
 export type VizEngine<TProperties = Record<string, unknown>> = {
   addDataset(dataset: VizDataset<TProperties>): VizDatasetId;
   addLayer(layer: VizLayer): VizLayerId;
-  computeFrame(options: VizComputeFrameOptions): VizRenderFrame<TProperties>;
+  computeFrame(options: VizCompactComputeFrameOptions): VizCompactRenderFrame<TProperties>;
+  computeFrame(options: VizObjectComputeFrameOptions): VizRenderFrame<TProperties>;
   getDatasetCount(): number;
   getLayerCount(): number;
   hitTest(options: VizHitTestOptions): VizHitTestResult<TProperties> | null;

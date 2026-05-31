@@ -1,7 +1,13 @@
-import type { VizHitTestOptions, VizHitTestResult, VizRenderFrame } from "./types";
+import type {
+  VizAnyRenderFrame,
+  VizCompactDensitySeries,
+  VizCompactRollingSeries,
+  VizHitTestOptions,
+  VizHitTestResult,
+} from "./types";
 
 export function hitTestVizFrame<TProperties = Record<string, unknown>>(
-  frame: VizRenderFrame<TProperties> | null,
+  frame: VizAnyRenderFrame<TProperties> | null,
   options: VizHitTestOptions,
 ): VizHitTestResult<TProperties> | null {
   if (!frame || !options.viewport) {
@@ -19,21 +25,25 @@ export function hitTestVizFrame<TProperties = Record<string, unknown>>(
   for (const layer of frame.layers) {
     const samples =
       layer.kind === "binned-series"
-        ? layer.series.samples.map((sample) => ({
-            pointCount: sample.pointCount,
-            sampleIndex: sample.index,
-            sourcePointId: sample.firstPoint?.id ?? sample.lastPoint?.id ?? null,
-            x: sample.x,
-            y: sample.y,
-          }))
-        : layer.kind === "rolling-series"
-          ? layer.series.points.map((point) => ({
-              pointCount: point.pointCount,
-              sampleIndex: point.index,
-              sourcePointId: point.sourcePoint?.id ?? null,
-              x: point.x,
-              y: point.y,
+        ? "compactSeries" in layer
+          ? compactBinnedSamples(layer.compactSeries)
+          : layer.series.samples.map((sample) => ({
+              pointCount: sample.pointCount,
+              sampleIndex: sample.index,
+              sourcePointId: sample.firstPoint?.id ?? sample.lastPoint?.id ?? null,
+              x: sample.x,
+              y: sample.y,
             }))
+        : layer.kind === "rolling-series"
+          ? "compactRollingSeries" in layer
+            ? compactRollingSamples(layer.compactRollingSeries)
+            : layer.series.points.map((point) => ({
+                pointCount: point.pointCount,
+                sampleIndex: point.index,
+                sourcePointId: point.sourcePoint?.id ?? null,
+                x: point.x,
+                y: point.y,
+              }))
           : [];
 
     for (const sample of samples) {
@@ -62,8 +72,28 @@ export function hitTestVizFrame<TProperties = Record<string, unknown>>(
   return nearest;
 }
 
+function compactBinnedSamples(series: VizCompactDensitySeries) {
+  return Array.from({ length: series.y.length }, (_, index) => ({
+    pointCount: series.pointCount[index] ?? 0,
+    sampleIndex: index,
+    sourcePointId: null,
+    x: (series.x0[index]! + series.x1[index]!) / 2,
+    y: Number.isFinite(series.y[index]) ? series.y[index]! : null,
+  }));
+}
+
+function compactRollingSamples(series: VizCompactRollingSeries) {
+  return Array.from({ length: series.y.length }, (_, index) => ({
+    pointCount: series.pointCount[index] ?? 0,
+    sampleIndex: index,
+    sourcePointId: null,
+    x: series.x[index]!,
+    y: Number.isFinite(series.y[index]) ? series.y[index]! : null,
+  }));
+}
+
 function hitTestGeoFrame<TProperties>(
-  frame: VizRenderFrame<TProperties>,
+  frame: VizAnyRenderFrame<TProperties>,
   options: VizHitTestOptions,
 ): VizHitTestResult<TProperties> | null {
   if (!options.viewport || options.viewport.kind !== "geo") {

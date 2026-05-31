@@ -1,10 +1,10 @@
 import { createPreparedFrame } from "../adapters/viz-engine";
 import { formatSize } from "../config";
 import { createXyFixture } from "../fixtures/xy";
-import { assertPositive, createCaseId } from "./utils";
+import { assert, assertPositive, createCaseId } from "./utils";
 
 import type { BenchmarkCase, BenchmarkConfig } from "../types";
-import type { VizBackendOption, VizLayer } from "../../src/types";
+import type { VizBackendOption, VizComputeFrameOptions, VizLayer } from "../../src/types";
 
 export function createFrameCases(config: BenchmarkConfig): BenchmarkCase[] {
   const cases: BenchmarkCase[] = [];
@@ -42,14 +42,32 @@ export function createFrameCases(config: BenchmarkConfig): BenchmarkCase[] {
       },
     ];
 
-    for (const backend of ["js", "wasm", "auto"] as const) {
-      cases.push(createFirstFrameCase(backend, sizeLabel, size, fixture, layers));
-      cases.push(
-        createRepeatedFrameCase(backend, "same-viewport", sizeLabel, size, fixture, layers),
-      );
-      cases.push(
-        createRepeatedFrameCase(backend, "shifting-viewport", sizeLabel, size, fixture, layers),
-      );
+    for (const outputMode of ["object", "compact"] as const) {
+      for (const backend of ["js", "wasm", "auto"] as const) {
+        cases.push(createFirstFrameCase(backend, outputMode, sizeLabel, size, fixture, layers));
+        cases.push(
+          createRepeatedFrameCase(
+            backend,
+            outputMode,
+            "same-viewport",
+            sizeLabel,
+            size,
+            fixture,
+            layers,
+          ),
+        );
+        cases.push(
+          createRepeatedFrameCase(
+            backend,
+            outputMode,
+            "shifting-viewport",
+            sizeLabel,
+            size,
+            fixture,
+            layers,
+          ),
+        );
+      }
     }
   }
 
@@ -58,6 +76,7 @@ export function createFrameCases(config: BenchmarkConfig): BenchmarkCase[] {
 
 function createFirstFrameCase(
   backend: VizBackendOption,
+  outputMode: NonNullable<VizComputeFrameOptions["outputMode"]>,
   sizeLabel: string,
   size: number,
   fixture: ReturnType<typeof createXyFixture>,
@@ -65,7 +84,7 @@ function createFirstFrameCase(
 ): BenchmarkCase {
   return {
     category: "frame",
-    id: createCaseId(["frame", "first", sizeLabel, backend]),
+    id: createCaseId(["frame", outputMode, "first", sizeLabel, backend]),
     implementation: `viz-engine ${backend}`,
     prepare: () => null,
     run: () =>
@@ -73,6 +92,7 @@ function createFirstFrameCase(
         backend,
         dataset: { kind: "xy", points: fixture.points },
         frameOptions: {
+          outputMode,
           viewport: { height: 360, width: 960, xDomain: fixture.domains.viewport },
         },
         layers,
@@ -84,18 +104,21 @@ function createFirstFrameCase(
         backend,
         dataset: { kind: "xy", points: fixture.points },
         frameOptions: {
+          outputMode,
           viewport: { height: 360, width: 960, xDomain: fixture.domains.viewport },
         },
         layers,
       }).compute();
       assertPositive(frame.layers.length, "first frame layer count");
+      assertFrameOutputMode(frame, outputMode);
     },
-    workload: "computeFrame/first",
+    workload: `computeFrame/${outputMode}/first`,
   };
 }
 
 function createRepeatedFrameCase(
   backend: VizBackendOption,
+  outputMode: NonNullable<VizComputeFrameOptions["outputMode"]>,
   mode: "same-viewport" | "shifting-viewport",
   sizeLabel: string,
   size: number,
@@ -106,13 +129,14 @@ function createRepeatedFrameCase(
 
   return {
     category: "frame",
-    id: createCaseId(["frame", mode, sizeLabel, backend]),
+    id: createCaseId(["frame", outputMode, mode, sizeLabel, backend]),
     implementation: `viz-engine ${backend}`,
     prepare: () =>
       createPreparedFrame({
         backend,
         dataset: { kind: "xy", points: fixture.points },
         frameOptions: {
+          outputMode,
           viewport: { height: 360, width: 960, xDomain: fixture.domains.viewport },
         },
         layers,
@@ -127,6 +151,7 @@ function createRepeatedFrameCase(
       const start =
         fixture.domains.full[0] + ((offset++ % 20) / 20) * (fixture.domains.full[1] - span);
       return frame.engine.computeFrame({
+        outputMode,
         viewport: {
           height: 360,
           width: 960,
@@ -139,7 +164,28 @@ function createRepeatedFrameCase(
     validate: (prepared) => {
       const frame = (prepared as ReturnType<typeof createPreparedFrame>).compute();
       assertPositive(frame.layers.length, "repeated frame layer count");
+      assertFrameOutputMode(frame, outputMode);
     },
-    workload: `computeFrame/${mode}`,
+    workload: `computeFrame/${outputMode}/${mode}`,
   };
+}
+
+function assertFrameOutputMode(
+  frame: ReturnType<ReturnType<typeof createPreparedFrame>["compute"]>,
+  outputMode: NonNullable<VizComputeFrameOptions["outputMode"]>,
+) {
+  if (outputMode === "object") {
+    return;
+  }
+
+  for (const layer of frame.layers) {
+    if (
+      layer.kind === "binned-series" ||
+      layer.kind === "histogram" ||
+      layer.kind === "heatmap" ||
+      layer.kind === "rolling-series"
+    ) {
+      assert("outputMode" in layer && layer.outputMode === "compact", "compact frame layer");
+    }
+  }
 }
