@@ -41,6 +41,22 @@ export class ProgressiveVizDensityIndex<
     return this.activeIndex.getChartSeries(query);
   }
 
+  getCompactChartSeries(query: VizDensityQuery) {
+    return this.activeIndex.getCompactChartSeries(query);
+  }
+
+  getCompactHeatmap(query: VizHeatmapQuery) {
+    return this.activeIndex.getCompactHeatmap(query);
+  }
+
+  getCompactHistogram(query: VizHistogramQuery) {
+    return this.activeIndex.getCompactHistogram(query);
+  }
+
+  getCompactRollingSeries(query: VizRollingSeriesQuery) {
+    return this.activeIndex.getCompactRollingSeries(query);
+  }
+
   getHeatmap(query: VizHeatmapQuery) {
     return this.activeIndex.getHeatmap(query);
   }

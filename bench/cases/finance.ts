@@ -67,6 +67,40 @@ export function createFinanceCases(config: BenchmarkConfig): BenchmarkCase[] {
         });
       }
 
+      for (const implementation of ["js", "wasm-fallback"] as const) {
+        cases.push({
+          category: "finance",
+          id: createCaseId([
+            "finance",
+            "downsample-compact",
+            query.name,
+            sizeLabel,
+            implementation,
+          ]),
+          implementation: `viz-engine ${implementation} compact`,
+          notes:
+            implementation === "wasm-fallback"
+              ? ["Finance WASM class currently delegates to the JS implementation."]
+              : [],
+          prepare: () =>
+            implementation === "js"
+              ? new JsVizFinanceIndex(fixture.dataset)
+              : new WasmVizFinanceIndex(fixture.dataset),
+          run: (prepared) =>
+            (prepared as JsVizFinanceIndex | WasmVizFinanceIndex).getCompactDownsampledBars(query),
+          size: sizeLabel,
+          sizeValue: size,
+          validate: (prepared) => {
+            const output = (
+              prepared as JsVizFinanceIndex | WasmVizFinanceIndex
+            ).getCompactDownsampledBars(query);
+            assertPositive(output.summary.barCount, "compact downsampled bar count");
+            assertPositive(output.open[0] ?? 0, "compact first open");
+          },
+          workload: `ohlcv-downsample-compact/${query.name}`,
+        });
+      }
+
       cases.push({
         category: "finance",
         external: true,
@@ -133,6 +167,33 @@ export function createFinanceCases(config: BenchmarkConfig): BenchmarkCase[] {
             assertPositive(output.summary.sampleCount, "viz-engine returns sample count");
           },
           workload: `returns/${query.name}`,
+        });
+      }
+
+      for (const implementation of ["js", "wasm-fallback"] as const) {
+        cases.push({
+          category: "finance",
+          id: createCaseId(["finance", "returns-compact", query.name, sizeLabel, implementation]),
+          implementation: `viz-engine ${implementation} compact`,
+          notes:
+            implementation === "wasm-fallback"
+              ? ["Finance WASM class currently delegates to the JS implementation."]
+              : [],
+          prepare: () =>
+            implementation === "js"
+              ? new JsVizFinanceIndex(fixture.dataset)
+              : new WasmVizFinanceIndex(fixture.dataset),
+          run: (prepared) =>
+            (prepared as JsVizFinanceIndex | WasmVizFinanceIndex).getCompactReturns(query),
+          size: sizeLabel,
+          sizeValue: size,
+          validate: (prepared) => {
+            const output = (prepared as JsVizFinanceIndex | WasmVizFinanceIndex).getCompactReturns(
+              query,
+            );
+            assertPositive(output.summary.sampleCount, "compact returns sample count");
+          },
+          workload: `returns-compact/${query.name}`,
         });
       }
 

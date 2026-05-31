@@ -69,6 +69,13 @@ describe("RustWasmVizDensityIndex", () => {
     expect(publicResults(wasm)).toEqual(publicResults(js));
   });
 
+  test("matches JS compact density outputs", () => {
+    const js = new JsVizDensityIndex(points);
+    const wasm = new RustWasmVizDensityIndex(points);
+
+    expect(compactResults(wasm)).toEqual(compactResults(js));
+  });
+
   test("handles empty input like the JS density index", () => {
     expect(publicResults(new RustWasmVizDensityIndex([]))).toEqual(
       publicResults(new JsVizDensityIndex([])),
@@ -198,6 +205,72 @@ function publicResults(index: VizDensityIndex) {
           y: sample.y,
         })),
     ),
+  };
+}
+
+function compactResults(index: VizDensityIndex) {
+  const chart = index.getCompactChartSeries({
+    includeEmptyBins: true,
+    targetBinCount: 4,
+    valueMode: "average",
+    xDomain: [0, 40],
+  });
+  const histogram = index.getCompactHistogram({
+    bucketCount: 4,
+    includeEmptyBuckets: true,
+    xDomain: [0, 40],
+  });
+  const heatmap = index.getCompactHeatmap({
+    includeEmptyCells: false,
+    xBinCount: 4,
+    xDomain: [0, 40],
+    yBinCount: 4,
+  });
+  const rolling = index.getCompactRollingSeries({
+    alpha: 0.5,
+    minPeriods: 2,
+    statistic: "zScore",
+    windowSize: 3,
+    xDomain: [0, 40],
+  });
+
+  return {
+    chart: {
+      firstPointIndex: [...chart.firstPointIndex],
+      lastPointIndex: [...chart.lastPointIndex],
+      pointCount: [...chart.pointCount],
+      sumY: [...chart.sumY],
+      x0: [...chart.x0],
+      x1: [...chart.x1],
+      y: [...chart.y],
+      summary: chart.summary,
+    },
+    heatmap: {
+      firstPointIndex: [...heatmap.firstPointIndex],
+      lastPointIndex: [...heatmap.lastPointIndex],
+      pointCount: [...heatmap.pointCount],
+      sumValue: [...heatmap.sumValue],
+      value: [...heatmap.value],
+      xIndex: [...heatmap.xIndex],
+      yIndex: [...heatmap.yIndex],
+      summary: heatmap.summary,
+    },
+    histogram: {
+      firstPointIndex: [...histogram.firstPointIndex],
+      lastPointIndex: [...histogram.lastPointIndex],
+      pointCount: [...histogram.pointCount],
+      sumValue: [...histogram.sumValue],
+      value0: [...histogram.value0],
+      value1: [...histogram.value1],
+      summary: histogram.summary,
+    },
+    rolling: {
+      pointCount: [...rolling.pointCount],
+      sourcePointIndex: [...rolling.sourcePointIndex],
+      x: [...rolling.x],
+      y: [...rolling.y],
+      summary: rolling.summary,
+    },
   };
 }
 

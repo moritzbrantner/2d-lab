@@ -43,7 +43,8 @@ impl VizDensityIndex {
         let x_domain = normalize_domain(query.x_domain);
         let bin_count = clamp_count(query.target_bin_count);
         let width = bin_width(x_domain, bin_count);
-        let requested_percentiles = resolve_requested_percentiles(&query.percentiles, query.value_mode);
+        let requested_percentiles =
+            resolve_requested_percentiles(&query.percentiles, query.value_mode);
         let mut bins: Vec<_> = (0..bin_count)
             .map(|index| self.empty_bin(index, bin_count, x_domain, width))
             .collect();
@@ -367,9 +368,10 @@ impl VizDensityIndex {
     }
 
     fn points_in_x_domain(&self, x_domain: [f64; 2]) -> impl Iterator<Item = &VizSeriesPoint> {
-        self.points
-            .iter()
-            .filter(move |point| point.x >= x_domain[0] && point.x <= x_domain[1])
+        let start = lower_bound_x(&self.points, x_domain[0]);
+        let end = upper_bound_x(&self.points, x_domain[1]);
+
+        self.points[start..end].iter()
     }
 
     fn empty_metrics(&self) -> BTreeMap<String, f64> {
@@ -711,6 +713,38 @@ fn normalize_metrics(mut metrics: Vec<f64>, metric_count: usize) -> Vec<f64> {
         .collect()
 }
 
+fn lower_bound_x(points: &[VizSeriesPoint], value: f64) -> usize {
+    let mut low = 0;
+    let mut high = points.len();
+
+    while low < high {
+        let mid = low + (high - low) / 2;
+        if points[mid].x < value {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+
+    low
+}
+
+fn upper_bound_x(points: &[VizSeriesPoint], value: f64) -> usize {
+    let mut low = 0;
+    let mut high = points.len();
+
+    while low < high {
+        let mid = low + (high - low) / 2;
+        if points[mid].x <= value {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+
+    low
+}
+
 fn derive_domain(values: impl Iterator<Item = f64>) -> [f64; 2] {
     let mut finite = values.filter(|value| value.is_finite());
     let Some(first) = finite.next() else {
@@ -821,6 +855,49 @@ mod tests {
                 keys: vec!["count".to_string(), "weight".to_string()],
             },
         )
+    }
+
+    #[test]
+    fn x_bounds_handle_empty_duplicate_and_inclusive_end_values() {
+        let empty = Vec::<VizSeriesPoint>::new();
+        let points = vec![
+            point("a", 0.0, 0.0, 0),
+            point("b", 10.0, 10.0, 1),
+            point("c", 10.0, 10.0, 2),
+            point("d", 20.0, 20.0, 3),
+        ];
+
+        assert_eq!(lower_bound_x(&empty, 10.0), 0);
+        assert_eq!(upper_bound_x(&empty, 10.0), 0);
+        assert_eq!(lower_bound_x(&points, 10.0), 1);
+        assert_eq!(upper_bound_x(&points, 10.0), 3);
+        assert_eq!(lower_bound_x(&points, -1.0), 0);
+        assert_eq!(upper_bound_x(&points, 99.0), points.len());
+    }
+
+    #[test]
+    fn x_domain_queries_keep_inclusive_upper_bound_after_normalization() {
+        let index = VizDensityIndex::new(
+            vec![
+                point("a", 0.0, 0.0, 0),
+                point("b", 10.0, 10.0, 1),
+                point("c", 20.0, 20.0, 2),
+            ],
+            VizMetricSchema::default(),
+        );
+        let series = index.get_binned_series(VizBinnedSeriesQuery {
+            include_empty_bins: false,
+            percentiles: vec![],
+            target_bin_count: 2,
+            value_mode: VizValueMode::Average,
+            x_domain: [20.0, 10.0],
+        });
+
+        assert_eq!(series.summary.point_count, 2);
+        assert_eq!(
+            series.bins.iter().map(|bin| bin.point_count).sum::<usize>(),
+            2
+        );
     }
 
     #[test]

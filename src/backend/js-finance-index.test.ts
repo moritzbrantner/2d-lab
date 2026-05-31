@@ -57,6 +57,33 @@ describe("JsVizFinanceIndex", () => {
     expect(index.getRiskSummary({ priceMode: "adjusted" }).annualizedVolatility).toBeGreaterThan(0);
   });
 
+  test("computes compact returns and compact downsampled bars", () => {
+    const index = new JsVizFinanceIndex(dataset);
+    const compactBars = index.getCompactDownsampledBars({ targetBarCount: 2, xDomain: [1, 4] });
+    const objectBars = index.getDownsampledBars({ targetBarCount: 2, xDomain: [1, 4] });
+    const compactReturns = index.getCompactReturns({
+      method: "simple",
+      targetPointCount: 2,
+      xDomain: [1, 4],
+    });
+    const objectReturns = index.getReturns({
+      method: "simple",
+      targetPointCount: 2,
+      xDomain: [1, 4],
+    });
+
+    expect([...compactBars.open]).toEqual(objectBars.map((bar) => bar.open));
+    expect([...compactBars.high]).toEqual(objectBars.map((bar) => bar.high));
+    expect([...compactBars.low]).toEqual(objectBars.map((bar) => bar.low));
+    expect([...compactBars.close]).toEqual(objectBars.map((bar) => bar.close));
+    expect(compactBars.summary.barCount).toBe(objectBars.length);
+    expect([...compactReturns.pointCount]).toEqual(
+      objectReturns.samples.map((sample) => sample.pointCount),
+    );
+    expect([...compactReturns.x]).toEqual(objectReturns.samples.map((sample) => sample.x));
+    expect([...compactReturns.y]).toEqual(objectReturns.samples.map((sample) => sample.y));
+  });
+
   test("computes adjusted log returns over partial domains with downsampling", () => {
     const index = new JsVizFinanceIndex(dataset);
     const returns = index.getReturns({

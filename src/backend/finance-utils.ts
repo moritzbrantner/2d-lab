@@ -6,6 +6,8 @@ import type {
   VizFinanceRiskQuery,
   VizFinanceRiskSummary,
   VizFinancialInstrument,
+  VizCompactFinanceReturns,
+  VizCompactOhlcvBars,
   VizIndexedSeriesPoint,
   VizOhlcvBar,
   VizRenderBounds,
@@ -135,10 +137,57 @@ export function downsampleOhlcvBars<TProperties>(
   for (let bucketIndex = 0; bucketIndex < bucketCount; bucketIndex++) {
     const start = Math.floor((bucketIndex * bars.length) / bucketCount);
     const end = Math.max(start + 1, Math.floor(((bucketIndex + 1) * bars.length) / bucketCount));
-    downsampled.push(aggregateOhlcvBucket(bars.slice(start, end)));
+    downsampled.push(aggregateOhlcvRange(bars, start, end));
   }
 
   return downsampled;
+}
+
+export function compactOhlcvBars<TProperties>(
+  bars: readonly VizOhlcvBar<TProperties>[],
+  xDomain: [number, number],
+): VizCompactOhlcvBars {
+  const adjustedClose = filledFloat64Array(bars.length, Number.NaN);
+  const close = new Float64Array(bars.length);
+  const high = new Float64Array(bars.length);
+  const low = new Float64Array(bars.length);
+  const open = new Float64Array(bars.length);
+  const timestamp = new Float64Array(bars.length);
+  const volume = filledFloat64Array(bars.length, Number.NaN);
+
+  for (const [index, bar] of bars.entries()) {
+    adjustedClose[index] = bar.adjustedClose ?? Number.NaN;
+    close[index] = bar.close;
+    high[index] = bar.high;
+    low[index] = bar.low;
+    open[index] = bar.open;
+    timestamp[index] = bar.timestamp;
+    volume[index] = bar.volume ?? Number.NaN;
+  }
+
+  return {
+    adjustedClose,
+    close,
+    high,
+    low,
+    open,
+    timestamp,
+    volume,
+    summary: {
+      barCount: bars.length,
+      xDomain,
+    },
+  };
+}
+
+export function downsampleOhlcvBarsCompact<TProperties>(
+  bars: readonly VizOhlcvBar<TProperties>[],
+  query: { targetBarCount: number; xDomain: [number, number] },
+): VizCompactOhlcvBars {
+  return compactOhlcvBars(
+    downsampleOhlcvBars(barsInRange(bars, query.xDomain), query.targetBarCount),
+    query.xDomain,
+  );
 }
 
 export function createFinanceReturnSeries<TProperties>(
@@ -185,6 +234,61 @@ export function createFinanceReturnSeries<TProperties>(
       pointCount: bins.reduce((sum, bin) => sum + bin.pointCount, 0),
       sampleCount: samples.length,
       valueMode: "average",
+      xDomain: query.xDomain,
+    },
+  };
+}
+
+export function createCompactFinanceReturnSeries<TProperties>(
+  bars: readonly VizOhlcvBar<TProperties>[],
+  query: VizFinanceReturnsQuery,
+  range: { end: number; start: number } = {
+    end: upperBoundTimestamp(bars, query.xDomain[1]),
+    start: lowerBoundTimestamp(bars, query.xDomain[0]),
+  },
+): VizCompactFinanceReturns {
+  const method = query.method ?? "simple";
+  const priceMode = query.priceMode ?? "raw";
+  const start = Math.max(0, Math.min(bars.length, range.start));
+  const end = Math.max(start, Math.min(bars.length, range.end));
+  const returnCount = Math.max(0, end - start - 1);
+  const targetPointCount = Math.max(1, query.targetPointCount ?? (returnCount || 1));
+  const bucketCount = returnCount > targetPointCount ? targetPointCount : returnCount;
+  const x = new Float64Array(bucketCount);
+  const y = filledFloat64Array(bucketCount, Number.NaN);
+  const pointCount = new Uint32Array(bucketCount);
+  const sums = new Float64Array(bucketCount);
+  let bucketIndex = 0;
+  let bucketEnd = returnBucketEnd(bucketIndex, returnCount, bucketCount);
+
+  for (let returnIndex = 0; returnIndex < returnCount; returnIndex++) {
+    const previous = financeReturnPrice(bars[start + returnIndex]!, priceMode);
+    const current = financeReturnPrice(bars[start + returnIndex + 1]!, priceMode);
+    const value = method === "log" ? Math.log(current / previous) : current / previous - 1;
+
+    while (returnIndex >= bucketEnd && bucketIndex < bucketCount - 1) {
+      bucketIndex += 1;
+      bucketEnd = returnBucketEnd(bucketIndex, returnCount, bucketCount);
+    }
+
+    x[bucketIndex] = bars[start + returnIndex + 1]?.timestamp ?? returnIndex + 1;
+    pointCount[bucketIndex] += 1;
+    sums[bucketIndex] += value;
+  }
+
+  for (let index = 0; index < bucketCount; index++) {
+    if (pointCount[index]! > 0) {
+      y[index] = sums[index]! / pointCount[index]!;
+    }
+  }
+
+  return {
+    pointCount,
+    x,
+    y,
+    summary: {
+      pointCount: returnCount,
+      sampleCount: bucketCount,
       xDomain: query.xDomain,
     },
   };
@@ -270,8 +374,16 @@ function validatePositivePrice(value: number, name: string) {
 function aggregateOhlcvBucket<TProperties>(
   bars: Array<VizOhlcvBar<TProperties>>,
 ): VizOhlcvBar<TProperties> {
-  const first = bars[0];
-  const last = bars[bars.length - 1];
+  return aggregateOhlcvRange(bars, 0, bars.length);
+}
+
+function aggregateOhlcvRange<TProperties>(
+  bars: readonly VizOhlcvBar<TProperties>[],
+  start: number,
+  end: number,
+): VizOhlcvBar<TProperties> {
+  const first = bars[start];
+  const last = bars[end - 1];
 
   if (!first || !last) {
     throw new TypeError("cannot aggregate an empty OHLCV bucket");
@@ -283,11 +395,12 @@ function aggregateOhlcvBucket<TProperties>(
   let low = first.low;
   let volume = 0;
 
-  for (let index = bars.length - 1; index >= 0 && adjustedClose == null; index--) {
+  for (let index = end - 1; index >= start && adjustedClose == null; index--) {
     adjustedClose = bars[index]?.adjustedClose;
   }
 
-  for (const bar of bars) {
+  for (let index = start; index < end; index++) {
+    const bar = bars[index]!;
     high = Math.max(high, bar.high);
     low = Math.min(low, bar.low);
 
@@ -533,4 +646,10 @@ function maxDrawdown(returns: readonly number[]) {
   }
 
   return result;
+}
+
+function filledFloat64Array(length: number, value: number) {
+  const array = new Float64Array(length);
+  array.fill(value);
+  return array;
 }

@@ -81,6 +81,35 @@ export function createGeoCases(config: BenchmarkConfig): BenchmarkCase[] {
 
       cases.push({
         category: "geo",
+        id: createCaseId(["geo", "clusters-fast", viewport.name, sizeLabel, "viz-engine-js"]),
+        implementation: "viz-engine js fast",
+        prepare: () => new JsVizGeoPointIndex(fixture.points),
+        run: (prepared) =>
+          (prepared as JsVizGeoPointIndex).getViewportAggregation(viewport.query, {
+            fast: true,
+            radius: 72,
+          }),
+        size: sizeLabel,
+        sizeValue: size,
+        validate: (prepared) => {
+          const output = (prepared as JsVizGeoPointIndex).getViewportAggregation(viewport.query, {
+            fast: true,
+            radius: 72,
+          });
+          assertPositive(
+            output.summary.visibleClusterCount + output.summary.visibleUnclusteredCount,
+            "viz-engine fast geo visible feature count",
+          );
+          assertPositive(
+            output.summary.visiblePointCount,
+            "viz-engine fast geo represented point count",
+          );
+        },
+        workload: `clusters-fast/${viewport.name}`,
+      });
+
+      cases.push({
+        category: "geo",
         external: true,
         id: createCaseId(["geo", "clusters", viewport.name, sizeLabel, "supercluster"]),
         implementation: "supercluster",

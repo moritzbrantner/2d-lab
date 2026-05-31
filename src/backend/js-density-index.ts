@@ -2,6 +2,10 @@ import {
   collectMetricKeys,
   createBins,
   createChartSeries,
+  createCompactChartSeries,
+  createCompactHeatmap,
+  createCompactHistogram,
+  createCompactRollingSeries,
   createHeatmap,
   createHistogram,
   createPointLookup,
@@ -56,6 +60,28 @@ export class JsVizDensityIndex<
     return createChartSeries(this.points, this.metricKeys, {
       ...query,
       includeEmptyBins: query.includeEmptyBins ?? false,
+    });
+  }
+
+  getCompactChartSeries(query: VizDensityQuery) {
+    return createCompactChartSeries(this.points, this.metricKeys, {
+      ...query,
+      includeEmptyBins: query.includeEmptyBins ?? false,
+    });
+  }
+
+  getCompactHeatmap(query: VizHeatmapQuery) {
+    return createCompactHeatmap(this.points, this.metricKeys, query);
+  }
+
+  getCompactHistogram(query: VizHistogramQuery) {
+    return createCompactHistogram(this.points, this.metricKeys, query);
+  }
+
+  getCompactRollingSeries(query: VizRollingSeriesQuery) {
+    return createCompactRollingSeries(this.points, {
+      ...query,
+      statistic: query.statistic ?? "mean",
     });
   }
 

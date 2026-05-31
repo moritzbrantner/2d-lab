@@ -1,6 +1,8 @@
 import {
   barsInRange,
+  createCompactFinanceReturnSeries,
   createFinanceReturnSeries,
+  downsampleOhlcvBarsCompact,
   downsampleOhlcvBars,
   getFinanceBounds,
   getFinanceRiskSummary,
@@ -48,6 +50,17 @@ export class JsVizFinanceIndex<
 
   getBounds(): VizRenderBounds | null {
     return getFinanceBounds(this.bars);
+  }
+
+  getCompactDownsampledBars(query: VizFinanceDownsampleQuery) {
+    return downsampleOhlcvBarsCompact(this.bars, query);
+  }
+
+  getCompactReturns(query: VizFinanceReturnsQuery) {
+    return createCompactFinanceReturnSeries(this.bars, query, {
+      end: upperBoundTimestamp(this.bars, query.xDomain[1]),
+      start: lowerBoundTimestamp(this.bars, query.xDomain[0]),
+    });
   }
 
   getDownsampledBars(query: VizFinanceDownsampleQuery): Array<VizOhlcvBar<TProperties>> {

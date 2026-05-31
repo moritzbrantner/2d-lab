@@ -1,13 +1,9 @@
 import { priceValue } from "../backend/finance-utils";
-import {
-  createVizRenderRows,
-  getFinanceIndex,
-  getSeriesBounds,
-  isCartesianViewport,
-} from "./utils";
+import { getFinanceIndex, isCartesianViewport } from "./utils";
 
 import type {
   VizComputeFrameOptions,
+  VizCompactFinanceReturns,
   VizEngineDatasetRecord,
   VizFrameDiagnostic,
   VizLayer,
@@ -79,19 +75,20 @@ export function computeFinanceRenderLayer<TProperties>(
       if (!index || !isCartesianViewport(options.viewport, layerId, diagnostics)) {
         return null;
       }
-      const series = index.getReturns({
+      const returns = index.getCompactReturns({
         method: layer.method,
         priceMode: layer.priceMode,
         targetPointCount: layer.targetPointCount,
         xDomain: layer.xDomain,
       });
+      const rows = createFinanceReturnRows<TProperties>(returns);
 
       return {
-        bounds: getSeriesBounds(series),
+        bounds: getFinanceRowsBounds(rows),
         datasetId: layer.datasetId,
         kind: "finance-returns",
         layerId,
-        rows: createVizRenderRows(series),
+        rows,
       };
     }
   }
@@ -165,4 +162,31 @@ function getFinanceRowsBounds<TProperties>(
   }
 
   return hasRows ? [minX, minY, maxX, maxY] : null;
+}
+
+function createFinanceReturnRows<TProperties>(
+  returns: VizCompactFinanceReturns,
+): Array<VizRenderDatum<TProperties>> {
+  return Array.from({ length: returns.x.length }, (_, index) => {
+    const y = returns.y[index];
+    const value = y == null || Number.isNaN(y) ? null : y;
+    const x = returns.x[index] ?? 0;
+    const pointCount = returns.pointCount[index] ?? 0;
+
+    return {
+      average: value,
+      count: pointCount,
+      index,
+      label: String(x),
+      max: value,
+      metrics: {},
+      min: value,
+      pointCount,
+      sum: value == null ? 0 : value * pointCount,
+      value,
+      x,
+      x0: x,
+      x1: x,
+    };
+  });
 }

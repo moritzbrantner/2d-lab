@@ -161,6 +161,7 @@ dependencies = [
 name = "viz-engine-wasm"
 version = "0.1.0"
 dependencies = [
+ "js-sys",
  "serde",
  "serde-wasm-bindgen",
  "viz-engine-core",

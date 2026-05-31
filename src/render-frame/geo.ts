@@ -34,6 +34,7 @@ export function computeGeoRenderLayer<TProperties>(
           zoom: viewport.zoom,
         },
         {
+          fast: true,
           maxZoom: layer.maxZoom,
           minZoom: layer.minZoom,
           radius: layer.radius,

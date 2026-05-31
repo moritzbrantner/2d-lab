@@ -1,5 +1,10 @@
 import type {
   VizBinnedSeriesQuery,
+  VizCompactDensitySeries,
+  VizCompactHeatmap,
+  VizCompactHistogram,
+  VizCompactMetricArrays,
+  VizCompactRollingSeries,
   VizDensityBin,
   VizDensityQuery,
   VizDensitySample,
@@ -176,6 +181,93 @@ export function createChartSeries<TProperties>(
   };
 }
 
+export function createCompactChartSeries<TProperties>(
+  points: readonly NormalizedSeriesPoint<TProperties>[],
+  metricKeys: readonly string[],
+  query: VizDensityQuery,
+): VizCompactDensitySeries {
+  const valueMode = query.valueMode ?? "average";
+  const percentiles = resolveRequestedPercentiles(query.percentiles, valueMode);
+  if (percentiles.length > 0) {
+    return compactFromDensitySeries(createChartSeries(points, metricKeys, query), metricKeys);
+  }
+
+  const xDomain = normalizeDomain(query.xDomain);
+  const binCount = clampCount(query.targetBinCount);
+  const width = binWidth(xDomain, binCount);
+  const counts = new Uint32Array(binCount);
+  const sums = new Float64Array(binCount);
+  const minY = filledFloat64Array(binCount, Number.NaN);
+  const maxY = filledFloat64Array(binCount, Number.NaN);
+  const firstPointIndex = filledInt32Array(binCount, -1);
+  const lastPointIndex = filledInt32Array(binCount, -1);
+  const metricArrays = createMetricArrays(metricKeys, binCount);
+  const start = lowerBoundX(points, xDomain[0]);
+  const end = upperBoundX(points, xDomain[1]);
+
+  for (let pointIndex = start; pointIndex < end; pointIndex++) {
+    const point = points[pointIndex]!;
+    const index = bucketIndex(point.x, xDomain, binCount);
+    const nextCount = counts[index]! + 1;
+    counts[index] = nextCount;
+    sums[index] += point.y;
+    minY[index] = Number.isNaN(minY[index]!) ? point.y : Math.min(minY[index]!, point.y);
+    maxY[index] = Number.isNaN(maxY[index]!) ? point.y : Math.max(maxY[index]!, point.y);
+    if (firstPointIndex[index] === -1) {
+      firstPointIndex[index] = point.sourceIndex;
+    }
+    lastPointIndex[index] = point.sourceIndex;
+    addMetricArrays(metricArrays, metricKeys, point.metrics, index);
+  }
+
+  const visibleIndexes = query.includeEmptyBins
+    ? Array.from({ length: binCount }, (_, index) => index)
+    : indexesWhere(counts, (count) => count > 0);
+  const output = createCompactDensityArrays(visibleIndexes.length);
+  const outputMetrics = createMetricArrays(metricKeys, visibleIndexes.length);
+
+  for (const [outputIndex, sourceIndex] of visibleIndexes.entries()) {
+    const count = counts[sourceIndex]!;
+    const x0 = xDomain[0] + sourceIndex * width;
+    const x1 = sourceIndex + 1 === binCount ? xDomain[1] : xDomain[0] + (sourceIndex + 1) * width;
+    const averageY = count > 0 ? sums[sourceIndex]! / count : Number.NaN;
+
+    output.x0[outputIndex] = x0;
+    output.x1[outputIndex] = x1;
+    output.averageY[outputIndex] = averageY;
+    output.firstPointIndex[outputIndex] = firstPointIndex[sourceIndex]!;
+    output.lastPointIndex[outputIndex] = lastPointIndex[sourceIndex]!;
+    output.maxY[outputIndex] = maxY[sourceIndex]!;
+    output.minY[outputIndex] = minY[sourceIndex]!;
+    output.pointCount[outputIndex] = count;
+    output.sumY[outputIndex] = sums[sourceIndex]!;
+    output.y[outputIndex] = compactDensityY(valueMode, {
+      averageY,
+      count,
+      maxY: maxY[sourceIndex]!,
+      minY: minY[sourceIndex]!,
+      sumY: sums[sourceIndex]!,
+    });
+
+    for (const metricKey of metricKeys) {
+      outputMetrics[metricKey]![outputIndex] = metricArrays[metricKey]![sourceIndex]!;
+    }
+  }
+
+  return {
+    ...output,
+    metrics: outputMetrics,
+    summary: {
+      binCount: visibleIndexes.length,
+      metricKeys: [...metricKeys],
+      pointCount: sumUint32(output.pointCount),
+      sampleCount: visibleIndexes.length,
+      valueMode,
+      xDomain,
+    },
+  };
+}
+
 export function createHistogram<TProperties>(
   points: readonly NormalizedSeriesPoint<TProperties>[],
   metricKeys: readonly string[],
@@ -222,6 +314,88 @@ export function createHistogram<TProperties>(
       pointCount: visibleBuckets.reduce((sum, bucket) => sum + bucket.pointCount, 0),
       valueDomain,
       xDomain: query.xDomain ? normalizeDomain(query.xDomain) : null,
+    },
+  };
+}
+
+export function createCompactHistogram<TProperties>(
+  points: readonly NormalizedSeriesPoint<TProperties>[],
+  metricKeys: readonly string[],
+  query: VizHistogramQuery,
+): VizCompactHistogram {
+  const bucketCount = clampCount(query.bucketCount);
+  const xDomain = query.xDomain ? normalizeDomain(query.xDomain) : null;
+  const valueAccessor = query.valueAccessor ?? "y";
+  const start = xDomain ? lowerBoundX(points, xDomain[0]) : 0;
+  const end = xDomain ? upperBoundX(points, xDomain[1]) : points.length;
+  const valueDomain = normalizeDomain(
+    query.valueDomain ?? deriveValueDomainFromRange(points, start, end, valueAccessor),
+  );
+  const width = binWidth(valueDomain, bucketCount);
+  const counts = new Uint32Array(bucketCount);
+  const sums = new Float64Array(bucketCount);
+  const minValue = filledFloat64Array(bucketCount, Number.NaN);
+  const maxValue = filledFloat64Array(bucketCount, Number.NaN);
+  const firstPointIndex = filledInt32Array(bucketCount, -1);
+  const lastPointIndex = filledInt32Array(bucketCount, -1);
+  const metricArrays = createMetricArrays(metricKeys, bucketCount);
+
+  for (let pointIndex = start; pointIndex < end; pointIndex++) {
+    const point = points[pointIndex]!;
+    const value = pointAccessorValue(point, valueAccessor);
+    if (!Number.isFinite(value) || value < valueDomain[0] || value > valueDomain[1]) {
+      continue;
+    }
+    const index = bucketIndex(value, valueDomain, bucketCount);
+    const nextCount = counts[index]! + 1;
+    counts[index] = nextCount;
+    sums[index] += value;
+    minValue[index] = Number.isNaN(minValue[index]!) ? value : Math.min(minValue[index]!, value);
+    maxValue[index] = Number.isNaN(maxValue[index]!) ? value : Math.max(maxValue[index]!, value);
+    if (firstPointIndex[index] === -1) {
+      firstPointIndex[index] = point.sourceIndex;
+    }
+    lastPointIndex[index] = point.sourceIndex;
+    addMetricArrays(metricArrays, metricKeys, point.metrics, index);
+  }
+
+  const visibleIndexes =
+    query.includeEmptyBuckets === false
+      ? indexesWhere(counts, (count) => count > 0)
+      : Array.from({ length: bucketCount }, (_, index) => index);
+  const output = createCompactHistogramArrays(visibleIndexes.length);
+  const outputMetrics = createMetricArrays(metricKeys, visibleIndexes.length);
+
+  for (const [outputIndex, sourceIndex] of visibleIndexes.entries()) {
+    const count = counts[sourceIndex]!;
+    const value0 = valueDomain[0] + sourceIndex * width;
+    const value1 =
+      sourceIndex + 1 === bucketCount ? valueDomain[1] : valueDomain[0] + (sourceIndex + 1) * width;
+    output.value0[outputIndex] = value0;
+    output.value1[outputIndex] = value1;
+    output.value[outputIndex] = value0 + width / 2;
+    output.averageValue[outputIndex] = count > 0 ? sums[sourceIndex]! / count : Number.NaN;
+    output.firstPointIndex[outputIndex] = firstPointIndex[sourceIndex]!;
+    output.lastPointIndex[outputIndex] = lastPointIndex[sourceIndex]!;
+    output.maxValue[outputIndex] = maxValue[sourceIndex]!;
+    output.minValue[outputIndex] = minValue[sourceIndex]!;
+    output.pointCount[outputIndex] = count;
+    output.sumValue[outputIndex] = sums[sourceIndex]!;
+
+    for (const metricKey of metricKeys) {
+      outputMetrics[metricKey]![outputIndex] = metricArrays[metricKey]![sourceIndex]!;
+    }
+  }
+
+  return {
+    ...output,
+    metrics: outputMetrics,
+    summary: {
+      bucketCount: visibleIndexes.length,
+      metricKeys: [...metricKeys],
+      pointCount: sumUint32(output.pointCount),
+      valueDomain,
+      xDomain,
     },
   };
 }
@@ -318,6 +492,86 @@ export function createHeatmap<TProperties>(
       maxCellCount,
       metrics: summaryMetrics,
       pointCount: summaryPointCount,
+      xBinCount,
+      xDomain,
+      yBinCount,
+      yDomain,
+    },
+  };
+}
+
+export function createCompactHeatmap<TProperties>(
+  points: readonly NormalizedSeriesPoint<TProperties>[],
+  metricKeys: readonly string[],
+  query: VizHeatmapQuery,
+): VizCompactHeatmap {
+  const xBinCount = clampCount(query.xBinCount);
+  const yBinCount = clampCount(query.yBinCount);
+  const xDomain = normalizeDomain(query.xDomain);
+  const valueAccessor = query.valueAccessor ?? "y";
+  const start = lowerBoundX(points, xDomain[0]);
+  const end = upperBoundX(points, xDomain[1]);
+  const yDomain = normalizeDomain(
+    query.yDomain ?? deriveValueDomainFromRange(points, start, end, valueAccessor),
+  );
+  const cellCount = xBinCount * yBinCount;
+  const counts = new Uint32Array(cellCount);
+  const sums = new Float64Array(cellCount);
+  const firstPointIndex = filledInt32Array(cellCount, -1);
+  const lastPointIndex = filledInt32Array(cellCount, -1);
+  const metricArrays = createMetricArrays(metricKeys, cellCount);
+  let maxCellCount = 0;
+
+  for (let pointIndex = start; pointIndex < end; pointIndex++) {
+    const point = points[pointIndex]!;
+    const value = pointAccessorValue(point, valueAccessor);
+    if (!Number.isFinite(value) || value < yDomain[0] || value > yDomain[1]) {
+      continue;
+    }
+    const xIndex = bucketIndex(point.x, xDomain, xBinCount);
+    const yIndex = bucketIndex(value, yDomain, yBinCount);
+    const cellIndex = yIndex * xBinCount + xIndex;
+    const nextCount = counts[cellIndex]! + 1;
+    counts[cellIndex] = nextCount;
+    sums[cellIndex] += value;
+    if (firstPointIndex[cellIndex] === -1) {
+      firstPointIndex[cellIndex] = point.sourceIndex;
+    }
+    lastPointIndex[cellIndex] = point.sourceIndex;
+    maxCellCount = Math.max(maxCellCount, nextCount);
+    addMetricArrays(metricArrays, metricKeys, point.metrics, cellIndex);
+  }
+
+  const visibleIndexes =
+    query.includeEmptyCells === false
+      ? indexesWhere(counts, (count) => count > 0)
+      : Array.from({ length: cellCount }, (_, index) => index);
+  const output = createCompactHeatmapArrays(visibleIndexes.length);
+  const outputMetrics = createMetricArrays(metricKeys, visibleIndexes.length);
+
+  for (const [outputIndex, sourceIndex] of visibleIndexes.entries()) {
+    const count = counts[sourceIndex]!;
+    output.averageValue[outputIndex] = count > 0 ? sums[sourceIndex]! / count : Number.NaN;
+    output.firstPointIndex[outputIndex] = firstPointIndex[sourceIndex]!;
+    output.lastPointIndex[outputIndex] = lastPointIndex[sourceIndex]!;
+    output.pointCount[outputIndex] = count;
+    output.sumValue[outputIndex] = sums[sourceIndex]!;
+    output.value[outputIndex] = maxCellCount > 0 ? count / maxCellCount : 0;
+    output.xIndex[outputIndex] = sourceIndex % xBinCount;
+    output.yIndex[outputIndex] = Math.floor(sourceIndex / xBinCount);
+
+    for (const metricKey of metricKeys) {
+      outputMetrics[metricKey]![outputIndex] = metricArrays[metricKey]![sourceIndex]!;
+    }
+  }
+
+  return {
+    ...output,
+    metrics: outputMetrics,
+    summary: {
+      maxCellCount,
+      metricKeys: [...metricKeys],
+      pointCount: sumUint32(output.pointCount),
       xBinCount,
       xDomain,
       yBinCount,
@@ -426,6 +680,34 @@ export function createRollingSeries<TProperties>(
       windowSize,
       xDomain,
     },
+  };
+}
+
+export function createCompactRollingSeries<TProperties>(
+  points: readonly NormalizedSeriesPoint<TProperties>[],
+  query: VizRollingSeriesQuery,
+): VizCompactRollingSeries {
+  const series = createRollingSeries(points, query);
+  const length = series.points.length;
+  const output = createCompactRollingArrays(length);
+
+  for (const [index, point] of series.points.entries()) {
+    output.ema[index] = point.ema ?? Number.NaN;
+    output.max[index] = point.max ?? Number.NaN;
+    output.mean[index] = point.mean ?? Number.NaN;
+    output.min[index] = point.min ?? Number.NaN;
+    output.pointCount[index] = point.pointCount;
+    output.sourcePointIndex[index] = point.sourcePointIndex ?? -1;
+    output.stdDev[index] = point.stdDev ?? Number.NaN;
+    output.sum[index] = point.sum ?? Number.NaN;
+    output.x[index] = point.x;
+    output.y[index] = point.y ?? Number.NaN;
+    output.zScore[index] = point.zScore ?? Number.NaN;
+  }
+
+  return {
+    ...output,
+    summary: series.summary,
   };
 }
 
@@ -851,4 +1133,179 @@ function sumMetricRecords(records: readonly VizMetricRecord[]) {
   }
 
   return result;
+}
+
+function compactFromDensitySeries<TProperties>(
+  series: ReturnType<typeof createChartSeries<TProperties>>,
+  metricKeys: readonly string[],
+): VizCompactDensitySeries {
+  const output = createCompactDensityArrays(series.samples.length);
+  const metrics = createMetricArrays(metricKeys, series.samples.length);
+
+  for (const [index, sample] of series.samples.entries()) {
+    output.averageY[index] = sample.averageY ?? Number.NaN;
+    output.firstPointIndex[index] = sample.firstPointIndex ?? -1;
+    output.lastPointIndex[index] = sample.lastPointIndex ?? -1;
+    output.maxY[index] = sample.maxY ?? Number.NaN;
+    output.minY[index] = sample.minY ?? Number.NaN;
+    output.pointCount[index] = sample.pointCount;
+    output.sumY[index] = sample.sumY;
+    output.x0[index] = sample.x0;
+    output.x1[index] = sample.x1;
+    output.y[index] = sample.y ?? Number.NaN;
+    for (const metricKey of metricKeys) {
+      metrics[metricKey]![index] = sample.metrics[metricKey] ?? 0;
+    }
+  }
+
+  return {
+    ...output,
+    metrics,
+    summary: {
+      binCount: series.summary.binCount,
+      metricKeys: [...metricKeys],
+      pointCount: series.summary.pointCount,
+      sampleCount: series.summary.sampleCount,
+      valueMode: series.summary.valueMode,
+      xDomain: series.summary.xDomain,
+    },
+  };
+}
+
+function createCompactDensityArrays(length: number) {
+  return {
+    averageY: filledFloat64Array(length, Number.NaN),
+    firstPointIndex: filledInt32Array(length, -1),
+    lastPointIndex: filledInt32Array(length, -1),
+    maxY: filledFloat64Array(length, Number.NaN),
+    minY: filledFloat64Array(length, Number.NaN),
+    pointCount: new Uint32Array(length),
+    sumY: new Float64Array(length),
+    x0: new Float64Array(length),
+    x1: new Float64Array(length),
+    y: filledFloat64Array(length, Number.NaN),
+  };
+}
+
+function createCompactHistogramArrays(length: number) {
+  return {
+    averageValue: filledFloat64Array(length, Number.NaN),
+    firstPointIndex: filledInt32Array(length, -1),
+    lastPointIndex: filledInt32Array(length, -1),
+    maxValue: filledFloat64Array(length, Number.NaN),
+    minValue: filledFloat64Array(length, Number.NaN),
+    pointCount: new Uint32Array(length),
+    sumValue: new Float64Array(length),
+    value: new Float64Array(length),
+    value0: new Float64Array(length),
+    value1: new Float64Array(length),
+  };
+}
+
+function createCompactHeatmapArrays(length: number) {
+  return {
+    averageValue: filledFloat64Array(length, Number.NaN),
+    firstPointIndex: filledInt32Array(length, -1),
+    lastPointIndex: filledInt32Array(length, -1),
+    pointCount: new Uint32Array(length),
+    sumValue: new Float64Array(length),
+    value: new Float64Array(length),
+    xIndex: new Uint32Array(length),
+    yIndex: new Uint32Array(length),
+  };
+}
+
+function createCompactRollingArrays(length: number) {
+  return {
+    ema: filledFloat64Array(length, Number.NaN),
+    max: filledFloat64Array(length, Number.NaN),
+    mean: filledFloat64Array(length, Number.NaN),
+    min: filledFloat64Array(length, Number.NaN),
+    pointCount: new Uint32Array(length),
+    sourcePointIndex: filledInt32Array(length, -1),
+    stdDev: filledFloat64Array(length, Number.NaN),
+    sum: filledFloat64Array(length, Number.NaN),
+    x: new Float64Array(length),
+    y: filledFloat64Array(length, Number.NaN),
+    zScore: filledFloat64Array(length, Number.NaN),
+  };
+}
+
+function createMetricArrays(metricKeys: readonly string[], length: number): VizCompactMetricArrays {
+  const arrays: VizCompactMetricArrays = {};
+  for (const metricKey of metricKeys) {
+    arrays[metricKey] = new Float64Array(length);
+  }
+  return arrays;
+}
+
+function addMetricArrays(
+  arrays: VizCompactMetricArrays,
+  metricKeys: readonly string[],
+  metrics: VizMetricRecord | undefined,
+  index: number,
+) {
+  for (const metricKey of metricKeys) {
+    arrays[metricKey]![index] += metrics?.[metricKey] ?? 0;
+  }
+}
+
+function compactDensityY(
+  valueMode: VizValueMode,
+  values: { averageY: number; count: number; maxY: number; minY: number; sumY: number },
+) {
+  if (values.count === 0) {
+    return Number.NaN;
+  }
+
+  switch (valueMode) {
+    case "average":
+      return values.averageY;
+    case "count":
+      return values.count;
+    case "max":
+      return values.maxY;
+    case "min":
+      return values.minY;
+    case "sum":
+      return values.sumY;
+    case "p10":
+    case "p25":
+    case "p50":
+    case "p75":
+    case "p90":
+    case "p95":
+    case "p99":
+      return Number.NaN;
+  }
+}
+
+function indexesWhere(array: Uint32Array, predicate: (value: number) => boolean) {
+  const indexes: number[] = [];
+  for (let index = 0; index < array.length; index++) {
+    if (predicate(array[index]!)) {
+      indexes.push(index);
+    }
+  }
+  return indexes;
+}
+
+function sumUint32(values: Uint32Array) {
+  let sum = 0;
+  for (const value of values) {
+    sum += value;
+  }
+  return sum;
+}
+
+function filledFloat64Array(length: number, value: number) {
+  const array = new Float64Array(length);
+  array.fill(value);
+  return array;
+}
+
+function filledInt32Array(length: number, value: number) {
+  const array = new Int32Array(length);
+  array.fill(value);
+  return array;
 }

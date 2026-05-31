@@ -73,6 +73,30 @@ export type VizDensitySeries<TProperties = Record<string, unknown>> = {
   };
 };
 
+export type VizCompactMetricArrays = Record<string, Float64Array>;
+
+export type VizCompactDensitySeries = {
+  averageY: Float64Array;
+  firstPointIndex: Int32Array;
+  lastPointIndex: Int32Array;
+  maxY: Float64Array;
+  metrics?: VizCompactMetricArrays;
+  minY: Float64Array;
+  pointCount: Uint32Array;
+  sumY: Float64Array;
+  x0: Float64Array;
+  x1: Float64Array;
+  y: Float64Array;
+  summary: {
+    binCount: number;
+    metricKeys: string[];
+    pointCount: number;
+    sampleCount: number;
+    valueMode: VizValueMode;
+    xDomain: [number, number];
+  };
+};
+
 export type VizHistogramBucket<TProperties = Record<string, unknown>> = {
   averageValue: number | null;
   firstPoint: VizIndexedSeriesPoint<TProperties> | null;
@@ -95,6 +119,27 @@ export type VizHistogram<TProperties = Record<string, unknown>> = {
   summary: {
     bucketCount: number;
     metrics: VizMetricRecord;
+    pointCount: number;
+    valueDomain: [number, number];
+    xDomain: [number, number] | null;
+  };
+};
+
+export type VizCompactHistogram = {
+  averageValue: Float64Array;
+  firstPointIndex: Int32Array;
+  lastPointIndex: Int32Array;
+  maxValue: Float64Array;
+  metrics?: VizCompactMetricArrays;
+  minValue: Float64Array;
+  pointCount: Uint32Array;
+  sumValue: Float64Array;
+  value: Float64Array;
+  value0: Float64Array;
+  value1: Float64Array;
+  summary: {
+    bucketCount: number;
+    metricKeys: string[];
     pointCount: number;
     valueDomain: [number, number];
     xDomain: [number, number] | null;
@@ -135,6 +180,27 @@ export type VizHeatmap<TProperties = Record<string, unknown>> = {
   };
 };
 
+export type VizCompactHeatmap = {
+  averageValue: Float64Array;
+  firstPointIndex: Int32Array;
+  lastPointIndex: Int32Array;
+  metrics?: VizCompactMetricArrays;
+  pointCount: Uint32Array;
+  sumValue: Float64Array;
+  value: Float64Array;
+  xIndex: Uint32Array;
+  yIndex: Uint32Array;
+  summary: {
+    maxCellCount: number;
+    metricKeys: string[];
+    pointCount: number;
+    xBinCount: number;
+    xDomain: [number, number];
+    yBinCount: number;
+    yDomain: [number, number];
+  };
+};
+
 export type VizRollingSeriesPoint<TProperties = Record<string, unknown>> = {
   ema: number | null;
   index: number;
@@ -164,6 +230,21 @@ export type VizRollingSeries<TProperties = Record<string, unknown>> = {
     windowSize: number;
     xDomain: [number, number];
   };
+};
+
+export type VizCompactRollingSeries = {
+  ema: Float64Array;
+  max: Float64Array;
+  mean: Float64Array;
+  min: Float64Array;
+  pointCount: Uint32Array;
+  sourcePointIndex: Int32Array;
+  stdDev: Float64Array;
+  sum: Float64Array;
+  x: Float64Array;
+  y: Float64Array;
+  zScore: Float64Array;
+  summary: VizRollingSeries["summary"];
 };
 
 export type VizDensityQuery = {
@@ -222,6 +303,10 @@ export type VizDensityIndex<TProperties = Record<string, unknown>> = {
   getBackendCapabilities(): VizBackendCapabilities;
   getBinnedSeries(query: VizBinnedSeriesQuery): { bins: Array<VizDensityBin<TProperties>> };
   getChartSeries(query: VizDensityQuery): VizDensitySeries<TProperties>;
+  getCompactChartSeries(query: VizDensityQuery): VizCompactDensitySeries;
+  getCompactHeatmap(query: VizHeatmapQuery): VizCompactHeatmap;
+  getCompactHistogram(query: VizHistogramQuery): VizCompactHistogram;
+  getCompactRollingSeries(query: VizRollingSeriesQuery): VizCompactRollingSeries;
   getHeatmap(query: VizHeatmapQuery): VizHeatmap<TProperties>;
   getHistogram(query: VizHistogramQuery): VizHistogram<TProperties>;
   getPointById(pointId: string): VizIndexedSeriesPoint<TProperties> | null;

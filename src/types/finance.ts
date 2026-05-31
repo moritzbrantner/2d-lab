@@ -81,10 +81,37 @@ export type VizFinanceRiskSummary = {
   valueAtRisk: number;
 };
 
+export type VizCompactOhlcvBars = {
+  adjustedClose: Float64Array;
+  close: Float64Array;
+  high: Float64Array;
+  low: Float64Array;
+  open: Float64Array;
+  timestamp: Float64Array;
+  volume: Float64Array;
+  summary: {
+    barCount: number;
+    xDomain: [number, number];
+  };
+};
+
+export type VizCompactFinanceReturns = {
+  pointCount: Uint32Array;
+  x: Float64Array;
+  y: Float64Array;
+  summary: {
+    pointCount: number;
+    sampleCount: number;
+    xDomain: [number, number];
+  };
+};
+
 export type VizFinanceIndex<TProperties = Record<string, unknown>> = {
   getBackendCapabilities(): VizBackendCapabilities;
   getBars(query: VizFinanceBarsQuery): Array<VizOhlcvBar<TProperties>>;
   getBounds(): VizRenderBounds | null;
+  getCompactDownsampledBars(query: VizFinanceDownsampleQuery): VizCompactOhlcvBars;
+  getCompactReturns(query: VizFinanceReturnsQuery): VizCompactFinanceReturns;
   getDownsampledBars(query: VizFinanceDownsampleQuery): Array<VizOhlcvBar<TProperties>>;
   getReturns(query: VizFinanceReturnsQuery): VizDensitySeries<TProperties>;
   getRiskSummary(query: VizFinanceRiskQuery): VizFinanceRiskSummary;

@@ -44,6 +44,7 @@ export type VizGeoViewportQuery = {
 
 export type VizGeoAggregationOptions = {
   extent?: number;
+  fast?: boolean;
   maxZoom?: number;
   minZoom?: number;
   radius?: number;

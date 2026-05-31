@@ -108,6 +108,38 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
         });
       }
 
+      for (const implementation of ["js", "wasm"] as const) {
+        cases.push({
+          category: "xy",
+          id: createCaseId(["xy", "binned-compact", query.name, sizeLabel, implementation]),
+          implementation: `viz-engine ${implementation} compact`,
+          prepare: () =>
+            implementation === "js"
+              ? new JsVizDensityIndex(fixture.points)
+              : new RustWasmVizDensityIndex(fixture.points),
+          run: (prepared) =>
+            (prepared as JsVizDensityIndex | RustWasmVizDensityIndex).getCompactChartSeries({
+              includeEmptyBins: false,
+              targetBinCount: query.targetBinCount,
+              valueMode: "average",
+              xDomain: query.xDomain,
+            }),
+          size: sizeLabel,
+          sizeValue: size,
+          validate: (prepared) => {
+            const output = (
+              prepared as JsVizDensityIndex | RustWasmVizDensityIndex
+            ).getCompactChartSeries({
+              targetBinCount: query.targetBinCount,
+              xDomain: query.xDomain,
+            });
+            assertPositive(output.summary.sampleCount, "compact binned sample count");
+            assertPositive(output.summary.pointCount, "compact binned point count");
+          },
+          workload: `binned-compact/${query.name}`,
+        });
+      }
+
       cases.push({
         category: "xy",
         external: true,
@@ -159,6 +191,33 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
         });
       }
 
+      for (const implementation of ["js", "wasm"] as const) {
+        cases.push({
+          category: "xy",
+          id: createCaseId(["xy", "histogram-compact", query.name, sizeLabel, implementation]),
+          implementation: `viz-engine ${implementation} compact`,
+          prepare: () =>
+            implementation === "js"
+              ? new JsVizDensityIndex(fixture.points)
+              : new RustWasmVizDensityIndex(fixture.points),
+          run: (prepared) =>
+            (prepared as JsVizDensityIndex | RustWasmVizDensityIndex).getCompactHistogram({
+              bucketCount: query.bucketCount,
+              xDomain: query.xDomain,
+            }),
+          size: sizeLabel,
+          sizeValue: size,
+          validate: (prepared) => {
+            const output = (
+              prepared as JsVizDensityIndex | RustWasmVizDensityIndex
+            ).getCompactHistogram(query);
+            assertPositive(output.summary.bucketCount, "compact histogram bucket count");
+            assertPositive(output.summary.pointCount, "compact histogram point count");
+          },
+          workload: `histogram-compact/${query.name}`,
+        });
+      }
+
       cases.push({
         category: "xy",
         external: true,
@@ -200,6 +259,30 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
             assertPositive(output.summary.pointCount, "heatmap point count");
           },
           workload: `heatmap/${query.name}`,
+        });
+      }
+
+      for (const implementation of ["js", "wasm"] as const) {
+        cases.push({
+          category: "xy",
+          id: createCaseId(["xy", "heatmap-compact", query.name, sizeLabel, implementation]),
+          implementation: `viz-engine ${implementation} compact`,
+          prepare: () =>
+            implementation === "js"
+              ? new JsVizDensityIndex(fixture.points)
+              : new RustWasmVizDensityIndex(fixture.points),
+          run: (prepared) =>
+            (prepared as JsVizDensityIndex | RustWasmVizDensityIndex).getCompactHeatmap(query),
+          size: sizeLabel,
+          sizeValue: size,
+          validate: (prepared) => {
+            const output = (
+              prepared as JsVizDensityIndex | RustWasmVizDensityIndex
+            ).getCompactHeatmap(query);
+            assertPositive(output.pointCount.length, "compact heatmap cell count");
+            assertPositive(output.summary.pointCount, "compact heatmap point count");
+          },
+          workload: `heatmap-compact/${query.name}`,
         });
       }
 
@@ -300,6 +383,37 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
             assertPositive(output.points.length, "rolling point count");
           },
           workload: `rolling/${query.name}`,
+        });
+      }
+
+      for (const implementation of ["js", "wasm"] as const) {
+        cases.push({
+          category: "xy",
+          id: createCaseId(["xy", "rolling-compact", query.name, sizeLabel, implementation]),
+          implementation: `viz-engine ${implementation} compact`,
+          prepare: () =>
+            implementation === "js"
+              ? new JsVizDensityIndex(fixture.points)
+              : new RustWasmVizDensityIndex(fixture.points),
+          run: (prepared) =>
+            (prepared as JsVizDensityIndex | RustWasmVizDensityIndex).getCompactRollingSeries({
+              statistic: query.statistic,
+              windowSize: query.windowSize,
+              xDomain: fixture.domains.full,
+            }),
+          size: sizeLabel,
+          sizeValue: size,
+          validate: (prepared) => {
+            const output = (
+              prepared as JsVizDensityIndex | RustWasmVizDensityIndex
+            ).getCompactRollingSeries({
+              statistic: query.statistic,
+              windowSize: query.windowSize,
+              xDomain: fixture.domains.full,
+            });
+            assertPositive(output.x.length, "compact rolling point count");
+          },
+          workload: `rolling-compact/${query.name}`,
         });
       }
 

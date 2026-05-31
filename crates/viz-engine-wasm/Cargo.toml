@@ -10,6 +10,7 @@ repository.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+js-sys = "0.3"
 serde.workspace = true
 serde-wasm-bindgen = "0.6"
 viz-engine-core = { path = "../viz-engine-core" }

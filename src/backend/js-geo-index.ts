@@ -153,8 +153,9 @@ export class JsVizGeoPointIndex<
   ): VizGeoAggregation<TProperties> {
     const cacheEntry = this.getClusterIndex(options);
     this.latestClusterIndexKey = cacheEntry.key;
+    const includeExpansionZoom = options.fast !== true;
     const features = getClusterFeatures(cacheEntry.index, query.bounds, query.zoom).map((feature) =>
-      this.mapClusterFeature(feature),
+      this.mapClusterFeature(feature, includeExpansionZoom),
     );
 
     return {
@@ -231,6 +232,7 @@ export class JsVizGeoPointIndex<
 
   private mapClusterFeature(
     feature: GeoClusterFeature | GeoPointFeature,
+    includeExpansionZoom = true,
   ): VizGeoAggregation<TProperties>["features"][number] {
     const [longitude, latitude] = feature.geometry.coordinates as [number, number];
     const properties = feature.properties as GeoPointFeatureProperties &
@@ -247,7 +249,7 @@ export class JsVizGeoPointIndex<
       return {
         clusterId,
         coordinates: [longitude, latitude],
-        expansionZoom: this.getClusterExpansionZoom(clusterId),
+        expansionZoom: includeExpansionZoom ? this.getClusterExpansionZoom(clusterId) : 0,
         kind: "cluster",
         metrics: pickMetrics(properties, this.metricKeys),
         pointCount: properties.point_count ?? 0,

@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { JsVizGeoPointIndex, getBoundsFromGeoPoints, normalizeGeoPoints } from "./js-geo-index";
 
-import type { VizGeoPoint } from "../types";
+import type { VizGeoPoint, VizGeoViewportQuery } from "../types";
 
 const points: VizGeoPoint<{ group: string }>[] = [
   {
@@ -124,6 +124,29 @@ describe("JsVizGeoPointIndex", () => {
     expect(index.getClusterLeaves(cluster.clusterId, 1, 1).map((point) => point.id)).toEqual(["b"]);
     expect(index.getClusterExpansionZoom(999)).toBe(0);
     expect(index.getClusterLeaves(999)).toEqual([]);
+  });
+
+  test("fast cluster mode preserves counts and skips expansion zoom work", () => {
+    const index = new JsVizGeoPointIndex(points);
+    const query: VizGeoViewportQuery = { bounds: [12.9, 51.9, 13.1, 52.1], zoom: 1 };
+    const full = index.getViewportAggregation(query, { radius: 80 });
+    const fast = index.getViewportAggregation(query, { fast: true, radius: 80 });
+
+    expect(fast.summary).toEqual(full.summary);
+    expect(
+      fast.features.map((feature) =>
+        feature.kind === "cluster"
+          ? {
+              expansionZoom: feature.expansionZoom,
+              kind: feature.kind,
+              pointCount: feature.pointCount,
+            }
+          : { kind: feature.kind },
+      ),
+    ).toEqual([{ expansionZoom: 0, kind: "cluster", pointCount: 2 }]);
+    expect(
+      full.features[0]?.kind === "cluster" ? full.features[0].expansionZoom : 0,
+    ).toBeGreaterThan(1);
   });
 
   test("returns represented counts for broad, city, dense, and antimeridian viewports", () => {
