@@ -11,8 +11,10 @@ export type VizBackendImplementation =
   | "rust-viz-engine-wasm";
 
 export type VizMetricRecord = Record<string, number>;
+export type VizPercentileMode = "p10" | "p25" | "p50" | "p75" | "p90" | "p95" | "p99";
 export type VizRollingStatistic = "ema" | "max" | "mean" | "min" | "stdDev" | "zScore";
-export type VizValueMode = "average" | "count" | "max" | "min" | "sum";
+export type VizValueMode = "average" | "count" | "max" | "min" | "sum" | VizPercentileMode;
+export type VizPointValueAccessor = "x" | "y" | { metric: string };
 export type VizGeoBounds = [west: number, south: number, east: number, north: number];
 export type VizRenderBounds = [number, number, number, number];
 
@@ -40,6 +42,13 @@ export type VizDensityBin<TProperties = Record<string, unknown>> = {
   maxY: number | null;
   metrics: VizMetricRecord;
   minY: number | null;
+  p10?: number | null;
+  p25?: number | null;
+  p50?: number | null;
+  p75?: number | null;
+  p90?: number | null;
+  p95?: number | null;
+  p99?: number | null;
   pointCount: number;
   sumY: number;
   x0: number;
@@ -159,6 +168,7 @@ export type VizRollingSeries<TProperties = Record<string, unknown>> = {
 
 export type VizDensityQuery = {
   includeEmptyBins?: boolean;
+  percentiles?: readonly VizPercentileMode[];
   targetBinCount: number;
   valueMode?: VizValueMode;
   xDomain: [number, number];
@@ -173,12 +183,14 @@ export type VizBinnedSeriesQuery = {
 export type VizHistogramQuery = {
   bucketCount: number;
   includeEmptyBuckets?: boolean;
+  valueAccessor?: VizPointValueAccessor;
   valueDomain?: [number, number];
   xDomain?: [number, number];
 };
 
 export type VizHeatmapQuery = {
   includeEmptyCells?: boolean;
+  valueAccessor?: VizPointValueAccessor;
   xBinCount: number;
   xDomain: [number, number];
   yBinCount: number;
