@@ -1,4 +1,4 @@
-import { VizEngineWasmDensityIndex } from "../wasm/viz-engine-wasm-bindings";
+import { initVizEngineWasm, VizEngineWasmDensityIndex } from "../wasm/viz-engine-wasm-bindings";
 
 import {
   collectMetricKeys,
@@ -55,6 +55,8 @@ export class RustWasmVizDensityIndex<
   private readonly index: RustWasmDensityIndex;
 
   constructor(points: readonly VizSeriesPoint<TProperties>[]) {
+    initVizEngineWasm();
+
     const normalizedPoints = normalizeSeriesPoints(points);
     const metricKeys = collectMetricKeys(normalizedPoints);
     const lookup = createPointLookup(normalizedPoints);
@@ -102,7 +104,7 @@ export class RustWasmVizDensityIndex<
     return {
       bins: result.bins.map((bin) => this.mapBin(bin)),
       samples: result.samples.map((sample) => this.mapSample(sample)),
-      summary: result.summary,
+      summary: this.mapDensitySummary(result.summary),
     };
   }
 
@@ -111,7 +113,10 @@ export class RustWasmVizDensityIndex<
 
     return {
       cells: result.cells.map((cell) => this.mapHeatmapCell(cell)),
-      summary: result.summary,
+      summary: {
+        ...result.summary,
+        metrics: normalizeRustMetrics(result.summary.metrics),
+      },
     };
   }
 
@@ -123,7 +128,10 @@ export class RustWasmVizDensityIndex<
 
     return {
       buckets: result.buckets.map((bucket) => this.mapHistogramBucket(bucket)),
-      summary: result.summary,
+      summary: {
+        ...result.summary,
+        metrics: normalizeRustMetrics(result.summary.metrics),
+      },
     };
   }
 
@@ -144,7 +152,11 @@ export class RustWasmVizDensityIndex<
   }
 
   getSeriesBounds() {
-    return this.index.getSeriesBounds() ?? null;
+    return (
+      (this.index.getSeriesBounds() as ReturnType<
+        VizDensityIndex<TProperties>["getSeriesBounds"]
+      >) ?? null
+    );
   }
 
   hitTestX(query: VizDensityQuery & { x: number }) {
@@ -182,6 +194,13 @@ export class RustWasmVizDensityIndex<
       metrics: normalizeRustMetrics(sample.metrics),
       minY: sample.minY ?? null,
       y: sample.y ?? null,
+    };
+  }
+
+  private mapDensitySummary(summary: RustDensitySeries<TProperties>["summary"]) {
+    return {
+      ...summary,
+      metrics: normalizeRustMetrics(summary.metrics),
     };
   }
 

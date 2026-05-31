@@ -26,6 +26,13 @@ pub enum VizValueMode {
     Min,
     Max,
     Sum,
+    P10,
+    P25,
+    P50,
+    P75,
+    P90,
+    P95,
+    P99,
 }
 
 impl Default for VizValueMode {
@@ -42,7 +49,22 @@ pub struct VizBinnedSeriesQuery {
     #[serde(default)]
     pub include_empty_bins: bool,
     #[serde(default)]
+    pub percentiles: Vec<VizValueMode>,
+    #[serde(default)]
     pub value_mode: VizValueMode,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum VizPointValueAccessor {
+    Axis(String),
+    Metric { metric: String },
+}
+
+impl Default for VizPointValueAccessor {
+    fn default() -> Self {
+        Self::Axis("y".to_string())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -51,6 +73,8 @@ pub struct VizHistogramQuery {
     pub bucket_count: usize,
     #[serde(default)]
     pub include_empty_buckets: bool,
+    #[serde(default)]
+    pub value_accessor: VizPointValueAccessor,
     #[serde(default)]
     pub value_domain: Option<[f64; 2]>,
     #[serde(default)]
@@ -63,6 +87,8 @@ pub struct VizHeatmapQuery {
     pub x_bin_count: usize,
     pub x_domain: [f64; 2],
     pub y_bin_count: usize,
+    #[serde(default)]
+    pub value_accessor: VizPointValueAccessor,
     #[serde(default)]
     pub y_domain: Option<[f64; 2]>,
     #[serde(default)]
@@ -128,10 +154,26 @@ pub struct VizDensityBin {
     pub max_y: Option<f64>,
     pub metrics: BTreeMap<String, f64>,
     pub min_y: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p10: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p25: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p50: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p75: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p90: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p95: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p99: Option<f64>,
     pub point_count: usize,
     pub sum_y: f64,
     pub x0: f64,
     pub x1: f64,
+    #[serde(skip)]
+    pub y_values: Vec<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -144,6 +186,20 @@ pub struct VizDensitySample {
     pub max_y: Option<f64>,
     pub metrics: BTreeMap<String, f64>,
     pub min_y: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p10: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p25: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p50: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p75: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p90: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p95: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p99: Option<f64>,
     pub point_count: usize,
     pub sum_y: f64,
     pub x: f64,

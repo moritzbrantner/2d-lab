@@ -184,3 +184,15 @@ cargo test --workspace
 bun run build:wasm
 bun run test:wasm
 ```
+
+## Benchmarks
+
+The benchmark suite in `bench/` compares the engine's data-kernel work against
+similar data libraries such as D3 array utilities, Supercluster, simple-statistics,
+and downsample. Start with:
+
+```sh
+bun run bench:quick
+```
+
+See `bench/README.md` for the full Bun and browser benchmark workflow.

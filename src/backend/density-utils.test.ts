@@ -102,7 +102,7 @@ describe("density utils", () => {
       ),
     ).toEqual([
       [1, null, null, 6],
-      [1, 0, 0, 2],
+      [1, null, null, 2],
       [1, null, null, 7],
       [1, null, null, 5],
       [1, null, null, 12],

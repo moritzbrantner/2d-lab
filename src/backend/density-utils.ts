@@ -9,6 +9,8 @@ import type {
   VizHistogramQuery,
   VizIndexedSeriesPoint,
   VizMetricRecord,
+  VizPercentileMode,
+  VizPointValueAccessor,
   VizRollingSeries,
   VizRollingSeriesQuery,
   VizRollingStatistic,
@@ -18,6 +20,17 @@ import type {
 } from "../types";
 
 export type NormalizedSeriesPoint<TProperties> = VizIndexedSeriesPoint<TProperties>;
+type WorkingDensityBin<TProperties> = VizDensityBin<TProperties> & { yValues?: number[] };
+
+const PERCENTILE_VALUES: Record<VizPercentileMode, number> = {
+  p10: 0.1,
+  p25: 0.25,
+  p50: 0.5,
+  p75: 0.75,
+  p90: 0.9,
+  p95: 0.95,
+  p99: 0.99,
+};
 
 export function normalizeSeriesPoints<TProperties>(
   points: readonly VizSeriesPoint<TProperties>[],
@@ -102,20 +115,32 @@ export function createBins<TProperties>(
   points: readonly NormalizedSeriesPoint<TProperties>[],
   metricKeys: readonly string[],
   query: VizBinnedSeriesQuery,
+  percentiles: readonly VizPercentileMode[] = [],
 ): Array<VizDensityBin<TProperties>> {
   const xDomain = normalizeDomain(query.xDomain);
   const binCount = clampCount(query.targetBinCount);
   const width = binWidth(xDomain, binCount);
+  const trackPercentiles = percentiles.length > 0;
   const bins = Array.from({ length: binCount }, (_, index) =>
     createEmptyBin<TProperties>(index, binCount, xDomain, width, metricKeys),
   );
 
   for (const point of pointsInXDomain(points, xDomain)) {
     const index = bucketIndex(point.x, xDomain, binCount);
-    updateBin(bins[index], point, metricKeys);
+    updateBin(bins[index], point, metricKeys, trackPercentiles);
   }
 
-  return query.includeEmptyBins ? bins : bins.filter((bin) => bin.pointCount > 0);
+  for (const bin of bins) {
+    applyPercentiles(bin, percentiles);
+  }
+
+  const visibleBins = query.includeEmptyBins ? bins : bins.filter((bin) => bin.pointCount > 0);
+
+  for (const bin of visibleBins) {
+    delete (bin as Partial<WorkingDensityBin<TProperties>>).yValues;
+  }
+
+  return visibleBins;
 }
 
 export function createChartSeries<TProperties>(
@@ -124,11 +149,17 @@ export function createChartSeries<TProperties>(
   query: VizDensityQuery,
 ) {
   const valueMode = query.valueMode ?? "average";
-  const bins = createBins(points, metricKeys, {
-    includeEmptyBins: query.includeEmptyBins,
-    targetBinCount: query.targetBinCount,
-    xDomain: query.xDomain,
-  });
+  const percentiles = resolveRequestedPercentiles(query.percentiles, valueMode);
+  const bins = createBins(
+    points,
+    metricKeys,
+    {
+      includeEmptyBins: query.includeEmptyBins,
+      targetBinCount: query.targetBinCount,
+      xDomain: query.xDomain,
+    },
+    percentiles,
+  );
   const samples = bins.map((bin) => createSample(bin, valueMode));
 
   return {
@@ -154,20 +185,26 @@ export function createHistogram<TProperties>(
   const selectedPoints = query.xDomain
     ? pointsInXDomain(points, normalizeDomain(query.xDomain))
     : points;
-  const valueDomain = normalizeDomain(query.valueDomain ?? derivePointYDomain(selectedPoints));
+  const valuedPoints = selectedPoints
+    .map((point) => ({ point, value: pointAccessorValue(point, query.valueAccessor ?? "y") }))
+    .filter((item): item is { point: NormalizedSeriesPoint<TProperties>; value: number } =>
+      Number.isFinite(item.value),
+    );
+  const valueDomain = normalizeDomain(query.valueDomain ?? deriveValueDomain(valuedPoints));
   const width = binWidth(valueDomain, bucketCount);
   const buckets = Array.from({ length: bucketCount }, (_, index) =>
     createEmptyHistogramBucket<TProperties>(index, bucketCount, valueDomain, width, metricKeys),
   );
 
-  for (const point of selectedPoints) {
-    if (point.y < valueDomain[0] || point.y > valueDomain[1]) {
+  for (const { point, value } of valuedPoints) {
+    if (value < valueDomain[0] || value > valueDomain[1]) {
       continue;
     }
 
     updateHistogramBucket(
-      buckets[bucketIndex(point.y, valueDomain, bucketCount)],
+      buckets[bucketIndex(value, valueDomain, bucketCount)],
       point,
+      value,
       metricKeys,
     );
   }
@@ -198,7 +235,12 @@ export function createHeatmap<TProperties>(
   const yBinCount = clampCount(query.yBinCount);
   const xDomain = normalizeDomain(query.xDomain);
   const selectedPoints = pointsInXDomain(points, xDomain);
-  const yDomain = normalizeDomain(query.yDomain ?? derivePointYDomain(selectedPoints));
+  const valuedPoints = selectedPoints
+    .map((point) => ({ point, value: pointAccessorValue(point, query.valueAccessor ?? "y") }))
+    .filter((item): item is { point: NormalizedSeriesPoint<TProperties>; value: number } =>
+      Number.isFinite(item.value),
+    );
+  const yDomain = normalizeDomain(query.yDomain ?? deriveValueDomain(valuedPoints));
   const xWidth = binWidth(xDomain, xBinCount);
   const yWidth = binWidth(yDomain, yBinCount);
   const cells = Array.from({ length: xBinCount * yBinCount }, (_, index) =>
@@ -214,14 +256,14 @@ export function createHeatmap<TProperties>(
     ),
   );
 
-  for (const point of selectedPoints) {
-    if (point.y < yDomain[0] || point.y > yDomain[1]) {
+  for (const { point, value } of valuedPoints) {
+    if (value < yDomain[0] || value > yDomain[1]) {
       continue;
     }
 
     const xIndex = bucketIndex(point.x, xDomain, xBinCount);
-    const yIndex = bucketIndex(point.y, yDomain, yBinCount);
-    updateHeatmapCell(cells[yIndex * xBinCount + xIndex], point, metricKeys);
+    const yIndex = bucketIndex(value, yDomain, yBinCount);
+    updateHeatmapCell(cells[yIndex * xBinCount + xIndex], point, value, metricKeys);
   }
 
   let maxCellCount = 0;
@@ -379,7 +421,7 @@ function createEmptyBin<TProperties>(
   xDomain: [number, number],
   width: number,
   metricKeys: readonly string[],
-): VizDensityBin<TProperties> {
+): WorkingDensityBin<TProperties> {
   const x0 = xDomain[0] + index * width;
 
   return {
@@ -395,14 +437,15 @@ function createEmptyBin<TProperties>(
     pointCount: 0,
     sumY: 0,
     x0,
-    x1: index + 1 === binCount ? xDomain[1] : x0 + width,
+    x1: index + 1 === binCount ? xDomain[1] : xDomain[0] + (index + 1) * width,
   };
 }
 
 function updateBin<TProperties>(
-  bin: VizDensityBin<TProperties>,
+  bin: WorkingDensityBin<TProperties>,
   point: NormalizedSeriesPoint<TProperties>,
   metricKeys: readonly string[],
+  trackPercentiles = false,
 ) {
   bin.firstPoint ??= point;
   bin.firstPointIndex ??= point.sourceIndex;
@@ -413,6 +456,9 @@ function updateBin<TProperties>(
   bin.averageY = bin.sumY / bin.pointCount;
   bin.minY = bin.minY === null ? point.y : Math.min(bin.minY, point.y);
   bin.maxY = bin.maxY === null ? point.y : Math.max(bin.maxY, point.y);
+  if (trackPercentiles) {
+    (bin.yValues ??= []).push(point.y);
+  }
   addMetrics(bin.metrics, point.metrics, metricKeys);
 }
 
@@ -432,14 +478,72 @@ function sampleValue<TProperties>(bin: VizDensityBin<TProperties>, valueMode: Vi
     case "average":
       return bin.averageY;
     case "count":
-      return bin.pointCount;
+      return bin.pointCount > 0 ? bin.pointCount : null;
     case "max":
       return bin.maxY;
     case "min":
       return bin.minY;
     case "sum":
       return bin.pointCount > 0 ? bin.sumY : null;
+    case "p10":
+    case "p25":
+    case "p50":
+    case "p75":
+    case "p90":
+    case "p95":
+    case "p99":
+      return bin[valueMode] ?? null;
   }
+}
+
+function resolveRequestedPercentiles(
+  percentiles: readonly VizPercentileMode[] | undefined,
+  valueMode: VizValueMode,
+): VizPercentileMode[] {
+  const requested = new Set(percentiles ?? []);
+
+  if (isPercentileMode(valueMode)) {
+    requested.add(valueMode);
+  }
+
+  return [...requested];
+}
+
+function isPercentileMode(valueMode: VizValueMode): valueMode is VizPercentileMode {
+  return valueMode in PERCENTILE_VALUES;
+}
+
+function applyPercentiles<TProperties>(
+  bin: WorkingDensityBin<TProperties>,
+  percentiles: readonly VizPercentileMode[],
+) {
+  if (!bin.pointCount || percentiles.length === 0) {
+    return;
+  }
+
+  const yValues = [...(bin.yValues ?? [])].sort((left, right) => left - right);
+
+  for (const percentile of percentiles) {
+    bin[percentile] = percentileValue(yValues, PERCENTILE_VALUES[percentile]);
+  }
+}
+
+function percentileValue(sortedValues: readonly number[], percentile: number) {
+  if (sortedValues.length === 0) {
+    return null;
+  }
+
+  if (sortedValues.length === 1) {
+    return sortedValues[0] ?? null;
+  }
+
+  const rank = percentile * (sortedValues.length - 1);
+  const lowerIndex = Math.floor(rank);
+  const upperIndex = Math.ceil(rank);
+  const lowerValue = sortedValues[lowerIndex] ?? 0;
+  const upperValue = sortedValues[upperIndex] ?? lowerValue;
+
+  return lowerValue + (upperValue - lowerValue) * (rank - lowerIndex);
 }
 
 function createEmptyHistogramBucket<TProperties>(
@@ -472,6 +576,7 @@ function createEmptyHistogramBucket<TProperties>(
 function updateHistogramBucket<TProperties>(
   bucket: VizHistogramBucket<TProperties>,
   point: NormalizedSeriesPoint<TProperties>,
+  value: number,
   metricKeys: readonly string[],
 ) {
   bucket.firstPoint ??= point;
@@ -479,10 +584,10 @@ function updateHistogramBucket<TProperties>(
   bucket.lastPoint = point;
   bucket.lastPointIndex = point.sourceIndex;
   bucket.pointCount += 1;
-  bucket.sumValue += point.y;
+  bucket.sumValue += value;
   bucket.averageValue = bucket.sumValue / bucket.pointCount;
-  bucket.minValue = bucket.minValue === null ? point.y : Math.min(bucket.minValue, point.y);
-  bucket.maxValue = bucket.maxValue === null ? point.y : Math.max(bucket.maxValue, point.y);
+  bucket.minValue = bucket.minValue === null ? value : Math.min(bucket.minValue, value);
+  bucket.maxValue = bucket.maxValue === null ? value : Math.max(bucket.maxValue, value);
   addMetrics(bucket.metrics, point.metrics, metricKeys);
 }
 
@@ -526,6 +631,7 @@ function createEmptyHeatmapCell<TProperties>(
 function updateHeatmapCell<TProperties>(
   cell: VizHeatmapCell<TProperties>,
   point: NormalizedSeriesPoint<TProperties>,
+  value: number,
   metricKeys: readonly string[],
 ) {
   cell.firstPoint ??= point;
@@ -533,9 +639,20 @@ function updateHeatmapCell<TProperties>(
   cell.lastPoint = point;
   cell.lastPointIndex = point.sourceIndex;
   cell.pointCount += 1;
-  cell.sumValue += point.y;
+  cell.sumValue += value;
   cell.averageValue = cell.sumValue / cell.pointCount;
   addMetrics(cell.metrics, point.metrics, metricKeys);
+}
+
+function pointAccessorValue<TProperties>(
+  point: NormalizedSeriesPoint<TProperties>,
+  accessor: VizPointValueAccessor,
+) {
+  if (typeof accessor === "object") {
+    return point.metrics?.[accessor.metric] ?? Number.NaN;
+  }
+
+  return point[accessor];
 }
 
 function pointsInXDomain<TProperties>(
@@ -545,17 +662,17 @@ function pointsInXDomain<TProperties>(
   return points.filter((point) => point.x >= xDomain[0] && point.x <= xDomain[1]);
 }
 
-function derivePointYDomain<TProperties>(
-  points: readonly NormalizedSeriesPoint<TProperties>[],
+function deriveValueDomain<TProperties>(
+  valuedPoints: readonly { value: number }[],
 ): [number, number] {
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
   let hasPoints = false;
 
-  for (const point of points) {
+  for (const { value } of valuedPoints) {
     hasPoints = true;
-    min = Math.min(min, point.y);
-    max = Math.max(max, point.y);
+    min = Math.min(min, value);
+    max = Math.max(max, value);
   }
 
   return hasPoints ? [min, max] : [0, 0];

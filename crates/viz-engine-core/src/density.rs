@@ -43,13 +43,18 @@ impl VizDensityIndex {
         let x_domain = normalize_domain(query.x_domain);
         let bin_count = clamp_count(query.target_bin_count);
         let width = bin_width(x_domain, bin_count);
+        let requested_percentiles = resolve_requested_percentiles(&query.percentiles, query.value_mode);
         let mut bins: Vec<_> = (0..bin_count)
             .map(|index| self.empty_bin(index, bin_count, x_domain, width))
             .collect();
 
         for point in self.points_in_x_domain(x_domain) {
             let index = bucket_index(point.x, x_domain, bin_count);
-            self.update_bin(&mut bins[index], point);
+            self.update_bin(&mut bins[index], point, !requested_percentiles.is_empty());
+        }
+
+        for bin in &mut bins {
+            apply_percentiles(bin, &requested_percentiles);
         }
 
         if !query.include_empty_bins {
@@ -84,24 +89,28 @@ impl VizDensityIndex {
             .filter(|point| {
                 x_domain.map_or(true, |domain| point.x >= domain[0] && point.x <= domain[1])
             })
+            .filter_map(|point| {
+                self.point_accessor_value(point, &query.value_accessor)
+                    .map(|value| (point, value))
+            })
             .collect::<Vec<_>>();
         let value_domain = normalize_domain(
             query
                 .value_domain
-                .unwrap_or_else(|| derive_domain(selected_points.iter().map(|point| point.y))),
+                .unwrap_or_else(|| derive_domain(selected_points.iter().map(|(_, value)| *value))),
         );
         let width = bin_width(value_domain, bucket_count);
         let mut buckets: Vec<_> = (0..bucket_count)
             .map(|index| self.empty_histogram_bucket(index, bucket_count, value_domain, width))
             .collect();
 
-        for point in selected_points {
-            if point.y < value_domain[0] || point.y > value_domain[1] {
+        for (point, value) in selected_points {
+            if value < value_domain[0] || value > value_domain[1] {
                 continue;
             }
 
-            let index = bucket_index(point.y, value_domain, bucket_count);
-            self.update_histogram_bucket(&mut buckets[index], point);
+            let index = bucket_index(value, value_domain, bucket_count);
+            self.update_histogram_bucket(&mut buckets[index], point, value);
         }
 
         if !query.include_empty_buckets {
@@ -124,11 +133,17 @@ impl VizDensityIndex {
         let x_bin_count = clamp_count(query.x_bin_count);
         let y_bin_count = clamp_count(query.y_bin_count);
         let x_domain = normalize_domain(query.x_domain);
-        let selected_points = self.points_in_x_domain(x_domain).collect::<Vec<_>>();
+        let selected_points = self
+            .points_in_x_domain(x_domain)
+            .filter_map(|point| {
+                self.point_accessor_value(point, &query.value_accessor)
+                    .map(|value| (point, value))
+            })
+            .collect::<Vec<_>>();
         let y_domain = normalize_domain(
             query
                 .y_domain
-                .unwrap_or_else(|| derive_domain(selected_points.iter().map(|point| point.y))),
+                .unwrap_or_else(|| derive_domain(selected_points.iter().map(|(_, value)| *value))),
         );
         let x_width = bin_width(x_domain, x_bin_count);
         let y_width = bin_width(y_domain, y_bin_count);
@@ -146,14 +161,14 @@ impl VizDensityIndex {
             })
             .collect();
 
-        for point in selected_points {
-            if point.y < y_domain[0] || point.y > y_domain[1] {
+        for (point, value) in selected_points {
+            if value < y_domain[0] || value > y_domain[1] {
                 continue;
             }
 
             let x_index = bucket_index(point.x, x_domain, x_bin_count);
-            let y_index = bucket_index(point.y, y_domain, y_bin_count);
-            self.update_heatmap_cell(&mut cells[y_index * x_bin_count + x_index], point);
+            let y_index = bucket_index(value, y_domain, y_bin_count);
+            self.update_heatmap_cell(&mut cells[y_index * x_bin_count + x_index], point, value);
         }
 
         let max_cell_count = cells.iter().map(|cell| cell.point_count).max().unwrap_or(0);
@@ -334,6 +349,7 @@ impl VizDensityIndex {
             x_domain: query.x_domain,
             target_bin_count: query.target_bin_count,
             include_empty_bins: true,
+            percentiles: vec![],
             value_mode: query.value_mode,
         });
         let mut result = hit_test_series_x(&series, &query)?;
@@ -381,18 +397,26 @@ impl VizDensityIndex {
             max_y: None,
             metrics: self.empty_metrics(),
             min_y: None,
+            p10: None,
+            p25: None,
+            p50: None,
+            p75: None,
+            p90: None,
+            p95: None,
+            p99: None,
             point_count: 0,
             sum_y: 0.0,
             x0,
             x1: if index + 1 == bin_count {
                 x_domain[1]
             } else {
-                x0 + width
+                x_domain[0] + (index + 1) as f64 * width
             },
+            y_values: Vec::new(),
         }
     }
 
-    fn update_bin(&self, bin: &mut VizDensityBin, point: &VizSeriesPoint) {
+    fn update_bin(&self, bin: &mut VizDensityBin, point: &VizSeriesPoint, track_percentiles: bool) {
         bin.first_point_index.get_or_insert(point.source_index);
         bin.last_point_index = Some(point.source_index);
         bin.point_count += 1;
@@ -400,6 +424,9 @@ impl VizDensityIndex {
         bin.average_y = Some(bin.sum_y / bin.point_count as f64);
         bin.min_y = Some(bin.min_y.map_or(point.y, |value| value.min(point.y)));
         bin.max_y = Some(bin.max_y.map_or(point.y, |value| value.max(point.y)));
+        if track_percentiles {
+            bin.y_values.push(point.y);
+        }
         self.add_metrics(&mut bin.metrics, point);
     }
 
@@ -432,14 +459,19 @@ impl VizDensityIndex {
         }
     }
 
-    fn update_histogram_bucket(&self, bucket: &mut VizHistogramBucket, point: &VizSeriesPoint) {
+    fn update_histogram_bucket(
+        &self,
+        bucket: &mut VizHistogramBucket,
+        point: &VizSeriesPoint,
+        value: f64,
+    ) {
         bucket.first_point_index.get_or_insert(point.source_index);
         bucket.last_point_index = Some(point.source_index);
         bucket.point_count += 1;
-        bucket.sum_value += point.y;
+        bucket.sum_value += value;
         bucket.average_value = Some(bucket.sum_value / bucket.point_count as f64);
-        bucket.min_value = Some(bucket.min_value.map_or(point.y, |value| value.min(point.y)));
-        bucket.max_value = Some(bucket.max_value.map_or(point.y, |value| value.max(point.y)));
+        bucket.min_value = Some(bucket.min_value.map_or(value, |current| current.min(value)));
+        bucket.max_value = Some(bucket.max_value.map_or(value, |current| current.max(value)));
         self.add_metrics(&mut bucket.metrics, point);
     }
 
@@ -487,13 +519,35 @@ impl VizDensityIndex {
         }
     }
 
-    fn update_heatmap_cell(&self, cell: &mut VizHeatmapCell, point: &VizSeriesPoint) {
+    fn update_heatmap_cell(&self, cell: &mut VizHeatmapCell, point: &VizSeriesPoint, value: f64) {
         cell.first_point_index.get_or_insert(point.source_index);
         cell.last_point_index = Some(point.source_index);
         cell.point_count += 1;
-        cell.sum_value += point.y;
+        cell.sum_value += value;
         cell.average_value = Some(cell.sum_value / cell.point_count as f64);
         self.add_metrics(&mut cell.metrics, point);
+    }
+
+    fn point_accessor_value(
+        &self,
+        point: &VizSeriesPoint,
+        accessor: &VizPointValueAccessor,
+    ) -> Option<f64> {
+        let value = match accessor {
+            VizPointValueAccessor::Axis(axis) if axis == "x" => point.x,
+            VizPointValueAccessor::Axis(_) => point.y,
+            VizPointValueAccessor::Metric { metric } => {
+                let metric_index = self
+                    .metric_schema
+                    .keys
+                    .iter()
+                    .position(|candidate| candidate == metric)?;
+
+                point.metrics.get(metric_index).copied()?
+            }
+        };
+
+        value.is_finite().then_some(value)
     }
 
     fn add_metrics(&self, target: &mut BTreeMap<String, f64>, point: &VizSeriesPoint) {
@@ -513,6 +567,13 @@ fn create_sample(bin: &VizDensityBin, value_mode: VizValueMode) -> VizDensitySam
         max_y: bin.max_y,
         metrics: bin.metrics.clone(),
         min_y: bin.min_y,
+        p10: bin.p10,
+        p25: bin.p25,
+        p50: bin.p50,
+        p75: bin.p75,
+        p90: bin.p90,
+        p95: bin.p95,
+        p99: bin.p99,
         point_count: bin.point_count,
         sum_y: bin.sum_y,
         x: bin.x0 + (bin.x1 - bin.x0) / 2.0,
@@ -525,10 +586,100 @@ fn create_sample(bin: &VizDensityBin, value_mode: VizValueMode) -> VizDensitySam
 fn sample_value(bin: &VizDensityBin, value_mode: VizValueMode) -> Option<f64> {
     match value_mode {
         VizValueMode::Average => bin.average_y,
-        VizValueMode::Count => Some(bin.point_count as f64),
+        VizValueMode::Count => (bin.point_count > 0).then_some(bin.point_count as f64),
         VizValueMode::Min => bin.min_y,
         VizValueMode::Max => bin.max_y,
         VizValueMode::Sum => (bin.point_count > 0).then_some(bin.sum_y),
+        VizValueMode::P10 => bin.p10,
+        VizValueMode::P25 => bin.p25,
+        VizValueMode::P50 => bin.p50,
+        VizValueMode::P75 => bin.p75,
+        VizValueMode::P90 => bin.p90,
+        VizValueMode::P95 => bin.p95,
+        VizValueMode::P99 => bin.p99,
+    }
+}
+
+fn resolve_requested_percentiles(
+    percentiles: &[VizValueMode],
+    value_mode: VizValueMode,
+) -> Vec<VizValueMode> {
+    let mut requested = Vec::new();
+
+    for percentile in percentiles {
+        if is_percentile_mode(*percentile) && !requested.contains(percentile) {
+            requested.push(*percentile);
+        }
+    }
+
+    if is_percentile_mode(value_mode) && !requested.contains(&value_mode) {
+        requested.push(value_mode);
+    }
+
+    requested
+}
+
+fn is_percentile_mode(value_mode: VizValueMode) -> bool {
+    matches!(
+        value_mode,
+        VizValueMode::P10
+            | VizValueMode::P25
+            | VizValueMode::P50
+            | VizValueMode::P75
+            | VizValueMode::P90
+            | VizValueMode::P95
+            | VizValueMode::P99
+    )
+}
+
+fn apply_percentiles(bin: &mut VizDensityBin, percentiles: &[VizValueMode]) {
+    if bin.point_count == 0 || percentiles.is_empty() {
+        return;
+    }
+
+    bin.y_values.sort_by(f64::total_cmp);
+
+    for percentile in percentiles {
+        let value = percentile_value(
+            &bin.y_values,
+            match percentile {
+                VizValueMode::P10 => 0.10,
+                VizValueMode::P25 => 0.25,
+                VizValueMode::P50 => 0.50,
+                VizValueMode::P75 => 0.75,
+                VizValueMode::P90 => 0.90,
+                VizValueMode::P95 => 0.95,
+                VizValueMode::P99 => 0.99,
+                _ => continue,
+            },
+        );
+
+        match percentile {
+            VizValueMode::P10 => bin.p10 = value,
+            VizValueMode::P25 => bin.p25 = value,
+            VizValueMode::P50 => bin.p50 = value,
+            VizValueMode::P75 => bin.p75 = value,
+            VizValueMode::P90 => bin.p90 = value,
+            VizValueMode::P95 => bin.p95 = value,
+            VizValueMode::P99 => bin.p99 = value,
+            _ => {}
+        }
+    }
+}
+
+fn percentile_value(sorted_values: &[f64], percentile: f64) -> Option<f64> {
+    match sorted_values {
+        [] => None,
+        [value] => Some(*value),
+        values => {
+            let rank = percentile * (values.len() - 1) as f64;
+            let lower_index = rank.floor() as usize;
+            let upper_index = rank.ceil() as usize;
+            let lower = values[lower_index];
+            let upper = values[upper_index];
+
+            Some(lower + (upper - lower) * (rank - lower_index as f64))
+        }
     }
 }
 
@@ -736,6 +887,7 @@ mod tests {
             x_domain: [0.0, 40.0],
             target_bin_count: 4,
             include_empty_bins: false,
+            percentiles: vec![],
             value_mode: VizValueMode::Average,
         });
 
@@ -763,6 +915,7 @@ mod tests {
             x_domain: [40.0, 0.0],
             target_bin_count: 0,
             include_empty_bins: true,
+            percentiles: vec![],
             value_mode: VizValueMode::Average,
         });
 
@@ -779,6 +932,7 @@ mod tests {
             x_domain: [0.0, 40.0],
             target_bin_count: 8,
             include_empty_bins: true,
+            percentiles: vec![],
             value_mode: VizValueMode::Average,
         });
 
@@ -799,6 +953,7 @@ mod tests {
             x_domain: [0.0, 40.0],
             target_bin_count: 4,
             include_empty_bins: true,
+            percentiles: vec![],
             value_mode: VizValueMode::Average,
         });
 
@@ -823,6 +978,7 @@ mod tests {
                 x_domain: [0.0, 40.0],
                 target_bin_count: 4,
                 include_empty_bins: true,
+                percentiles: vec![],
                 value_mode,
             });
 
@@ -898,6 +1054,7 @@ mod tests {
         let histogram = index().get_histogram(VizHistogramQuery {
             bucket_count: 4,
             include_empty_buckets: true,
+            value_accessor: VizPointValueAccessor::default(),
             value_domain: None,
             x_domain: Some([0.0, 40.0]),
         });
@@ -918,6 +1075,7 @@ mod tests {
         let histogram = index().get_histogram(VizHistogramQuery {
             bucket_count: 4,
             include_empty_buckets: false,
+            value_accessor: VizPointValueAccessor::default(),
             value_domain: Some([0.0, 40.0]),
             x_domain: Some([0.0, 20.0]),
         });
@@ -941,6 +1099,7 @@ mod tests {
             x_bin_count: 4,
             x_domain: [0.0, 40.0],
             y_bin_count: 4,
+            value_accessor: VizPointValueAccessor::default(),
             y_domain: Some([0.0, 40.0]),
             include_empty_cells: true,
         });
@@ -956,6 +1115,7 @@ mod tests {
             x_bin_count: 2,
             x_domain: [0.0, 40.0],
             y_bin_count: 2,
+            value_accessor: VizPointValueAccessor::default(),
             y_domain: Some([0.0, 40.0]),
             include_empty_cells: false,
         });
@@ -986,6 +1146,7 @@ mod tests {
         let histogram = index.get_histogram(VizHistogramQuery {
             bucket_count: 0,
             include_empty_buckets: true,
+            value_accessor: VizPointValueAccessor::default(),
             value_domain: None,
             x_domain: None,
         });
@@ -997,6 +1158,7 @@ mod tests {
             x_bin_count: 0,
             x_domain: [f64::NAN, f64::INFINITY],
             y_bin_count: 0,
+            value_accessor: VizPointValueAccessor::default(),
             y_domain: None,
             include_empty_cells: true,
         });

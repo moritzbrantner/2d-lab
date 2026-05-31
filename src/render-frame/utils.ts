@@ -239,6 +239,14 @@ function getSampleRenderValue<TProperties>(
       return sample.minY;
     case "sum":
       return sample.pointCount > 0 ? sample.sumY : null;
+    case "p10":
+    case "p25":
+    case "p50":
+    case "p75":
+    case "p90":
+    case "p95":
+    case "p99":
+      return sample[valueMode] ?? null;
   }
 }
 

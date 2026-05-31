@@ -77,7 +77,20 @@ describe("RustWasmVizDensityIndex", () => {
 });
 
 function publicResults(index: VizDensityIndex) {
-  const modes: VizValueMode[] = ["average", "count", "max", "min", "sum"];
+  const modes: VizValueMode[] = [
+    "average",
+    "count",
+    "max",
+    "min",
+    "sum",
+    "p10",
+    "p25",
+    "p50",
+    "p75",
+    "p90",
+    "p95",
+    "p99",
+  ];
 
   return {
     bounds: index.getSeriesBounds(),
@@ -97,6 +110,20 @@ function publicResults(index: VizDensityIndex) {
         xIndex: cell.xIndex,
         yIndex: cell.yIndex,
       })),
+    heatmapMetric: index
+      .getHeatmap({
+        includeEmptyCells: true,
+        valueAccessor: { metric: "weight" },
+        xBinCount: 4,
+        xDomain: [0, 40],
+        yBinCount: 4,
+      })
+      .cells.map((cell) => ({
+        averageValue: cell.averageValue,
+        metrics: cell.metrics,
+        pointCount: cell.pointCount,
+        sumValue: cell.sumValue,
+      })),
     histogram: index
       .getHistogram({ bucketCount: 4, includeEmptyBuckets: true, xDomain: [0, 40] })
       .buckets.map((bucket) => ({
@@ -106,6 +133,19 @@ function publicResults(index: VizDensityIndex) {
         maxValue: bucket.maxValue,
         metrics: bucket.metrics,
         minValue: bucket.minValue,
+        pointCount: bucket.pointCount,
+        sumValue: bucket.sumValue,
+      })),
+    histogramX: index
+      .getHistogram({
+        bucketCount: 4,
+        includeEmptyBuckets: true,
+        valueAccessor: "x",
+        xDomain: [0, 40],
+      })
+      .buckets.map((bucket) => ({
+        averageValue: bucket.averageValue,
+        metrics: bucket.metrics,
         pointCount: bucket.pointCount,
         sumValue: bucket.sumValue,
       })),
@@ -138,9 +178,22 @@ function publicResults(index: VizDensityIndex) {
       .points.map((point) => point.y),
     series: modes.map((valueMode) =>
       index
-        .getChartSeries({ includeEmptyBins: true, targetBinCount: 4, valueMode, xDomain: [0, 40] })
+        .getChartSeries({
+          includeEmptyBins: true,
+          percentiles: ["p10", "p25", "p50", "p75", "p90", "p95", "p99"],
+          targetBinCount: 4,
+          valueMode,
+          xDomain: [0, 40],
+        })
         .samples.map((sample) => ({
           ...publicBin(sample),
+          p10: sample.p10,
+          p25: sample.p25,
+          p50: sample.p50,
+          p75: sample.p75,
+          p90: sample.p90,
+          p95: sample.p95,
+          p99: sample.p99,
           x: sample.x,
           y: sample.y,
         })),
