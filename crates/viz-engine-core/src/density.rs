@@ -1,5 +1,9 @@
 use crate::hit_test::hit_test_series_x;
 use crate::types::*;
+use dense_data::{
+    NumericHeatmapCell, NumericHeatmapQuery, NumericSeriesIndex, NumericSeriesPoint,
+    NumericValueAccessor,
+};
 use std::collections::{BTreeMap, VecDeque};
 
 #[derive(Clone, Debug)]
@@ -134,67 +138,46 @@ impl VizDensityIndex {
         let x_bin_count = clamp_count(query.x_bin_count);
         let y_bin_count = clamp_count(query.y_bin_count);
         let x_domain = normalize_domain(query.x_domain);
-        let selected_points = self
-            .points_in_x_domain(x_domain)
+        let numeric_points = self
+            .points
+            .iter()
             .filter_map(|point| {
                 self.point_accessor_value(point, &query.value_accessor)
-                    .map(|value| (point, value))
+                    .map(|value| NumericSeriesPoint {
+                        source_index: point.source_index,
+                        x: point.x,
+                        y: value,
+                        metrics: self.point_metrics(point),
+                    })
             })
             .collect::<Vec<_>>();
-        let y_domain = normalize_domain(
-            query
-                .y_domain
-                .unwrap_or_else(|| derive_domain(selected_points.iter().map(|(_, value)| *value))),
-        );
-        let x_width = bin_width(x_domain, x_bin_count);
-        let y_width = bin_width(y_domain, y_bin_count);
-        let mut cells: Vec<_> = (0..(x_bin_count * y_bin_count))
-            .map(|index| {
-                self.empty_heatmap_cell(
-                    index,
-                    x_bin_count,
-                    y_bin_count,
-                    x_domain,
-                    y_domain,
-                    x_width,
-                    y_width,
-                )
-            })
-            .collect();
-
-        for (point, value) in selected_points {
-            if value < y_domain[0] || value > y_domain[1] {
-                continue;
-            }
-
-            let x_index = bucket_index(point.x, x_domain, x_bin_count);
-            let y_index = bucket_index(value, y_domain, y_bin_count);
-            self.update_heatmap_cell(&mut cells[y_index * x_bin_count + x_index], point, value);
-        }
-
-        let max_cell_count = cells.iter().map(|cell| cell.point_count).max().unwrap_or(0);
-
-        for cell in &mut cells {
-            cell.value = if max_cell_count > 0 {
-                cell.point_count as f64 / max_cell_count as f64
-            } else {
-                0.0
-            };
-        }
-
-        if !query.include_empty_cells {
-            cells.retain(|cell| cell.point_count > 0);
-        }
-
-        VizHeatmap {
-            summary: VizHeatmapSummary {
-                max_cell_count,
-                metrics: sum_metric_records(cells.iter().map(|cell| &cell.metrics)),
-                point_count: cells.iter().map(|cell| cell.point_count).sum(),
+        let index = NumericSeriesIndex::from_points(numeric_points)
+            .expect("viz heatmap adapter only passes finite numeric points and metrics");
+        let heatmap = index
+            .get_heatmap(NumericHeatmapQuery {
+                include_empty_cells: query.include_empty_cells,
+                value_accessor: NumericValueAccessor::Y,
                 x_bin_count,
                 x_domain,
                 y_bin_count,
-                y_domain,
+                y_domain: query.y_domain.map(normalize_domain),
+            })
+            .expect("viz heatmap adapter clamps bin counts and normalizes domains");
+        let cells = heatmap
+            .cells
+            .into_iter()
+            .map(|cell| numeric_heatmap_cell_to_viz(cell, &self.metric_schema))
+            .collect::<Vec<_>>();
+
+        VizHeatmap {
+            summary: VizHeatmapSummary {
+                max_cell_count: usize_count(heatmap.summary.max_cell_count),
+                metrics: ensure_metric_schema(heatmap.summary.metrics, &self.metric_schema),
+                point_count: cells.iter().map(|cell| cell.point_count).sum(),
+                x_bin_count,
+                x_domain: heatmap.summary.x_domain,
+                y_bin_count,
+                y_domain: heatmap.summary.y_domain,
             },
             cells,
         }
@@ -477,57 +460,18 @@ impl VizDensityIndex {
         self.add_metrics(&mut bucket.metrics, point);
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn empty_heatmap_cell(
-        &self,
-        index: usize,
-        x_bin_count: usize,
-        y_bin_count: usize,
-        x_domain: [f64; 2],
-        y_domain: [f64; 2],
-        x_width: f64,
-        y_width: f64,
-    ) -> VizHeatmapCell {
-        let x_index = index % x_bin_count;
-        let y_index = index / x_bin_count;
-        let x0 = x_domain[0] + x_index as f64 * x_width;
-        let y0 = y_domain[0] + y_index as f64 * y_width;
-
-        VizHeatmapCell {
-            average_value: None,
-            first_point_index: None,
-            index,
-            last_point_index: None,
-            metrics: self.empty_metrics(),
-            point_count: 0,
-            sum_value: 0.0,
-            value: 0.0,
-            x: x0 + x_width / 2.0,
-            x0,
-            x1: if x_index + 1 == x_bin_count {
-                x_domain[1]
-            } else {
-                x0 + x_width
-            },
-            x_index,
-            y: y0 + y_width / 2.0,
-            y0,
-            y1: if y_index + 1 == y_bin_count {
-                y_domain[1]
-            } else {
-                y0 + y_width
-            },
-            y_index,
-        }
-    }
-
-    fn update_heatmap_cell(&self, cell: &mut VizHeatmapCell, point: &VizSeriesPoint, value: f64) {
-        cell.first_point_index.get_or_insert(point.source_index);
-        cell.last_point_index = Some(point.source_index);
-        cell.point_count += 1;
-        cell.sum_value += value;
-        cell.average_value = Some(cell.sum_value / cell.point_count as f64);
-        self.add_metrics(&mut cell.metrics, point);
+    fn point_metrics(&self, point: &VizSeriesPoint) -> BTreeMap<String, f64> {
+        self.metric_schema
+            .keys
+            .iter()
+            .enumerate()
+            .map(|(index, key)| {
+                (
+                    key.clone(),
+                    point.metrics.get(index).copied().unwrap_or(0.0),
+                )
+            })
+            .collect()
     }
 
     fn point_accessor_value(
@@ -558,6 +502,45 @@ impl VizDensityIndex {
                 point.metrics.get(index).copied().unwrap_or(0.0);
         }
     }
+}
+
+fn numeric_heatmap_cell_to_viz(
+    cell: NumericHeatmapCell,
+    metric_schema: &VizMetricSchema,
+) -> VizHeatmapCell {
+    VizHeatmapCell {
+        average_value: cell.average_value,
+        first_point_index: cell.first_point_index,
+        index: cell.index,
+        last_point_index: cell.last_point_index,
+        metrics: ensure_metric_schema(cell.metrics, metric_schema),
+        point_count: usize_count(cell.point_count),
+        sum_value: cell.sum_value,
+        value: cell.value,
+        x: cell.x,
+        x0: cell.x0,
+        x1: cell.x1,
+        x_index: cell.x_index,
+        y: cell.y,
+        y0: cell.y0,
+        y1: cell.y1,
+        y_index: cell.y_index,
+    }
+}
+
+fn ensure_metric_schema(
+    mut metrics: BTreeMap<String, f64>,
+    metric_schema: &VizMetricSchema,
+) -> BTreeMap<String, f64> {
+    for key in &metric_schema.keys {
+        metrics.entry(key.clone()).or_insert(0.0);
+    }
+
+    metrics
+}
+
+fn usize_count(value: u64) -> usize {
+    usize::try_from(value).unwrap_or(usize::MAX)
 }
 
 fn create_sample(bin: &VizDensityBin, value_mode: VizValueMode) -> VizDensitySample {
@@ -1207,6 +1190,67 @@ mod tests {
         );
         assert_eq!(heatmap.summary.metrics.get("count"), Some(&5.0));
         assert_eq!(heatmap.summary.metrics.get("weight"), Some(&62.0));
+    }
+
+    #[test]
+    fn heatmap_uses_metric_accessor_and_normalizes_reversed_domains() {
+        let index = VizDensityIndex::new(
+            vec![
+                VizSeriesPoint {
+                    id: "low".to_string(),
+                    label: "low".to_string(),
+                    x: 0.0,
+                    y: 100.0,
+                    metrics: vec![1.0, 2.0],
+                    source_index: 0,
+                },
+                VizSeriesPoint {
+                    id: "high-a".to_string(),
+                    label: "high-a".to_string(),
+                    x: 10.0,
+                    y: 200.0,
+                    metrics: vec![9.0, 3.0],
+                    source_index: 1,
+                },
+                VizSeriesPoint {
+                    id: "high-b".to_string(),
+                    label: "high-b".to_string(),
+                    x: 10.0,
+                    y: 300.0,
+                    metrics: vec![9.0, 4.0],
+                    source_index: 2,
+                },
+            ],
+            VizMetricSchema {
+                keys: vec!["heat".to_string(), "extra".to_string()],
+            },
+        );
+        let heatmap = index.get_heatmap(VizHeatmapQuery {
+            include_empty_cells: false,
+            value_accessor: VizPointValueAccessor::Metric {
+                metric: "heat".to_string(),
+            },
+            x_bin_count: 2,
+            x_domain: [10.0, 0.0],
+            y_bin_count: 2,
+            y_domain: Some([10.0, 0.0]),
+        });
+
+        assert_eq!(heatmap.summary.x_domain, [0.0, 10.0]);
+        assert_eq!(heatmap.summary.y_domain, [0.0, 10.0]);
+        assert_eq!(heatmap.summary.max_cell_count, 2);
+        assert_eq!(
+            heatmap
+                .cells
+                .iter()
+                .map(|cell| (cell.x_index, cell.y_index, cell.point_count, cell.value))
+                .collect::<Vec<_>>(),
+            vec![(0, 0, 1, 0.5), (1, 1, 2, 1.0)]
+        );
+        assert_eq!(heatmap.cells[1].sum_value, 18.0);
+        assert_eq!(heatmap.cells[1].average_value, Some(9.0));
+        assert_eq!(heatmap.cells[1].metrics.get("heat"), Some(&18.0));
+        assert_eq!(heatmap.cells[1].metrics.get("extra"), Some(&7.0));
     }
 
     #[test]

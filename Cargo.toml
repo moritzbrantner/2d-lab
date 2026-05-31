@@ -8,4 +8,5 @@ license = "MIT"
 repository = "https://github.com/moritzbrantner/viz-engine"
 
 [workspace.dependencies]
+dense-data = { path = "../rust-packages/crates/data/dense-data" }
 serde = { version = "1", features = ["derive"] }
