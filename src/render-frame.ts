@@ -73,6 +73,7 @@ function computeVizRenderLayer<TProperties>(
     case "binned-series":
     case "histogram":
     case "heatmap":
+    case "rolling-series":
       return computeCartesianRenderLayer(layerId, layer, datasetRecord, options, diagnostics);
     case "geo-clusters":
     case "geo-points":

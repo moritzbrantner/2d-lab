@@ -69,6 +69,36 @@ pub struct VizHeatmapQuery {
     pub include_empty_cells: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum VizRollingStatistic {
+    Mean,
+    Ema,
+    Min,
+    Max,
+    StdDev,
+    ZScore,
+}
+
+impl Default for VizRollingStatistic {
+    fn default() -> Self {
+        Self::Mean
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VizRollingSeriesQuery {
+    #[serde(default)]
+    pub alpha: Option<f64>,
+    pub x_domain: [f64; 2],
+    #[serde(default)]
+    pub min_periods: Option<usize>,
+    #[serde(default)]
+    pub statistic: VizRollingStatistic,
+    pub window_size: usize,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VizHitTestQuery {
@@ -213,6 +243,44 @@ pub struct VizHeatmapSummary {
 pub struct VizHeatmap {
     pub cells: Vec<VizHeatmapCell>,
     pub summary: VizHeatmapSummary,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VizRollingSeriesPoint {
+    pub ema: Option<f64>,
+    pub index: usize,
+    pub max: Option<f64>,
+    pub mean: Option<f64>,
+    pub min: Option<f64>,
+    pub point_count: usize,
+    pub source_point_index: Option<usize>,
+    pub statistic: VizRollingStatistic,
+    pub std_dev: Option<f64>,
+    pub sum: Option<f64>,
+    pub window_size: usize,
+    pub x: f64,
+    pub y: Option<f64>,
+    pub z_score: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VizRollingSeriesSummary {
+    pub alpha: f64,
+    pub min_periods: usize,
+    pub point_count: usize,
+    pub sample_count: usize,
+    pub statistic: VizRollingStatistic,
+    pub window_size: usize,
+    pub x_domain: [f64; 2],
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VizRollingSeries {
+    pub points: Vec<VizRollingSeriesPoint>,
+    pub summary: VizRollingSeriesSummary,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -7,6 +7,7 @@ import {
   createHeatmap,
   createHistogram,
   createPointLookup,
+  createRollingSeries,
   getSeriesBounds,
   normalizeDomain,
   normalizeMetrics,
@@ -106,6 +107,43 @@ describe("density utils", () => {
       [1, null, null, 5],
       [1, null, null, 12],
     ]);
+  });
+
+  test("creates rolling series with trailing window statistics", () => {
+    const points = normalized();
+    const series = createRollingSeries(points, {
+      alpha: 0.5,
+      minPeriods: 2,
+      statistic: "zScore",
+      windowSize: 2,
+      xDomain: [0, 10],
+    });
+
+    expect(series.summary).toMatchObject({
+      alpha: 0.5,
+      minPeriods: 2,
+      pointCount: 3,
+      sampleCount: 2,
+      statistic: "zScore",
+      windowSize: 2,
+      xDomain: [0, 10],
+    });
+    expect(series.points.map((point) => point.y)).toEqual([
+      null,
+      1 / Math.sqrt(2),
+      1 / Math.sqrt(2),
+    ]);
+    expect(series.points[1]).toMatchObject({
+      ema: 3,
+      max: 5,
+      mean: 3,
+      min: 1,
+      pointCount: 2,
+      sourcePointIndex: 0,
+      stdDev: Math.sqrt(8),
+      sum: 6,
+    });
+    expect(series.points[2].sourcePoint?.id).toBe("same-x");
   });
 
   test("creates histograms with derived and explicit domains", () => {

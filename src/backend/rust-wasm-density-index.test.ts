@@ -109,6 +109,33 @@ function publicResults(index: VizDensityIndex) {
         pointCount: bucket.pointCount,
         sumValue: bucket.sumValue,
       })),
+    rolling: index
+      .getRollingSeries({
+        alpha: 0.5,
+        minPeriods: 2,
+        statistic: "zScore",
+        windowSize: 3,
+        xDomain: [0, 40],
+      })
+      .points.map((point) => ({
+        ema: point.ema,
+        max: point.max,
+        mean: point.mean,
+        min: point.min,
+        pointCount: point.pointCount,
+        sourcePointIndex: point.sourcePointIndex,
+        stdDev: point.stdDev,
+        sum: point.sum,
+        x: point.x,
+        y: point.y,
+        zScore: point.zScore,
+      })),
+    rollingDefault: index
+      .getRollingSeries({
+        windowSize: 3,
+        xDomain: [0, 40],
+      })
+      .points.map((point) => point.y),
     series: modes.map((valueMode) =>
       index
         .getChartSeries({ includeEmptyBins: true, targetBinCount: 4, valueMode, xDomain: [0, 40] })

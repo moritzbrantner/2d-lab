@@ -3,7 +3,7 @@ use wasm_bindgen::prelude::*;
 
 use viz_engine_core::{
     VizBinnedSeriesQuery, VizDensityIndex, VizHeatmapQuery, VizHistogramQuery, VizHitTestQuery,
-    VizMetricSchema, VizSeriesPoint,
+    VizMetricSchema, VizRollingSeriesQuery, VizSeriesPoint,
 };
 
 #[derive(Debug, Deserialize)]
@@ -75,6 +75,13 @@ impl VizEngineWasmDensityIndex {
     pub fn get_heatmap(&self, query: JsValue) -> Result<JsValue, JsValue> {
         let query: VizHeatmapQuery = serde_wasm_bindgen::from_value(query)?;
         serde_wasm_bindgen::to_value(&self.index.get_heatmap(query)).map_err(|error| error.into())
+    }
+
+    #[wasm_bindgen(js_name = getRollingSeries)]
+    pub fn get_rolling_series(&self, query: JsValue) -> Result<JsValue, JsValue> {
+        let query: VizRollingSeriesQuery = serde_wasm_bindgen::from_value(query)?;
+        serde_wasm_bindgen::to_value(&self.index.get_rolling_series(query))
+            .map_err(|error| error.into())
     }
 
     #[wasm_bindgen(js_name = getSeriesBounds)]

@@ -17,12 +17,27 @@ export function hitTestVizFrame<TProperties = Record<string, unknown>>(
   let nearestDistance = Number.POSITIVE_INFINITY;
 
   for (const layer of frame.layers) {
-    if (layer.kind !== "binned-series") {
-      continue;
-    }
+    const samples =
+      layer.kind === "binned-series"
+        ? layer.series.samples.map((sample) => ({
+            pointCount: sample.pointCount,
+            sampleIndex: sample.index,
+            sourcePointId: sample.firstPoint?.id ?? sample.lastPoint?.id ?? null,
+            x: sample.x,
+            y: sample.y,
+          }))
+        : layer.kind === "rolling-series"
+          ? layer.series.points.map((point) => ({
+              pointCount: point.pointCount,
+              sampleIndex: point.index,
+              sourcePointId: point.sourcePoint?.id ?? null,
+              x: point.x,
+              y: point.y,
+            }))
+          : [];
 
-    for (const sample of layer.series.samples) {
-      if (sample.pointCount <= 0) {
+    for (const sample of samples) {
+      if (sample.pointCount <= 0 || sample.y == null) {
         continue;
       }
 
@@ -35,8 +50,8 @@ export function hitTestVizFrame<TProperties = Record<string, unknown>>(
           kind: "cartesian",
           layerId: layer.layerId,
           pointCount: sample.pointCount,
-          sampleIndex: sample.index,
-          sourcePointId: sample.firstPoint?.id ?? sample.lastPoint?.id ?? null,
+          sampleIndex: sample.sampleIndex,
+          sourcePointId: sample.sourcePointId,
           x: sample.x,
           y: sample.y,
         };

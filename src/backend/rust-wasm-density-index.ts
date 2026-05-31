@@ -21,6 +21,9 @@ import type {
   VizHistogramQuery,
   VizIndexedSeriesPoint,
   VizMetricRecord,
+  VizRollingSeries,
+  VizRollingSeriesPoint,
+  VizRollingSeriesQuery,
   VizSeriesPoint,
 } from "../types";
 
@@ -38,6 +41,10 @@ type RustHeatmap<TProperties> = {
 type RustHistogram<TProperties> = {
   buckets: Array<RustResult<VizHistogramBucket<TProperties>>>;
   summary: VizHistogram<TProperties>["summary"];
+};
+type RustRollingSeries<TProperties> = {
+  points: Array<Omit<VizRollingSeriesPoint<TProperties>, "sourcePoint">>;
+  summary: VizRollingSeries<TProperties>["summary"];
 };
 
 export class RustWasmVizDensityIndex<
@@ -124,6 +131,18 @@ export class RustWasmVizDensityIndex<
     return this.byId.get(pointId) ?? null;
   }
 
+  getRollingSeries(query: VizRollingSeriesQuery): VizRollingSeries<TProperties> {
+    const result = this.index.getRollingSeries({
+      ...query,
+      statistic: query.statistic ?? "mean",
+    }) as RustRollingSeries<TProperties>;
+
+    return {
+      points: result.points.map((point) => this.mapRollingPoint(point)),
+      summary: result.summary,
+    };
+  }
+
   getSeriesBounds() {
     return this.index.getSeriesBounds() ?? null;
   }
@@ -189,6 +208,22 @@ export class RustWasmVizDensityIndex<
       lastPoint: this.pointBySourceIndex(cell.lastPointIndex),
       lastPointIndex: cell.lastPointIndex ?? null,
       metrics: normalizeRustMetrics(cell.metrics),
+    };
+  }
+
+  private mapRollingPoint(point: Omit<VizRollingSeriesPoint<TProperties>, "sourcePoint">) {
+    return {
+      ...point,
+      ema: point.ema ?? null,
+      max: point.max ?? null,
+      mean: point.mean ?? null,
+      min: point.min ?? null,
+      sourcePoint: this.pointBySourceIndex(point.sourcePointIndex),
+      sourcePointIndex: point.sourcePointIndex ?? null,
+      stdDev: point.stdDev ?? null,
+      sum: point.sum ?? null,
+      y: point.y ?? null,
+      zScore: point.zScore ?? null,
     };
   }
 

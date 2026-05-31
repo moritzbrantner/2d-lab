@@ -5,6 +5,7 @@ import {
   createHeatmap,
   createHistogram,
   createPointLookup,
+  createRollingSeries,
   getSeriesBounds,
   normalizeSeriesPoints,
   type NormalizedSeriesPoint,
@@ -17,6 +18,7 @@ import type {
   VizHeatmapQuery,
   VizHistogramQuery,
   VizIndexedSeriesPoint,
+  VizRollingSeriesQuery,
   VizSeriesPoint,
 } from "../types";
 
@@ -67,6 +69,10 @@ export class JsVizDensityIndex<
 
   getPointById(pointId: string): VizIndexedSeriesPoint<TProperties> | null {
     return this.byId.get(pointId) ?? null;
+  }
+
+  getRollingSeries(query: VizRollingSeriesQuery) {
+    return createRollingSeries(this.points, query);
   }
 
   getSeriesBounds() {

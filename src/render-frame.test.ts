@@ -61,6 +61,38 @@ describe("computeVizRenderFrame", () => {
     expect(frame.layers[2]).toMatchObject({ bounds: [0, 0, 40, 40], datasetId });
   });
 
+  test("renders rolling-series layers from the Rust-backed density API surface", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({ kind: "xy", points });
+
+    engine.addLayer({
+      alpha: 0.5,
+      datasetId,
+      kind: "rolling-series",
+      minPeriods: 2,
+      statistic: "mean",
+      windowSize: 3,
+      xDomain: [0, 40],
+    });
+
+    const frame = engine.computeFrame({ viewport: { height: 320, width: 800, xDomain: [0, 40] } });
+    const layer = frame.layers[0];
+
+    expect(layer).toMatchObject({
+      bounds: [10, 3, 40, 56 / 3],
+      datasetId,
+      kind: "rolling-series",
+      statistic: "mean",
+    });
+    expect(layer?.kind === "rolling-series" ? layer.rows.map((row) => row.value) : []).toEqual([
+      null,
+      3,
+      14 / 3,
+      28 / 3,
+      56 / 3,
+    ]);
+  });
+
   test("creates render rows for every value mode", () => {
     const sample = {
       averageY: 4,

@@ -8,6 +8,7 @@ import type {
   VizHeatmapQuery,
   VizHistogramQuery,
   VizIndexedSeriesPoint,
+  VizRollingSeriesQuery,
   VizSeriesPoint,
 } from "../types";
 
@@ -50,6 +51,10 @@ export class ProgressiveVizDensityIndex<
 
   getPointById(pointId: string): VizIndexedSeriesPoint<TProperties> | null {
     return this.activeIndex.getPointById(pointId);
+  }
+
+  getRollingSeries(query: VizRollingSeriesQuery) {
+    return this.activeIndex.getRollingSeries(query);
   }
 
   getSeriesBounds() {

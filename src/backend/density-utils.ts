@@ -9,6 +9,9 @@ import type {
   VizHistogramQuery,
   VizIndexedSeriesPoint,
   VizMetricRecord,
+  VizRollingSeries,
+  VizRollingSeriesQuery,
+  VizRollingStatistic,
   VizSeriesBounds,
   VizSeriesPoint,
   VizValueMode,
@@ -248,6 +251,109 @@ export function createHeatmap<TProperties>(
   };
 }
 
+export function createRollingSeries<TProperties>(
+  points: readonly NormalizedSeriesPoint<TProperties>[],
+  query: VizRollingSeriesQuery,
+): VizRollingSeries<TProperties> {
+  const xDomain = normalizeDomain(query.xDomain);
+  const windowSize = clampCount(query.windowSize);
+  const minPeriods = Math.min(windowSize, Math.max(1, Math.floor(query.minPeriods ?? windowSize)));
+  const statistic = query.statistic ?? "mean";
+  const alpha = normalizeAlpha(query.alpha, windowSize);
+  const selectedPoints = pointsInXDomain(points, xDomain);
+  const rollingPoints: VizRollingSeries<TProperties>["points"] = [];
+  const minQueue: Array<{ index: number; value: number }> = [];
+  const maxQueue: Array<{ index: number; value: number }> = [];
+  let minHead = 0;
+  let maxHead = 0;
+  let sum = 0;
+  let sumSquares = 0;
+  let ema: number | null = null;
+
+  for (const [index, point] of selectedPoints.entries()) {
+    const value = point.y;
+    ema = ema === null ? value : alpha * value + (1 - alpha) * ema;
+    sum += value;
+    sumSquares += value * value;
+
+    while (minQueue.length > minHead && minQueue[minQueue.length - 1]!.value >= value) {
+      minQueue.pop();
+    }
+    minQueue.push({ index, value });
+
+    while (maxQueue.length > maxHead && maxQueue[maxQueue.length - 1]!.value <= value) {
+      maxQueue.pop();
+    }
+    maxQueue.push({ index, value });
+
+    if (index >= windowSize) {
+      const expiredIndex = index - windowSize;
+      const expired = selectedPoints[expiredIndex]!.y;
+      sum -= expired;
+      sumSquares -= expired * expired;
+
+      while (minQueue[minHead] && minQueue[minHead]!.index <= expiredIndex) {
+        minHead += 1;
+      }
+      while (maxQueue[maxHead] && maxQueue[maxHead]!.index <= expiredIndex) {
+        maxHead += 1;
+      }
+    }
+
+    const pointCount = Math.min(index + 1, windowSize);
+    const hasEnoughPoints = pointCount >= minPeriods;
+    const mean = hasEnoughPoints ? sum / pointCount : null;
+    const min = hasEnoughPoints ? (minQueue[minHead]?.value ?? null) : null;
+    const max = hasEnoughPoints ? (maxQueue[maxHead]?.value ?? null) : null;
+    const stdDev = hasEnoughPoints ? sampleStdDev(sum, sumSquares, pointCount) : null;
+    const zScore =
+      mean !== null && stdDev !== null && stdDev > Number.EPSILON
+        ? (point.y - mean) / stdDev
+        : null;
+    const rollingEma = hasEnoughPoints ? ema : null;
+    const rollingSum = hasEnoughPoints ? sum : null;
+    const y = rollingStatisticValue(statistic, {
+      ema: rollingEma,
+      max,
+      mean,
+      min,
+      stdDev,
+      zScore,
+    });
+
+    rollingPoints.push({
+      ema: rollingEma,
+      index,
+      max,
+      mean,
+      min,
+      pointCount,
+      sourcePoint: point,
+      sourcePointIndex: point.sourceIndex,
+      statistic,
+      stdDev,
+      sum: rollingSum,
+      windowSize,
+      x: point.x,
+      y,
+      zScore,
+    });
+  }
+
+  return {
+    points: rollingPoints,
+    summary: {
+      alpha,
+      minPeriods,
+      pointCount: selectedPoints.length,
+      sampleCount: rollingPoints.filter((point) => point.y !== null).length,
+      statistic,
+      windowSize,
+      xDomain,
+    },
+  };
+}
+
 export function normalizeDomain(domain: [number, number]): [number, number] {
   const left = Number.isFinite(domain[0]) ? domain[0] : 0;
   const right = Number.isFinite(domain[1]) ? domain[1] : left;
@@ -469,6 +575,45 @@ function bucketIndex(value: number, domain: [number, number], bucketCount: numbe
 
 function clampCount(value: number) {
   return Math.min(100_000, Math.max(1, Math.floor(Number.isFinite(value) ? value : 1)));
+}
+
+function normalizeAlpha(alpha: number | undefined, windowSize: number) {
+  return alpha != null && Number.isFinite(alpha) && alpha > 0 && alpha <= 1
+    ? alpha
+    : 2 / (windowSize + 1);
+}
+
+function sampleStdDev(sum: number, sumSquares: number, pointCount: number) {
+  if (pointCount < 2) {
+    return null;
+  }
+
+  const variance = (sumSquares - (sum * sum) / pointCount) / (pointCount - 1);
+
+  return Math.sqrt(Math.max(0, variance));
+}
+
+function rollingStatisticValue(
+  statistic: VizRollingStatistic,
+  values: Pick<
+    VizRollingSeries["points"][number],
+    "ema" | "max" | "mean" | "min" | "stdDev" | "zScore"
+  >,
+) {
+  switch (statistic) {
+    case "ema":
+      return values.ema;
+    case "max":
+      return values.max;
+    case "mean":
+      return values.mean;
+    case "min":
+      return values.min;
+    case "stdDev":
+      return values.stdDev;
+    case "zScore":
+      return values.zScore;
+  }
 }
 
 function zeroMetrics(metricKeys: readonly string[]) {

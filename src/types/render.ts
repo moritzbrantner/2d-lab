@@ -12,6 +12,8 @@ import type {
   VizMetricRecord,
   VizRenderBounds,
   VizResolvedBackend,
+  VizRollingSeries,
+  VizRollingStatistic,
   VizSeriesPoint,
   VizValueMode,
 } from "./core";
@@ -80,6 +82,15 @@ export type VizLayer =
       xDomain: [number, number];
       yBinCount: number;
       yDomain?: [number, number];
+    }
+  | {
+      alpha?: number;
+      datasetId: VizDatasetId;
+      kind: "rolling-series";
+      minPeriods?: number;
+      statistic?: VizRollingStatistic;
+      windowSize: number;
+      xDomain: [number, number];
     }
   | {
       datasetId: VizDatasetId;
@@ -196,6 +207,15 @@ export type VizRenderLayer<TProperties = Record<string, unknown>> =
       datasetId: VizDatasetId;
       kind: "heatmap";
       layerId: VizLayerId;
+    }
+  | {
+      bounds: VizRenderBounds | null;
+      datasetId: VizDatasetId;
+      kind: "rolling-series";
+      layerId: VizLayerId;
+      rows: Array<VizRenderDatum<TProperties>>;
+      series: VizRollingSeries<TProperties>;
+      statistic: VizRollingStatistic;
     }
   | {
       aggregation: VizGeoAggregation<TProperties>;

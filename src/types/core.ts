@@ -11,6 +11,7 @@ export type VizBackendImplementation =
   | "rust-viz-engine-wasm";
 
 export type VizMetricRecord = Record<string, number>;
+export type VizRollingStatistic = "ema" | "max" | "mean" | "min" | "stdDev" | "zScore";
 export type VizValueMode = "average" | "count" | "max" | "min" | "sum";
 export type VizGeoBounds = [west: number, south: number, east: number, north: number];
 export type VizRenderBounds = [number, number, number, number];
@@ -125,6 +126,37 @@ export type VizHeatmap<TProperties = Record<string, unknown>> = {
   };
 };
 
+export type VizRollingSeriesPoint<TProperties = Record<string, unknown>> = {
+  ema: number | null;
+  index: number;
+  max: number | null;
+  mean: number | null;
+  min: number | null;
+  pointCount: number;
+  sourcePoint: VizIndexedSeriesPoint<TProperties> | null;
+  sourcePointIndex: number | null;
+  statistic: VizRollingStatistic;
+  stdDev: number | null;
+  sum: number | null;
+  windowSize: number;
+  x: number;
+  y: number | null;
+  zScore: number | null;
+};
+
+export type VizRollingSeries<TProperties = Record<string, unknown>> = {
+  points: Array<VizRollingSeriesPoint<TProperties>>;
+  summary: {
+    alpha: number;
+    minPeriods: number;
+    pointCount: number;
+    sampleCount: number;
+    statistic: VizRollingStatistic;
+    windowSize: number;
+    xDomain: [number, number];
+  };
+};
+
 export type VizDensityQuery = {
   includeEmptyBins?: boolean;
   targetBinCount: number;
@@ -153,6 +185,14 @@ export type VizHeatmapQuery = {
   yDomain?: [number, number];
 };
 
+export type VizRollingSeriesQuery = {
+  alpha?: number;
+  minPeriods?: number;
+  statistic?: VizRollingStatistic;
+  windowSize: number;
+  xDomain: [number, number];
+};
+
 export type VizSeriesBounds = {
   maxX: number;
   maxY: number;
@@ -173,5 +213,6 @@ export type VizDensityIndex<TProperties = Record<string, unknown>> = {
   getHeatmap(query: VizHeatmapQuery): VizHeatmap<TProperties>;
   getHistogram(query: VizHistogramQuery): VizHistogram<TProperties>;
   getPointById(pointId: string): VizIndexedSeriesPoint<TProperties> | null;
+  getRollingSeries(query: VizRollingSeriesQuery): VizRollingSeries<TProperties>;
   getSeriesBounds(): VizSeriesBounds | null;
 };

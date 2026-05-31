@@ -1,6 +1,6 @@
 use crate::hit_test::hit_test_series_x;
 use crate::types::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
 #[derive(Clone, Debug)]
 pub struct VizDensityIndex {
@@ -181,6 +181,132 @@ impl VizDensityIndex {
                 y_domain,
             },
             cells,
+        }
+    }
+
+    pub fn get_rolling_series(&self, query: VizRollingSeriesQuery) -> VizRollingSeries {
+        let x_domain = normalize_domain(query.x_domain);
+        let window_size = clamp_count(query.window_size);
+        let min_periods = query
+            .min_periods
+            .unwrap_or(window_size)
+            .clamp(1, window_size);
+        let alpha = normalize_alpha(query.alpha, window_size);
+        let selected_points = self.points_in_x_domain(x_domain).collect::<Vec<_>>();
+        let mut points = Vec::with_capacity(selected_points.len());
+        let mut min_queue: VecDeque<(usize, f64)> = VecDeque::new();
+        let mut max_queue: VecDeque<(usize, f64)> = VecDeque::new();
+        let mut sum = 0.0;
+        let mut sum_squares = 0.0;
+        let mut ema = None;
+
+        for (index, point) in selected_points.iter().enumerate() {
+            let value = point.y;
+            ema = Some(match ema {
+                Some(previous) => alpha * value + (1.0 - alpha) * previous,
+                None => value,
+            });
+
+            sum += value;
+            sum_squares += value * value;
+
+            while min_queue
+                .back()
+                .is_some_and(|(_, queued_value)| *queued_value >= value)
+            {
+                min_queue.pop_back();
+            }
+            min_queue.push_back((index, value));
+
+            while max_queue
+                .back()
+                .is_some_and(|(_, queued_value)| *queued_value <= value)
+            {
+                max_queue.pop_back();
+            }
+            max_queue.push_back((index, value));
+
+            if index >= window_size {
+                let expired_index = index - window_size;
+                let expired = selected_points[expired_index].y;
+                sum -= expired;
+                sum_squares -= expired * expired;
+
+                while min_queue
+                    .front()
+                    .is_some_and(|(queued_index, _)| *queued_index <= expired_index)
+                {
+                    min_queue.pop_front();
+                }
+                while max_queue
+                    .front()
+                    .is_some_and(|(queued_index, _)| *queued_index <= expired_index)
+                {
+                    max_queue.pop_front();
+                }
+            }
+
+            let point_count = (index + 1).min(window_size);
+            let has_enough_points = point_count >= min_periods;
+            let (mean, min, max, std_dev, z_score, rolling_sum, rolling_ema) = if has_enough_points
+            {
+                let mean = sum / point_count as f64;
+                let std_dev = sample_std_dev(sum, sum_squares, point_count);
+                let z_score = std_dev
+                    .filter(|value| *value > f64::EPSILON)
+                    .map(|value| (point.y - mean) / value);
+
+                (
+                    Some(mean),
+                    min_queue.front().map(|(_, value)| *value),
+                    max_queue.front().map(|(_, value)| *value),
+                    std_dev,
+                    z_score,
+                    Some(sum),
+                    ema,
+                )
+            } else {
+                (None, None, None, None, None, None, None)
+            };
+            let y = rolling_statistic_value(
+                query.statistic,
+                mean,
+                min,
+                max,
+                std_dev,
+                z_score,
+                rolling_ema,
+            );
+
+            points.push(VizRollingSeriesPoint {
+                ema: rolling_ema,
+                index,
+                max,
+                mean,
+                min,
+                point_count,
+                source_point_index: Some(point.source_index),
+                statistic: query.statistic,
+                std_dev,
+                sum: rolling_sum,
+                window_size,
+                x: point.x,
+                y,
+                z_score,
+            });
+        }
+
+        VizRollingSeries {
+            summary: VizRollingSeriesSummary {
+                alpha,
+                min_periods,
+                point_count: selected_points.len(),
+                sample_count: points.iter().filter(|point| point.y.is_some()).count(),
+                statistic: query.statistic,
+                window_size,
+                x_domain,
+            },
+            points,
         }
     }
 
@@ -465,6 +591,42 @@ fn clamp_count(value: usize) -> usize {
     value.clamp(1, 100_000)
 }
 
+fn normalize_alpha(alpha: Option<f64>, window_size: usize) -> f64 {
+    alpha
+        .filter(|value| value.is_finite() && *value > 0.0 && *value <= 1.0)
+        .unwrap_or(2.0 / (window_size as f64 + 1.0))
+}
+
+fn sample_std_dev(sum: f64, sum_squares: f64, point_count: usize) -> Option<f64> {
+    if point_count < 2 {
+        return None;
+    }
+
+    let variance =
+        (sum_squares - (sum * sum) / point_count as f64) / (point_count.saturating_sub(1) as f64);
+
+    Some(variance.max(0.0).sqrt())
+}
+
+fn rolling_statistic_value(
+    statistic: VizRollingStatistic,
+    mean: Option<f64>,
+    min: Option<f64>,
+    max: Option<f64>,
+    std_dev: Option<f64>,
+    z_score: Option<f64>,
+    ema: Option<f64>,
+) -> Option<f64> {
+    match statistic {
+        VizRollingStatistic::Mean => mean,
+        VizRollingStatistic::Ema => ema,
+        VizRollingStatistic::Min => min,
+        VizRollingStatistic::Max => max,
+        VizRollingStatistic::StdDev => std_dev,
+        VizRollingStatistic::ZScore => z_score,
+    }
+}
+
 fn sum_metric_records<'a>(
     records: impl Iterator<Item = &'a BTreeMap<String, f64>>,
 ) -> BTreeMap<String, f64> {
@@ -669,6 +831,69 @@ mod tests {
     }
 
     #[test]
+    fn computes_rolling_window_statistics() {
+        let series = index().get_rolling_series(VizRollingSeriesQuery {
+            alpha: Some(0.5),
+            x_domain: [0.0, 40.0],
+            min_periods: Some(2),
+            statistic: VizRollingStatistic::ZScore,
+            window_size: 3,
+        });
+
+        assert_eq!(series.summary.window_size, 3);
+        assert_eq!(series.summary.min_periods, 2);
+        assert_eq!(series.summary.sample_count, 4);
+        assert_eq!(
+            series
+                .points
+                .iter()
+                .map(|point| point.x)
+                .collect::<Vec<_>>(),
+            vec![0.0, 10.0, 20.0, 30.0, 40.0]
+        );
+        assert_eq!(series.points[0].y, None);
+        assert_eq!(series.points[1].mean, Some(3.0));
+        assert_eq!(series.points[1].min, Some(2.0));
+        assert_eq!(series.points[1].max, Some(4.0));
+        assert_eq!(series.points[1].sum, Some(6.0));
+        assert_eq!(series.points[1].ema, Some(3.0));
+        assert_close(series.points[1].std_dev.unwrap(), 2.0_f64.sqrt());
+        assert_close(series.points[1].z_score.unwrap(), 1.0 / 2.0_f64.sqrt());
+        assert_close(series.points[2].mean.unwrap(), 14.0 / 3.0);
+        assert_eq!(series.points[3].min, Some(4.0));
+        assert_eq!(series.points[3].max, Some(16.0));
+        assert_close(series.points[3].ema.unwrap(), 10.75);
+    }
+
+    #[test]
+    fn uses_complete_windows_by_default_for_rolling_series() {
+        let series = index().get_rolling_series(VizRollingSeriesQuery {
+            alpha: None,
+            x_domain: [40.0, 0.0],
+            min_periods: None,
+            statistic: VizRollingStatistic::Mean,
+            window_size: 3,
+        });
+
+        assert_eq!(series.summary.x_domain, [0.0, 40.0]);
+        assert_eq!(series.summary.alpha, 0.5);
+        assert_eq!(
+            series
+                .points
+                .iter()
+                .map(|point| point.y)
+                .collect::<Vec<_>>(),
+            vec![
+                None,
+                None,
+                Some(14.0 / 3.0),
+                Some(28.0 / 3.0),
+                Some(56.0 / 3.0)
+            ]
+        );
+    }
+
+    #[test]
     fn computes_histogram_buckets() {
         let histogram = index().get_histogram(VizHistogramQuery {
             bucket_count: 4,
@@ -815,6 +1040,13 @@ mod tests {
                 value_mode: VizValueMode::Average,
             }),
             None
+        );
+    }
+
+    fn assert_close(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < 1e-12,
+            "expected {actual} to be close to {expected}"
         );
     }
 }

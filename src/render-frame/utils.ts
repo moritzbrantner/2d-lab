@@ -14,6 +14,7 @@ import type {
   VizLayerId,
   VizRenderBounds,
   VizRenderDatum,
+  VizRollingSeries,
   VizValueMode,
 } from "../types";
 
@@ -45,6 +46,26 @@ export function createVizRenderRows<TProperties>(
   }));
 }
 
+export function createRollingRenderRows<TProperties>(
+  series: VizRollingSeries<TProperties>,
+): Array<VizRenderDatum<TProperties>> {
+  return series.points.map((point) => ({
+    average: point.mean,
+    count: point.pointCount,
+    index: point.index,
+    label: point.sourcePoint?.label ?? point.x.toString(),
+    max: point.max,
+    metrics: point.sourcePoint?.metrics,
+    min: point.min,
+    pointCount: point.pointCount,
+    sum: point.sum,
+    value: point.y,
+    x: point.x,
+    x0: point.x,
+    x1: point.x,
+  }));
+}
+
 export function getSeriesBounds<TProperties>(
   series: VizDensitySeries<TProperties>,
 ): VizRenderBounds | null {
@@ -71,6 +92,30 @@ export function getSeriesBounds<TProperties>(
   }
 
   return [minX, minY, maxX, maxY];
+}
+
+export function getRenderRowsBounds<TProperties>(
+  rows: readonly VizRenderDatum<TProperties>[],
+): VizRenderBounds | null {
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  let hasRows = false;
+
+  for (const row of rows) {
+    if (row.value == null) {
+      continue;
+    }
+
+    hasRows = true;
+    minX = Math.min(minX, row.x0);
+    maxX = Math.max(maxX, row.x1);
+    minY = Math.min(minY, row.value);
+    maxY = Math.max(maxY, row.value);
+  }
+
+  return hasRows ? [minX, minY, maxX, maxY] : null;
 }
 
 export function getDensityIndex<TProperties>(

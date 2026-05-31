@@ -25,6 +25,13 @@ engine.addLayer({
   datasetId,
   kind: "histogram",
 });
+engine.addLayer({
+  datasetId,
+  kind: "rolling-series",
+  statistic: "mean",
+  windowSize: 24,
+  xDomain: [0, 1_440],
+});
 
 const frame = engine.computeFrame({
   viewport: { height: 320, width: 800, xDomain: [0, 1_440] },
@@ -92,15 +99,16 @@ charts/maps/future packages own visuals.
 ```
 
 The current Rust MVP supports XY datasets, binned series, histograms, heatmaps,
-series bounds, and simple x-based hit testing. Geo point clustering, geo heat
-features, GeoJSON viewport filtering, and flow filtering/aggregation are
-currently JavaScript-backed in this package. Financial OHLCV modeling,
-validation, downsampling, provider-neutral data contracts, and derived
-return/risk helpers live in the reusable `finance-data` and `finance-statistics`
-Rust crates under `/home/moenarch/moritzbrantner/rust-packages`; `viz-engine`
-exposes those concepts as renderer-facing finance datasets and layers. React
-lifecycle, renderer-facing frame assembly, dynamic backend selection, and
-fallback routing remain in TypeScript.
+rolling series statistics, series bounds, and simple x-based hit testing. Geo
+point clustering, geo heat features, GeoJSON viewport filtering, and flow
+filtering/aggregation are currently JavaScript-backed in this package. Financial
+OHLCV modeling, validation, downsampling, provider-neutral data contracts, and
+derived return/risk helpers live in the reusable `finance-data` and
+`finance-statistics` Rust crates under
+`/home/moenarch/moritzbrantner/rust-packages`; `viz-engine` exposes those
+concepts as renderer-facing finance datasets and layers. React lifecycle,
+renderer-facing frame assembly, dynamic backend selection, and fallback routing
+remain in TypeScript.
 
 Do not move React, DOM, Leaflet, Recharts, SVG rendering, Canvas rendering, UI
 controls, or renderer integrations into Rust.

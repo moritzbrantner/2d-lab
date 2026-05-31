@@ -117,6 +117,11 @@ const visualizationPages: VisualizationPage[] = [
     slug: "heatmap",
   },
   {
+    description: "Compute trailing moving statistics over dense XY points.",
+    label: "Rolling series",
+    slug: "rolling-series",
+  },
+  {
     description: "Cluster geographic points for viewport-aware map rendering.",
     label: "Geo clusters",
     slug: "geo-clusters",
@@ -522,13 +527,28 @@ function createFocusedFrame(slug: VisualizationSlug, seed: number): FocusedFrame
   };
 }
 
-function createCartesianLayer(kind: "binned-series" | "heatmap" | "histogram", datasetId: string) {
+function createCartesianLayer(
+  kind: "binned-series" | "heatmap" | "histogram" | "rolling-series",
+  datasetId: string,
+) {
   if (kind === "binned-series") {
     return {
       datasetId,
       kind,
       targetBinCount: 180,
       valueMode: "average" as const,
+      xDomain: cartesianViewport.xDomain,
+    };
+  }
+
+  if (kind === "rolling-series") {
+    return {
+      alpha: 0.18,
+      datasetId,
+      kind,
+      minPeriods: 8,
+      statistic: "mean" as const,
+      windowSize: 24,
       xDomain: cartesianViewport.xDomain,
     };
   }
@@ -611,6 +631,7 @@ function createGeoLayer(
     | "binned-series"
     | "histogram"
     | "heatmap"
+    | "rolling-series"
     | "finance-candles"
     | "finance-line"
     | "finance-returns"
@@ -685,6 +706,12 @@ function CartesianLayer({
   yDomain: [number, number];
 }) {
   if (layer.kind === "binned-series") {
+    return (
+      <path className="series-layer focused-series" d={linePath(layer.rows, viewport, yDomain)} />
+    );
+  }
+
+  if (layer.kind === "rolling-series") {
     return (
       <path className="series-layer focused-series" d={linePath(layer.rows, viewport, yDomain)} />
     );
@@ -923,6 +950,7 @@ function GeoClusterMark({
 function createFrameSummary(frame: VizRenderFrame, layer: VizRenderLayer | null) {
   const rows =
     layer?.kind === "binned-series" ||
+    layer?.kind === "rolling-series" ||
     layer?.kind === "finance-line" ||
     layer?.kind === "finance-returns"
       ? layer.rows.length
@@ -1155,8 +1183,13 @@ function projectGeo(position: readonly [number, number], viewport: VizGeoViewpor
 
 function isCartesianLayerKind(
   slug: VisualizationSlug,
-): slug is "binned-series" | "heatmap" | "histogram" {
-  return slug === "binned-series" || slug === "histogram" || slug === "heatmap";
+): slug is "binned-series" | "heatmap" | "histogram" | "rolling-series" {
+  return (
+    slug === "binned-series" ||
+    slug === "histogram" ||
+    slug === "heatmap" ||
+    slug === "rolling-series"
+  );
 }
 
 function isFinanceLayerKind(

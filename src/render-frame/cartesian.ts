@@ -1,6 +1,8 @@
 import {
+  createRollingRenderRows,
   createVizRenderRows,
   getDensityIndex,
+  getRenderRowsBounds,
   getSeriesBounds,
   isCartesianViewport,
 } from "./utils";
@@ -17,7 +19,10 @@ import type {
   VizRenderLayer,
 } from "../types";
 
-type CartesianLayer = Extract<VizLayer, { kind: "binned-series" | "heatmap" | "histogram" }>;
+type CartesianLayer = Extract<
+  VizLayer,
+  { kind: "binned-series" | "heatmap" | "histogram" | "rolling-series" }
+>;
 
 export function computeCartesianRenderLayer<TProperties>(
   layerId: VizLayerId,
@@ -87,6 +92,31 @@ export function computeCartesianRenderLayer<TProperties>(
         datasetId: layer.datasetId,
         kind: "heatmap",
         layerId,
+      };
+    }
+    case "rolling-series": {
+      const index = getDensityIndex(layerId, layer.kind, datasetRecord, diagnostics);
+      if (!index || !isCartesianViewport(options.viewport, layerId, diagnostics)) {
+        return null;
+      }
+      const statistic = layer.statistic ?? "mean";
+      const series = index.getRollingSeries({
+        alpha: layer.alpha,
+        minPeriods: layer.minPeriods,
+        statistic,
+        windowSize: layer.windowSize,
+        xDomain: layer.xDomain,
+      });
+      const rows = createRollingRenderRows(series);
+
+      return {
+        bounds: getRenderRowsBounds(rows),
+        datasetId: layer.datasetId,
+        kind: "rolling-series",
+        layerId,
+        rows,
+        series,
+        statistic,
       };
     }
   }
