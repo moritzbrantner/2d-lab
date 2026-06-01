@@ -25,7 +25,7 @@
   },
   "scripts": {
     "build": "bun run build:wasm && tsup",
-    "build:wasm": "wasm-pack build crates/viz-engine-wasm --target bundler --out-dir ../../src/wasm/pkg && node ./scripts/embed-wasm.mjs",
+    "build:wasm": "wasm-pack build crates/viz-engine-wasm --target bundler --out-dir ../../src/wasm/pkg && bun ./scripts/embed-wasm.mjs",
     "bench": "bun run bench:node && bun run bench:browser",
     "bench:browser": "bun run bench/browser/run-browser.ts --quick",
     "bench:node": "bun run bench/run.ts --runtime bun",
@@ -36,7 +36,7 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "prepack": "bun run build",
-    "prepublishOnly": "bun run verify && npm pack --dry-run",
+    "prepublishOnly": "bun run verify && bun pm pack --dry-run",
     "test": "bun run build:wasm && vitest run",
     "test:rust": "cargo test --workspace",
     "test:wasm": "bun run test",

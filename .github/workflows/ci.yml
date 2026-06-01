@@ -11,6 +11,9 @@ on:
 permissions:
   contents: read
 
+env:
+  BUN_VERSION: 1.3.14
+
 jobs:
   verify:
     name: Verify package
@@ -18,24 +21,24 @@ jobs:
 
     steps:
       - name: Checkout viz-engine
-        uses: actions/checkout@v4
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git init "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE"
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c http.extraheader="AUTHORIZATION: bearer $GITHUB_TOKEN" fetch --no-tags --depth=1 origin "$GITHUB_REF"
+          git checkout --force FETCH_HEAD
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
+        run: |
+          curl -fsSL https://bun.sh/install | bash -s -- "bun-v$BUN_VERSION"
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+          "$HOME/.bun/bin/bun" --version
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/wasm-pack
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-wasm-pack-0.14.0
 
       - name: Install wasm-pack
         run: |
@@ -61,8 +64,8 @@ jobs:
       - name: Build package
         run: bun run build
 
-      - name: Check npm package contents
-        run: npm pack --dry-run
+      - name: Check package contents
+        run: bun pm pack --dry-run
 
   charts-integration:
     name: Charts integration
@@ -77,17 +80,17 @@ jobs:
 
       - name: Checkout charts
         if: env.HAS_CHARTS_REPO_TOKEN == 'true'
-        uses: actions/checkout@v4
-        with:
-          repository: moritzbrantner/charts
-          token: ${{ secrets.CHARTS_REPO_TOKEN }}
-          path: charts
+        env:
+          CHARTS_REPO_TOKEN: ${{ secrets.CHARTS_REPO_TOKEN }}
+        run: |
+          git -c http.extraheader="AUTHORIZATION: bearer $CHARTS_REPO_TOKEN" clone --depth=1 https://github.com/moritzbrantner/charts.git charts
 
       - name: Set up Bun
         if: env.HAS_CHARTS_REPO_TOKEN == 'true'
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
+        run: |
+          curl -fsSL https://bun.sh/install | bash -s -- "bun-v$BUN_VERSION"
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+          "$HOME/.bun/bin/bun" --version
 
       - name: Install charts dependencies
         if: env.HAS_CHARTS_REPO_TOKEN == 'true'
