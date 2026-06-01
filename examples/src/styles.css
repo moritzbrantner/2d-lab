@@ -524,6 +524,11 @@ input[type="range"] {
   opacity: 0.24;
 }
 
+.geo-scalar-field rect {
+  fill: #2f8f83;
+  stroke: none;
+}
+
 .geo-clusters circle {
   fill: #123129;
   stroke: #fffdf8;

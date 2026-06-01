@@ -12,6 +12,8 @@ import { JsVizGeoPointIndex } from "./js-geo-index";
 import { JsVizGeoJsonIndex } from "./js-geojson-index";
 import { ProgressiveVizDensityIndex } from "./progressive-density-index";
 import { RustWasmVizDensityIndex } from "./rust-wasm-density-index";
+import { WasmVizFinanceIndex } from "./wasm-finance-index";
+import { WasmVizGeoPointIndex } from "./wasm-geo-index";
 
 import type { VizDatasetIndex } from "../types";
 
@@ -41,11 +43,11 @@ describe("createVizEngineBackend", () => {
       kind: "geo-points",
     });
     expect(createVizEngineBackend("wasm").createIndex(dataset)).toMatchObject({
-      index: expect.any(JsVizGeoPointIndex),
+      index: expect.any(WasmVizGeoPointIndex),
       kind: "geo-points",
     });
     expect(createVizEngineBackend("auto").createIndex(dataset)).toMatchObject({
-      index: expect.any(JsVizGeoPointIndex),
+      index: expect.any(WasmVizGeoPointIndex),
       kind: "geo-points",
     });
   });
@@ -77,11 +79,11 @@ describe("createVizEngineBackend", () => {
       kind: "finance-ohlcv",
     });
     expect(createVizEngineBackend("wasm").createIndex(dataset)).toMatchObject({
-      index: expect.any(JsVizFinanceIndex),
+      index: expect.any(WasmVizFinanceIndex),
       kind: "finance-ohlcv",
     });
     expect(createVizEngineBackend("auto").createIndex(dataset)).toMatchObject({
-      index: expect.any(JsVizFinanceIndex),
+      index: expect.any(WasmVizFinanceIndex),
       kind: "finance-ohlcv",
     });
   });
@@ -96,7 +98,7 @@ describe("createVizEngineBackend", () => {
       kind: "xy",
       points: [{ x: 0, y: 1 }],
     });
-    const jsBackedGeoIndex = createVizEngineBackend("wasm").createIndex({
+    const wasmGeoIndex = createVizEngineBackend("wasm").createIndex({
       kind: "geo-points",
       points: [{ latitude: 52, longitude: 13 }],
     });
@@ -111,7 +113,7 @@ describe("createVizEngineBackend", () => {
     expect(resolveFrameBackendImplementation([])).toBe("js");
     expect(resolveFrameBackendImplementation([jsIndex])).toBe("js");
     expect(resolveFrameBackendImplementation([wasmIndex])).toBe("rust-viz-engine-wasm");
-    expect(resolveFrameBackendImplementation([jsBackedGeoIndex])).toBe("js");
+    expect(resolveFrameBackendImplementation([wasmGeoIndex])).toBe("rust-geo-viz-wasm");
     expect(
       resolveFrameBackendImplementation([
         createVizEngineBackend("wasm").createIndex({
@@ -120,8 +122,8 @@ describe("createVizEngineBackend", () => {
           kind: "finance-ohlcv",
         }),
       ]),
-    ).toBe("js");
-    expect(resolveFrameBackendImplementation([wasmIndex, jsBackedGeoIndex, geojsonIndex])).toBe(
+    ).toBe("rust-finance-data-wasm");
+    expect(resolveFrameBackendImplementation([wasmIndex, wasmGeoIndex, geojsonIndex])).toBe(
       "mixed",
     );
   });

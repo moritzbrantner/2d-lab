@@ -1,19 +1,41 @@
-import { JsVizGeoFlowIndex } from "./js-geo-flow-index";
+import { GeoFlowIndex, initVizEngineWasm } from "../wasm/viz-engine-wasm-bindings";
 
-import type { VizGeoFlow } from "../types";
+import type {
+  VizGeoBounds,
+  VizGeoFlow,
+  VizGeoFlowAggregation,
+  VizGeoFlowIndex,
+  VizGeoFlowOptions,
+  VizGeoViewportQuery,
+} from "../types";
 
 export class WasmVizGeoFlowIndex<
   TProperties = Record<string, unknown>,
-> extends JsVizGeoFlowIndex<TProperties> {
+> implements VizGeoFlowIndex<TProperties> {
+  private readonly inner: GeoFlowIndex;
+
   constructor(flows: readonly VizGeoFlow<TProperties>[]) {
-    super(flows);
+    initVizEngineWasm();
+
+    this.inner = new GeoFlowIndex(flows as Array<VizGeoFlow<TProperties>>);
   }
 
   getBackendCapabilities() {
     return {
-      backend: "js" as const,
-      implementation: "js" as const,
-      usesWasm: false,
+      backend: "wasm" as const,
+      implementation: "rust-geo-viz-wasm" as const,
+      usesWasm: true,
     };
+  }
+
+  getBounds(): VizGeoBounds | null {
+    return this.inner.getBounds() as VizGeoBounds | null;
+  }
+
+  getViewportFlows(
+    query: VizGeoViewportQuery,
+    options: VizGeoFlowOptions = {},
+  ): VizGeoFlowAggregation<TProperties> {
+    return this.inner.getViewportFlows(query, options) as VizGeoFlowAggregation<TProperties>;
   }
 }

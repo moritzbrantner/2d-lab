@@ -10,6 +10,8 @@ import type {
   VizGeoHeatOptions,
   VizGeoPoint,
   VizGeoPointIndex,
+  VizGeoScalarFieldGrid,
+  VizGeoScalarFieldOptions,
   VizGeoViewportQuery,
   VizIndexedGeoPoint,
   VizMetricRecord,
@@ -145,6 +147,16 @@ export class JsVizGeoPointIndex<
         zoom: query.zoom,
       },
     };
+  }
+
+  getScalarFieldGrid(
+    query: VizGeoViewportQuery,
+    options: VizGeoScalarFieldOptions = {},
+  ): VizGeoScalarFieldGrid {
+    return createGeoScalarFieldGrid(this.points, {
+      ...options,
+      domainBounds: query.bounds,
+    });
   }
 
   getViewportAggregation(
@@ -444,4 +456,248 @@ function pickMetrics(properties: GeoClusterProperties, metricKeys: readonly stri
   }
 
   return metrics;
+}
+
+type InternalScalarFieldOptions = VizGeoScalarFieldOptions & {
+  domainBounds?: VizGeoBounds;
+};
+
+export function createGeoScalarFieldGrid<TProperties>(
+  points: readonly VizIndexedGeoPoint<TProperties>[],
+  options: InternalScalarFieldOptions = {},
+): VizGeoScalarFieldGrid {
+  const valuePoints = points
+    .map((point) => ({
+      latitude: point.latitude,
+      longitude: point.longitude,
+      value: resolveScalarPointValue(point.metrics, options.valueMetric),
+    }))
+    .filter((point) => Number.isFinite(point.value));
+  const bounds = normalizeScalarBounds(options.domainBounds ?? getBoundsFromGeoPoints(valuePoints));
+
+  if (!bounds) {
+    return {
+      bounds: [0, 0, 0, 0],
+      columns: 0,
+      rows: 0,
+      valueDomain: null,
+      values: [],
+    };
+  }
+
+  const [columns, rows] = resolveScalarGridDimensions(bounds, options);
+  const values: Array<number | null> = [];
+  const [west, south, east, north] = bounds;
+  const longitudeStep = (east - west) / columns;
+  const latitudeStep = (north - south) / rows;
+
+  for (let row = 0; row < rows; row += 1) {
+    const latitude = north - latitudeStep * (row + 0.5);
+    for (let column = 0; column < columns; column += 1) {
+      const longitude = west + longitudeStep * (column + 0.5);
+      values.push(interpolateScalarValue([longitude, latitude], valuePoints, bounds, options));
+    }
+  }
+
+  return {
+    bounds,
+    columns,
+    rows,
+    valueDomain: resolveScalarValueDomain(valuePoints, values, options.valueDomain),
+    values,
+  };
+}
+
+function resolveScalarPointValue(metrics: VizMetricRecord, valueMetric: string | undefined) {
+  return valueMetric != null
+    ? (metrics[valueMetric] ?? Number.NaN)
+    : (metrics.value ?? metrics.weight);
+}
+
+function normalizeScalarBounds(bounds: VizGeoBounds | null): VizGeoBounds | null {
+  if (!bounds || bounds.some((value) => !Number.isFinite(value))) {
+    return null;
+  }
+
+  const west = Math.min(bounds[0], bounds[2]);
+  const east = Math.max(bounds[0], bounds[2]);
+  const south = Math.min(bounds[1], bounds[3]);
+  const north = Math.max(bounds[1], bounds[3]);
+
+  if (west === east || south === north) {
+    return null;
+  }
+
+  return [Math.max(-180, west), Math.max(-90, south), Math.min(180, east), Math.min(90, north)];
+}
+
+function resolveScalarGridDimensions(
+  bounds: VizGeoBounds,
+  options: VizGeoScalarFieldOptions,
+): [columns: number, rows: number] {
+  const explicitColumns = positiveInteger(options.fieldColumns);
+  const explicitRows = positiveInteger(options.fieldRows);
+  const widthMeters = Math.max(1, approximateLongitudeMeters(bounds));
+  const heightMeters = Math.max(1, approximateLatitudeMeters(bounds));
+  const aspectRatio = widthMeters / heightMeters;
+
+  if (explicitColumns != null && explicitRows != null) {
+    return [clampGridSize(explicitColumns), clampGridSize(explicitRows)];
+  }
+
+  if (Number.isFinite(options.fieldCellSizeMeters) && (options.fieldCellSizeMeters ?? 0) > 0) {
+    const cellSize = options.fieldCellSizeMeters!;
+    return [
+      clampGridSize(Math.ceil(widthMeters / cellSize)),
+      clampGridSize(Math.ceil(heightMeters / cellSize)),
+    ];
+  }
+
+  if (explicitColumns != null) {
+    return [
+      clampGridSize(explicitColumns),
+      clampGridSize(Math.round(explicitColumns / aspectRatio)),
+    ];
+  }
+
+  if (explicitRows != null) {
+    return [clampGridSize(Math.round(explicitRows * aspectRatio)), clampGridSize(explicitRows)];
+  }
+
+  const columns = 256;
+  return [
+    columns,
+    Math.min(columns, clampGridSize(Math.round(columns / Math.max(0.001, aspectRatio)))),
+  ];
+}
+
+function interpolateScalarValue(
+  coordinate: [longitude: number, latitude: number],
+  points: readonly { latitude: number; longitude: number; value: number }[],
+  bounds: VizGeoBounds,
+  options: VizGeoScalarFieldOptions,
+) {
+  if (!points.length) {
+    return null;
+  }
+
+  const projection = createMetricProjection(bounds);
+  const target = projectCoordinate(coordinate, projection);
+  const epsilonMeters = 1;
+  const k = Math.max(1, Math.floor(options.interpolationK ?? 12));
+  const maxDistanceMeters =
+    options.interpolationMaxDistanceMeters != null &&
+    Number.isFinite(options.interpolationMaxDistanceMeters)
+      ? Math.max(0, options.interpolationMaxDistanceMeters)
+      : null;
+  const candidates = points
+    .map((point) => {
+      const projected = projectCoordinate([point.longitude, point.latitude], projection);
+      const distanceMeters = Math.hypot(projected.x - target.x, projected.y - target.y);
+      return { distanceMeters, value: point.value };
+    })
+    .sort((left, right) => left.distanceMeters - right.distanceMeters);
+  const nearest = candidates[0];
+
+  if (!nearest) {
+    return null;
+  }
+  if (nearest.distanceMeters <= epsilonMeters) {
+    return nearest.value;
+  }
+
+  const withinDistance = candidates.filter(
+    (candidate) => maxDistanceMeters == null || candidate.distanceMeters <= maxDistanceMeters,
+  );
+  const selected = (
+    withinDistance.length || options.interpolationExtrapolate === true
+      ? withinDistance.length
+        ? withinDistance
+        : candidates
+      : []
+  ).slice(0, k);
+
+  if (!selected.length) {
+    return null;
+  }
+
+  const power = positiveFinite(options.interpolationPower, 2);
+  let weightedSum = 0;
+  let weightSum = 0;
+
+  for (const candidate of selected) {
+    const weight = 1 / candidate.distanceMeters ** power;
+    weightedSum += candidate.value * weight;
+    weightSum += weight;
+  }
+
+  return weightSum > 0 ? weightedSum / weightSum : null;
+}
+
+function resolveScalarValueDomain(
+  points: readonly { value: number }[],
+  values: readonly (number | null)[],
+  fixedDomain: [number, number] | undefined,
+) {
+  if (fixedDomain) {
+    return fixedDomain;
+  }
+
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+
+  for (const point of points) {
+    min = Math.min(min, point.value);
+    max = Math.max(max, point.value);
+  }
+  for (const value of values) {
+    if (value != null && Number.isFinite(value)) {
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+    }
+  }
+
+  return min <= max ? ([min, max] as [number, number]) : null;
+}
+
+function positiveInteger(value: number | undefined) {
+  return Number.isFinite(value) && value != null && value > 0 ? Math.floor(value) : null;
+}
+
+function positiveFinite(value: number | undefined, fallback: number) {
+  return Number.isFinite(value) && value != null && value > 0 ? value : fallback;
+}
+
+function clampGridSize(value: number) {
+  return Math.max(1, Math.min(2048, Math.floor(value)));
+}
+
+function approximateLongitudeMeters(bounds: VizGeoBounds) {
+  const latitude = (bounds[1] + bounds[3]) / 2;
+  return (
+    Math.abs(bounds[2] - bounds[0]) *
+    111_320 *
+    Math.max(0.001, Math.cos((latitude * Math.PI) / 180))
+  );
+}
+
+function approximateLatitudeMeters(bounds: VizGeoBounds) {
+  return Math.abs(bounds[3] - bounds[1]) * 110_574;
+}
+
+function createMetricProjection(bounds: VizGeoBounds) {
+  const latitude = ((bounds[1] + bounds[3]) / 2) * (Math.PI / 180);
+  return {
+    longitudeScale: Math.max(0.001, Math.cos(latitude)),
+  };
+}
+
+function projectCoordinate(
+  coordinate: [longitude: number, latitude: number],
+  projection: { longitudeScale: number },
+) {
+  return {
+    x: coordinate[0] * 111_320 * projection.longitudeScale,
+    y: coordinate[1] * 110_574,
+  };
 }

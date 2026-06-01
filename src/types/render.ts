@@ -44,6 +44,7 @@ import type {
   VizGeoJsonViewport,
   VizGeoPoint,
   VizGeoPointIndex,
+  VizGeoScalarFieldGrid,
   VizIndexedGeoFlow,
   VizIndexedGeoPoint,
   VizMapDisplayMode,
@@ -113,6 +114,19 @@ export type VizLayer =
       kind: "geo-heat";
       radiusMeters?: number;
       weightMetric?: string;
+    }
+  | {
+      datasetId: VizDatasetId;
+      fieldCellSizeMeters?: number;
+      fieldColumns?: number;
+      fieldRows?: number;
+      interpolationExtrapolate?: boolean;
+      interpolationK?: number;
+      interpolationMaxDistanceMeters?: number;
+      interpolationPower?: number;
+      kind: "geo-scalar-field";
+      valueDomain?: [number, number];
+      valueMetric?: string;
     }
   | {
       clipToViewport?: boolean;
@@ -281,6 +295,13 @@ export type VizRenderLayer<TProperties = Record<string, unknown>> =
       kind: "geo-heat";
       layerId: VizLayerId;
       maxWeight: number;
+    }
+  | {
+      bounds: VizGeoBounds | null;
+      datasetId: VizDatasetId;
+      grid: VizGeoScalarFieldGrid;
+      kind: "geo-scalar-field";
+      layerId: VizLayerId;
     }
   | {
       bounds: VizGeoBounds | null;

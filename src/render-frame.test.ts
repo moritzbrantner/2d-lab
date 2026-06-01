@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 
+import { JsVizGeoPointIndex } from "./backend/js-geo-index";
 import { RustWasmVizDensityIndex } from "./backend/rust-wasm-density-index";
-import { WasmVizGeoPointIndex } from "./backend/wasm-geo-index";
 import { createVizEngine } from "./create-viz-engine";
 import { createVizEngineBackend } from "./js-backend";
 import { computeVizRenderFrame, createVizRenderRows } from "./render-frame";
@@ -452,6 +452,13 @@ describe("computeVizRenderFrame", () => {
     engine.addLayer({ datasetId: geoDatasetId, kind: "geo-clusters", radius: 80 });
     engine.addLayer({ datasetId: geoDatasetId, kind: "geo-points" });
     engine.addLayer({ datasetId: geoDatasetId, kind: "geo-heat", weightMetric: "demand" });
+    engine.addLayer({
+      datasetId: geoDatasetId,
+      fieldColumns: 2,
+      fieldRows: 1,
+      kind: "geo-scalar-field",
+      valueMetric: "demand",
+    });
     engine.addLayer({ datasetId: geoJsonDatasetId, kind: "geojson" });
     engine.addLayer({ datasetId: flowDatasetId, kind: "geo-flows", weightMetric: "demand" });
 
@@ -471,6 +478,7 @@ describe("computeVizRenderFrame", () => {
       "geo-clusters",
       "geo-points",
       "geo-heat",
+      "geo-scalar-field",
       "geojson",
       "geo-flows",
     ]);
@@ -491,12 +499,20 @@ describe("computeVizRenderFrame", () => {
       ["b", 3, 1],
     ]);
     expect(
-      frame.layers[3]?.kind === "geojson" ? frame.layers[3].featureCollection.features : [],
+      frame.layers[3]?.kind === "geo-scalar-field" ? frame.layers[3].grid : null,
+    ).toMatchObject({
+      bounds: [12.9, 51.9, 13.1, 52.1],
+      columns: 2,
+      rows: 1,
+      valueDomain: [0, 3],
+    });
+    expect(
+      frame.layers[4]?.kind === "geojson" ? frame.layers[4].featureCollection.features : [],
     ).toHaveLength(1);
-    expect(frame.layers[4]?.kind === "geo-flows" ? frame.layers[4].features : []).toMatchObject([
+    expect(frame.layers[5]?.kind === "geo-flows" ? frame.layers[5].features : []).toMatchObject([
       { flow: { id: "flow-a" }, rawWeight: 2, value: 1 },
     ]);
-    expect(frame.layers[4]?.bounds).toEqual([13, 52, 14, 53]);
+    expect(frame.layers[5]?.bounds).toEqual([13, 52, 14, 53]);
   });
 
   test("reports mixed backend stats when a frame uses mixed indexes", () => {
@@ -514,7 +530,7 @@ describe("computeVizRenderFrame", () => {
         {
           dataset: { kind: "geo-points", points: [{ latitude: 52, longitude: 13 }] },
           index: {
-            index: new WasmVizGeoPointIndex([{ latitude: 52, longitude: 13 }]),
+            index: new JsVizGeoPointIndex([{ latitude: 52, longitude: 13 }]),
             kind: "geo-points",
           },
         },

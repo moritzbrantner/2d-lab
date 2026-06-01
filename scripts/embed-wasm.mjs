@@ -4,19 +4,25 @@ import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageDir = path.join(rootDir, "src", "wasm", "pkg");
-const wasmPath = path.join(packageDir, "viz_engine_wasm_bg.wasm");
-const embeddedPath = path.join(packageDir, "viz_engine_wasm_embedded.js");
-const embeddedTypesPath = path.join(packageDir, "viz_engine_wasm_embedded.d.ts");
+const wasmModuleName = "moritzbrantner_viz_engine_wasm";
+const wasmPath = path.join(packageDir, `${wasmModuleName}_bg.wasm`);
+const embeddedPath = path.join(packageDir, `${wasmModuleName}_embedded.js`);
+const embeddedTypesPath = path.join(packageDir, `${wasmModuleName}_embedded.d.ts`);
 const wasmBase64 = readFileSync(wasmPath).toString("base64");
 
 writeFileSync(
   embeddedPath,
   [
-    'import * as imports from "./viz_engine_wasm_bg.js";',
+    `import * as imports from "./${wasmModuleName}_bg.js";`,
     "",
     `const wasmBase64 = "${wasmBase64}";`,
     "let wasmExports = null;",
     "",
+    "export const FinanceDataSeriesIndex = imports.FinanceDataSeriesIndex;",
+    "export const GeoFlowIndex = imports.GeoFlowIndex;",
+    "export const GeoJsonIndex = imports.GeoJsonIndex;",
+    "export const GeoPointIndex = imports.GeoPointIndex;",
+    "export const ScalarFieldIndex = imports.ScalarFieldIndex;",
     "export const VizEngineWasmDensityIndex = imports.VizEngineWasmDensityIndex;",
     "",
     "export function initVizEngineWasm() {",
@@ -26,7 +32,7 @@ writeFileSync(
     "",
     "  const bytes = decodeBase64(wasmBase64);",
     "  const module = new WebAssembly.Module(bytes);",
-    '  const instance = new WebAssembly.Instance(module, { "./viz_engine_wasm_bg.js": imports });',
+    `  const instance = new WebAssembly.Instance(module, { "./${wasmModuleName}_bg.js": imports });`,
     "",
     "  wasmExports = instance.exports;",
     "  imports.__wbg_set_wasm(wasmExports);",
@@ -56,6 +62,53 @@ writeFileSync(
 writeFileSync(
   embeddedTypesPath,
   [
+    "export class FinanceDataSeriesIndex {",
+    "  constructor(input: unknown);",
+    "  free(): void;",
+    "  getBars(query: unknown): unknown;",
+    "  getBounds(): unknown;",
+    "  getCompactReturns(query: unknown): unknown;",
+    "  getDownsampledBars(query: unknown): unknown;",
+    "  getReturns(query: unknown): unknown;",
+    "  getRiskSummary(query: unknown): unknown;",
+    "}",
+    "",
+    "export class GeoFlowIndex {",
+    "  constructor(flows: unknown);",
+    "  free(): void;",
+    "  getBounds(): unknown;",
+    "  getViewportFlows(query: unknown, options?: unknown): unknown;",
+    "}",
+    "",
+    "export class GeoJsonIndex {",
+    "  constructor(featureCollection: unknown);",
+    "  free(): void;",
+    "  getBounds(): unknown;",
+    "  getViewportFeatures(query: unknown, options?: unknown): unknown;",
+    "}",
+    "",
+    "export class GeoPointIndex {",
+    "  constructor(points: unknown, options?: unknown);",
+    "  free(): void;",
+    "  getBounds(): unknown;",
+    "  getClusterExpansionZoom(clusterId: string): number;",
+    "  getClusterLeaves(clusterId: string, limit?: number, offset?: number): unknown;",
+    "  getHeatFeatures(query: unknown, options?: unknown): unknown;",
+    "  getPointById(pointId: string): unknown;",
+    "  getViewportAggregation(query: unknown): unknown;",
+    "  nearestPoint(query: unknown): unknown;",
+    "}",
+    "",
+    "export class ScalarFieldIndex {",
+    "  constructor(points: unknown, options?: unknown);",
+    "  free(): void;",
+    "  createGrid(): unknown;",
+    "  getBounds(): unknown;",
+    "  getPointCount(): number;",
+    "  getValueAtCoordinate(coordinate: unknown): unknown;",
+    "  getValueDomain(): unknown;",
+    "}",
+    "",
     "export class VizEngineWasmDensityIndex {",
     "  constructor(input: unknown);",
     "  static fromArrays(x: Float64Array, y: Float64Array, sourceIndices: Uint32Array, metricKeys: readonly string[], metrics: Float64Array, metricCount: number, ids: readonly string[], labels: readonly string[]): VizEngineWasmDensityIndex;",

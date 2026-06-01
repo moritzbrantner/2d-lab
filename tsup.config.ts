@@ -7,7 +7,7 @@ export default defineConfig({
   esbuildOptions(options) {
     options.external = [...(options.external ?? []), "*.wasm"];
   },
-  external: ["@mb-rust/geo-viz-core-wasm", "react", "react/jsx-runtime"],
+  external: ["@mb-rust/finance-data-wasm", "@mb-rust/geo-viz-wasm", "react", "react/jsx-runtime"],
   format: ["esm"],
   outDir: "dist",
 });

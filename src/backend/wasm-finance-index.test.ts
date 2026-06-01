@@ -16,14 +16,14 @@ const dataset: VizFinanceDataset = {
 };
 
 describe("WasmVizFinanceIndex", () => {
-  test("matches JS finance index output and reports JS-backed capabilities", () => {
+  test("matches JS finance index output and reports Rust-backed capabilities", () => {
     const jsIndex = new JsVizFinanceIndex(dataset);
     const wasmIndex = new WasmVizFinanceIndex(dataset);
 
     expect(wasmIndex.getBackendCapabilities()).toEqual({
-      backend: "js",
-      implementation: "js",
-      usesWasm: false,
+      backend: "wasm",
+      implementation: "rust-finance-data-wasm",
+      usesWasm: true,
     });
     expect(wasmIndex.getBounds()).toEqual(jsIndex.getBounds());
     expect(wasmIndex.getDownsampledBars({ targetBarCount: 2, xDomain: [1, 3] })).toEqual(

@@ -55,6 +55,26 @@ export type VizGeoHeatOptions = {
   weightMetric?: string;
 };
 
+export type VizGeoScalarFieldOptions = {
+  fieldCellSizeMeters?: number;
+  fieldColumns?: number;
+  fieldRows?: number;
+  interpolationExtrapolate?: boolean;
+  interpolationK?: number;
+  interpolationMaxDistanceMeters?: number;
+  interpolationPower?: number;
+  valueDomain?: [number, number];
+  valueMetric?: string;
+};
+
+export type VizGeoScalarFieldGrid = {
+  bounds: VizGeoBounds;
+  columns: number;
+  rows: number;
+  valueDomain: [number, number] | null;
+  values: Array<number | null>;
+};
+
 export type VizGeoAggregationFeature<TProperties = Record<string, unknown>> =
   | {
       coordinates: [longitude: number, latitude: number];
@@ -120,6 +140,10 @@ export type VizGeoPointIndex<TProperties = Record<string, unknown>> = {
     query: VizGeoViewportQuery,
     options?: VizGeoHeatOptions,
   ): VizGeoHeatAggregation<TProperties>;
+  getScalarFieldGrid(
+    query: VizGeoViewportQuery,
+    options?: VizGeoScalarFieldOptions,
+  ): VizGeoScalarFieldGrid;
   getViewportAggregation(
     query: VizGeoViewportQuery,
     options?: VizGeoAggregationOptions,

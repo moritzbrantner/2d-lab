@@ -1,7 +1,7 @@
 # @moritzbrantner/viz-engine
 
 Experimental renderer-agnostic visualization engine layer backed by
-JavaScript fallbacks and local Rust/WASM XY kernels.
+JavaScript fallbacks and Rust/WASM kernels for XY, geo, and finance domains.
 
 `createVizEngine` lets multiple chart layers share datasets and density indexes,
 then returns a render frame that SVG, Canvas, WebGL, React chart components, or
@@ -42,12 +42,14 @@ Backend selection can also be scoped by domain:
 
 ```ts
 const engine = createVizEngine({
-  backend: { xy: "auto", geo: "js", finance: "js" },
+  backend: { xy: "auto", geo: "wasm", finance: "wasm" },
 });
 ```
 
-Only XY currently has a real Rust/WASM backend. Geo and finance requests report
-JS backend capabilities until dedicated Rust/WASM implementations exist.
+`backend: "js"` forces all domains to JavaScript. `backend: "wasm"` requests
+Rust/WASM for XY, geo, and finance indexes. `backend: "auto"` keeps JS
+fallbacks available while using Rust/WASM where the published packages are
+installed. Explicit per-domain settings win over the global backend option.
 
 For high-frequency rendering, typed-array frame payloads are the default:
 
@@ -106,6 +108,54 @@ engine.addLayer({
   targetBarCount: 180,
   xDomain: [startMs, endMs],
 });
+
+engine.addLayer({
+  datasetId,
+  kind: "finance-returns",
+  method: "log",
+  priceMode: "adjusted",
+  targetPointCount: 240,
+  xDomain: [startMs, endMs],
+});
+```
+
+Finance WASM-backed indexes use the embedded `moritzbrantner-finance-data`
+bindings for bounds, OHLC range queries, semantic downsampling, returns,
+compact returns, and risk summaries. JavaScript fallbacks preserve the same
+public layer contracts.
+
+Geo point datasets can also produce scalar fields through inverse-distance
+weighting:
+
+```ts
+const geoDatasetId = engine.addDataset({
+  kind: "geo-points",
+  points: [
+    { id: "a", longitude: 13, latitude: 52, metrics: { temperature: 18 } },
+    { id: "b", longitude: 13.2, latitude: 52.1, metrics: { temperature: 22 } },
+  ],
+});
+
+engine.addLayer({
+  datasetId: geoDatasetId,
+  fieldColumns: 128,
+  fieldRows: 96,
+  interpolationK: 8,
+  kind: "geo-scalar-field",
+  valueMetric: "temperature",
+});
+
+const geoFrame = engine.computeFrame({
+  viewport: {
+    bounds: [12.8, 51.8, 13.4, 52.3],
+    center: [13.1, 52.05],
+    display: "flat",
+    height: 480,
+    kind: "geo",
+    width: 640,
+    zoom: 10,
+  },
+});
 ```
 
 ## Architecture
@@ -113,13 +163,18 @@ engine.addLayer({
 - React describes datasets, layers, and viewports.
 - The TypeScript engine owns registered datasets, backend loading, cached
   indexes, frame assembly, hit testing, and renderer-facing data shapes.
-- `viz-engine-core` is the future Rust source of truth for reusable
+- `moritzbrantner-viz-engine-core` is the future Rust source of truth for reusable
   XY data/math/indexing logic.
-- `viz-engine-wasm` exposes selected Rust APIs to the browser through
-  `wasm-bindgen`.
-- JavaScript fallbacks currently own geo computation such as map clustering,
-  GeoJSON viewport filtering, heat features, and flow filtering until the geo
-  WASM package is published and wired in.
+- `moritzbrantner-viz-engine-wasm` exposes selected Rust APIs for XY, geo, and
+  finance backends to the browser through `wasm-bindgen`.
+- JavaScript fallbacks remain for geo computation, GeoJSON viewport filtering,
+  heat features, flow filtering, finance series, and XY layers.
+- Embedded `moritzbrantner-geo-viz` bindings back geo point clustering, heat
+  features, GeoJSON filtering, flow filtering, nearest-point lookup, and
+  scalar-field grids when geo uses the WASM backend.
+- Embedded `moritzbrantner-finance-data` bindings back finance bounds, OHLC
+  range queries, downsampling, returns, and risk summaries when finance uses
+  the WASM backend.
 - Renderers consume returned renderable data. They can request object-shaped
   frame layers for ergonomics or use the default typed-array layers for lower
   overhead.
@@ -130,8 +185,8 @@ engine.addLayer({
 The package boundary is:
 
 ```txt
-viz-engine-core: local Rust XY computation
-viz-engine-wasm: local browser binding for XY computation
+moritzbrantner-viz-engine-core: local Rust XY computation
+moritzbrantner-viz-engine-wasm: local browser binding for XY computation
 finance-data: reusable Rust financial market-data core in rust-packages
 finance-statistics: reusable Rust return/risk/statistics crate in rust-packages
 @moritzbrantner/viz-engine: TypeScript runtime wrapper
@@ -147,16 +202,10 @@ charts/maps/future packages own visuals.
 ```
 
 The current Rust MVP supports XY datasets, binned series, histograms, heatmaps,
-rolling series statistics, series bounds, and simple x-based hit testing. Geo
-point clustering, geo heat features, GeoJSON viewport filtering, and flow
-filtering/aggregation are currently JavaScript-backed in this package. Financial
-OHLCV modeling, validation, downsampling, provider-neutral data contracts, and
-derived return/risk helpers live in the reusable `finance-data` and
-`finance-statistics` Rust crates under
-`/home/moenarch/moritzbrantner/rust-packages`; `viz-engine` exposes those
-concepts as renderer-facing finance datasets and layers. React lifecycle,
-renderer-facing frame assembly, dynamic backend selection, and fallback routing
-remain in TypeScript.
+rolling series statistics, series bounds, geo viewport indexes, scalar-field
+grids, finance OHLCV downsampling, returns, risk summaries, and simple x-based
+hit testing. React lifecycle, renderer-facing frame assembly, dynamic backend
+selection, and fallback routing remain in TypeScript.
 
 Do not move React, DOM, Leaflet, Recharts, SVG rendering, Canvas rendering, UI
 controls, or renderer integrations into Rust.
@@ -194,7 +243,7 @@ the migration window and returns typed frames by default.
 ## CI
 
 GitHub Actions checks formatting, types, tests, and the package build. The
-normal package build generates the local `viz-engine-wasm` wrapper before
+normal package build generates the local `moritzbrantner-viz-engine-wasm` wrapper before
 bundling TypeScript.
 
 ## Non-Goals
@@ -228,9 +277,8 @@ Run the example project with:
 bun dev
 ```
 
-Do not commit package-manager overrides for sibling checkouts. If a future geo
-WASM package is wired in before it is published, link or install it locally in
-your checkout and keep that configuration out of version control.
+Do not commit package-manager overrides for sibling checkouts. The published
+package embeds the WASM bindings for XY, geo, and finance backends.
 
 The Vite app in `examples/` renders the current engine through React, including
 binned series, histogram, heatmap, frame stats, and hit testing.
@@ -245,6 +293,33 @@ cargo test --workspace
 bun run build:wasm
 bun run test:wasm
 ```
+
+Release checklist:
+
+```sh
+cd ../rust-packages
+cargo package --allow-dirty -p moritzbrantner-video-analysis-core
+cargo package --allow-dirty -p moritzbrantner-numbers-core
+cargo package --allow-dirty -p moritzbrantner-dense-data
+cargo package --allow-dirty -p moritzbrantner-maps-kernels-core
+cargo package --allow-dirty -p moritzbrantner-finance-statistics
+cargo package --allow-dirty -p moritzbrantner-finance-data
+cargo package --allow-dirty -p moritzbrantner-geo-core
+cargo package --allow-dirty -p moritzbrantner-geo-io-geojson
+cargo package --allow-dirty -p moritzbrantner-geo-clustering
+cargo package --allow-dirty -p moritzbrantner-geo-viz
+cd ../viz-engine
+cargo package --allow-dirty -p moritzbrantner-viz-engine-core
+cargo package --allow-dirty -p moritzbrantner-viz-engine-wasm
+bun run format:check
+bun run check-types
+bun run test
+bun run build
+npm pack --dry-run
+```
+
+Run the two `wasm-pack` package builds sequentially; concurrent builds can race
+inside `wasm-opt` output files on some local setups.
 
 ## Benchmarks
 

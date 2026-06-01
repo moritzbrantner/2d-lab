@@ -3,8 +3,8 @@ export type VizLayerId = string;
 
 export type VizBackendOption = "auto" | "js" | "wasm";
 export type VizBackendConfig = {
-  finance?: "js";
-  geo?: "js";
+  finance?: VizBackendOption;
+  geo?: VizBackendOption;
   xy?: VizBackendOption;
 };
 export type VizResolvedBackend = "js" | "mixed" | "wasm";
@@ -13,6 +13,7 @@ export type VizBackendImplementation =
   | "legacy-wasm"
   | "mixed"
   | "rust-finance-data-wasm"
+  | "rust-geo-viz-wasm"
   | "rust-viz-engine-wasm";
 
 export type VizMetricRecord = Record<string, number>;

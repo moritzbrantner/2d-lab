@@ -11,7 +11,9 @@ import type {
 
 type GeoLayer = Extract<
   VizLayer,
-  { kind: "geo-clusters" | "geo-flows" | "geo-heat" | "geo-points" | "geojson" }
+  {
+    kind: "geo-clusters" | "geo-flows" | "geo-heat" | "geo-points" | "geo-scalar-field" | "geojson";
+  }
 >;
 
 export function computeGeoRenderLayer<TProperties>(
@@ -97,6 +99,38 @@ export function computeGeoRenderLayer<TProperties>(
         kind: "geo-heat",
         layerId,
         maxWeight: heat.summary.maxWeight,
+      };
+    }
+    case "geo-scalar-field": {
+      const index = getGeoPointIndex(layerId, layer.kind, datasetRecord, diagnostics);
+      const viewport = getGeoViewport(options.viewport, layerId, diagnostics);
+      if (!index || !viewport) {
+        return null;
+      }
+      const grid = index.getScalarFieldGrid(
+        {
+          bounds: viewport.bounds,
+          zoom: viewport.zoom,
+        },
+        {
+          fieldCellSizeMeters: layer.fieldCellSizeMeters,
+          fieldColumns: layer.fieldColumns,
+          fieldRows: layer.fieldRows,
+          interpolationExtrapolate: layer.interpolationExtrapolate,
+          interpolationK: layer.interpolationK,
+          interpolationMaxDistanceMeters: layer.interpolationMaxDistanceMeters,
+          interpolationPower: layer.interpolationPower,
+          valueDomain: layer.valueDomain,
+          valueMetric: layer.valueMetric,
+        },
+      );
+
+      return {
+        bounds: grid.bounds,
+        datasetId: layer.datasetId,
+        grid,
+        kind: "geo-scalar-field",
+        layerId,
       };
     }
     case "geojson": {

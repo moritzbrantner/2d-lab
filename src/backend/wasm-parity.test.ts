@@ -101,14 +101,41 @@ describe("JS/WASM backend parity", () => {
     );
   });
 
-  test("matches finance output while reporting JS-backed capabilities", () => {
+  test("matches geo scalar field grid contracts", () => {
+    const query = {
+      bounds: [12.9, 51.9, 13.3, 52.3] as [number, number, number, number],
+      zoom: 12,
+    };
+    const options = {
+      fieldColumns: 3,
+      fieldRows: 2,
+      interpolationK: 2,
+      valueDomain: [0, 10] as [number, number],
+      valueMetric: "demand",
+    };
+    const js = new JsVizGeoPointIndex(geoPoints);
+    const wasm = new WasmVizGeoPointIndex(geoPoints);
+    const jsGrid = js.getScalarFieldGrid(query, options);
+    const wasmGrid = wasm.getScalarFieldGrid(query, options);
+
+    expect(wasmGrid).toMatchObject({
+      bounds: jsGrid.bounds,
+      columns: jsGrid.columns,
+      rows: jsGrid.rows,
+      valueDomain: jsGrid.valueDomain,
+    });
+    expect(wasmGrid.values).toHaveLength(jsGrid.values.length);
+    expect(wasmGrid.values.some((value) => value != null)).toBe(true);
+  });
+
+  test("matches finance output while reporting Rust-backed capabilities", () => {
     const js = new JsVizFinanceIndex(financeDataset);
     const wasm = new WasmVizFinanceIndex(financeDataset);
 
     expect(wasm.getBackendCapabilities()).toEqual({
-      backend: "js",
-      implementation: "js",
-      usesWasm: false,
+      backend: "wasm",
+      implementation: "rust-finance-data-wasm",
+      usesWasm: true,
     });
     expect(wasm.getDownsampledBars({ targetBarCount: 2, xDomain: [1, 3] })).toEqual(
       js.getDownsampledBars({ targetBarCount: 2, xDomain: [1, 3] }),

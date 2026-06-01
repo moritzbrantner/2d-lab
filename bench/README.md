@@ -61,7 +61,8 @@ Relative values use `viz-engine js` as the baseline when it exists for a workloa
 - `d3-array` is used as an XY aggregation baseline. The adapters normalize output shape, but D3 binning semantics are not identical to `viz-engine` for every edge case.
 - `supercluster` is a geospatial clustering baseline. It uses a different KD-tree/tile clustering strategy than the current `viz-engine` grid clustering.
 - `downsample` is a visual close-price downsampler. It does not preserve OHLC semantics, so the suite also includes a local OHLC aggregation baseline.
-- Geo and finance `wasm-fallback` cases currently use classes that delegate to JS implementations in this package. They are included to make fallback behavior explicit.
+- Geo and finance WASM cases use `@mb-rust/geo-viz-wasm` and `@mb-rust/finance-data-wasm`; JS rows remain as fallback and parity baselines.
+- Build the finance and geo WASM npm packages sequentially before browser benchmarking. Running two `wasm-pack` builds at once can race in `wasm-opt` output files.
 - WASM startup cases run in one process, so module import is not isolated for every iteration. The suite separates construction, first-query, and warm-query costs.
 - Typed frame cases measure the typed-array render path. They are the preferred signal for high-frequency WASM-backed cartesian rendering because they avoid object hydration.
 - Shifting viewport frame cases use viewport-derived layer domains, so they measure recomputation instead of same-domain cache hits.

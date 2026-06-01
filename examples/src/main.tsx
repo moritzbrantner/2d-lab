@@ -137,6 +137,11 @@ const visualizationPages: VisualizationPage[] = [
     slug: "geo-heat",
   },
   {
+    description: "Interpolate point metrics into a viewport scalar grid.",
+    label: "Geo scalar field",
+    slug: "geo-scalar-field",
+  },
+  {
     description: "Filter GeoJSON features against the active map viewport.",
     label: "GeoJSON",
     slug: "geojson",
@@ -436,21 +441,24 @@ function GeoEngineDemo() {
       clusters: createFocusedFrame("geo-clusters", 7),
       flow: createFocusedFrame("geo-flows", 7),
       heat: createFocusedFrame("geo-heat", 7),
+      scalar: createFocusedFrame("geo-scalar-field", 7),
       shape: createFocusedFrame("geojson", 7),
     }),
     queryFn: () => ({
       clusters: createFocusedFrame("geo-clusters", 7),
       flow: createFocusedFrame("geo-flows", 7),
       heat: createFocusedFrame("geo-heat", 7),
+      scalar: createFocusedFrame("geo-scalar-field", 7),
       shape: createFocusedFrame("geojson", 7),
     }),
     queryKey: ["overview-geo-frame"],
     staleTime: Number.POSITIVE_INFINITY,
   });
-  const { clusters, flow, heat, shape } = geoQuery.data;
+  const { clusters, flow, heat, scalar, shape } = geoQuery.data;
   const viewport = geoViewport;
   const layers = [
     ...shape.frame.layers,
+    ...scalar.frame.layers,
     ...flow.frame.layers,
     ...heat.frame.layers,
     ...clusters.frame.layers,
@@ -644,6 +652,17 @@ function createGeoLayer(
 
   if (kind === "geo-heat") {
     return { datasetId, kind, radiusMeters: 36_000, weightMetric: "demand" };
+  }
+
+  if (kind === "geo-scalar-field") {
+    return {
+      datasetId,
+      fieldColumns: 48,
+      fieldRows: 28,
+      interpolationK: 8,
+      kind,
+      valueMetric: "demand",
+    };
   }
 
   if (kind === "geojson") {
@@ -863,6 +882,45 @@ function GeoLayer({ layer, viewport }: { layer: VizRenderLayer; viewport: VizGeo
         {layer.features.map((feature) => (
           <GeoHeatCircle key={feature.id} feature={feature} viewport={viewport} />
         ))}
+      </g>
+    );
+  }
+
+  if (layer.kind === "geo-scalar-field") {
+    const [min, max] = layer.grid.valueDomain ?? [0, 1];
+    const [west, south, east, north] = layer.grid.bounds;
+    const longitudeStep = (east - west) / Math.max(1, layer.grid.columns);
+    const latitudeStep = (north - south) / Math.max(1, layer.grid.rows);
+
+    return (
+      <g className="geo-scalar-field">
+        {layer.grid.values.map((value, index) => {
+          if (value == null) {
+            return null;
+          }
+          const column = index % layer.grid.columns;
+          const row = Math.floor(index / layer.grid.columns);
+          const northWest = projectGeo(
+            [west + column * longitudeStep, north - row * latitudeStep],
+            viewport,
+          );
+          const southEast = projectGeo(
+            [west + (column + 1) * longitudeStep, north - (row + 1) * latitudeStep],
+            viewport,
+          );
+          const ratio = max > min ? clamp((value - min) / (max - min), 0, 1) : 0.5;
+
+          return (
+            <rect
+              key={index}
+              height={Math.max(0, southEast[1] - northWest[1])}
+              opacity={0.2 + ratio * 0.42}
+              width={Math.max(0, southEast[0] - northWest[0])}
+              x={northWest[0]}
+              y={northWest[1]}
+            />
+          );
+        })}
       </g>
     );
   }

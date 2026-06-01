@@ -1,6 +1,6 @@
 [package]
-name = "viz-engine-core"
-version = "0.1.0"
+name = "moritzbrantner-viz-engine-core"
+version = "0.2.0"
 description = "Browser-independent computation kernels for viz-engine."
 edition.workspace = true
 license.workspace = true

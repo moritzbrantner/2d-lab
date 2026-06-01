@@ -5,6 +5,10 @@ import { JsVizGeoPointIndex } from "./js-geo-index";
 import { JsVizGeoJsonIndex } from "./js-geojson-index";
 import { ProgressiveVizDensityIndex } from "./progressive-density-index";
 import { RustWasmVizDensityIndex } from "./rust-wasm-density-index";
+import { WasmVizFinanceIndex } from "./wasm-finance-index";
+import { WasmVizGeoFlowIndex } from "./wasm-geo-flow-index";
+import { WasmVizGeoPointIndex } from "./wasm-geo-index";
+import { WasmVizGeoJsonIndex } from "./wasm-geojson-index";
 
 import type {
   VizBackendConfig,
@@ -37,22 +41,34 @@ function createDatasetIndex<TProperties>(
   switch (dataset.kind) {
     case "geo-points":
       return {
-        index: new JsVizGeoPointIndex(dataset.points),
+        index:
+          config.geo === "js"
+            ? new JsVizGeoPointIndex(dataset.points)
+            : new WasmVizGeoPointIndex(dataset.points),
         kind: "geo-points",
       };
     case "geojson":
       return {
-        index: new JsVizGeoJsonIndex(dataset.featureCollection),
+        index:
+          config.geo === "js"
+            ? new JsVizGeoJsonIndex(dataset.featureCollection)
+            : new WasmVizGeoJsonIndex(dataset.featureCollection),
         kind: "geojson",
       };
     case "geo-flows":
       return {
-        index: new JsVizGeoFlowIndex(dataset.flows),
+        index:
+          config.geo === "js"
+            ? new JsVizGeoFlowIndex(dataset.flows)
+            : new WasmVizGeoFlowIndex(dataset.flows),
         kind: "geo-flows",
       };
     case "finance-ohlcv":
       return {
-        index: new JsVizFinanceIndex(dataset),
+        index:
+          config.finance === "js"
+            ? new JsVizFinanceIndex(dataset)
+            : new WasmVizFinanceIndex(dataset),
         kind: "finance-ohlcv",
       };
     case "xy":
@@ -73,15 +89,15 @@ function normalizeBackendConfig(
 ): Required<VizBackendConfig> {
   if (typeof option === "string") {
     return {
-      finance: "js",
-      geo: "js",
+      finance: option,
+      geo: option,
       xy: option,
     };
   }
 
   return {
-    finance: "js",
-    geo: "js",
+    finance: option.finance ?? option.xy ?? "auto",
+    geo: option.geo ?? option.xy ?? "auto",
     xy: option.xy ?? "auto",
   };
 }

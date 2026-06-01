@@ -35,19 +35,13 @@ export function createDensityIndex(
     : new RustWasmVizDensityIndex(points);
 }
 
-export function createGeoPointIndex(
-  implementation: "js" | "wasm-fallback",
-  points: readonly VizGeoPoint[],
-) {
+export function createGeoPointIndex(implementation: "js" | "wasm", points: readonly VizGeoPoint[]) {
   return implementation === "js"
     ? new JsVizGeoPointIndex(points)
     : new WasmVizGeoPointIndex(points);
 }
 
-export function createFinanceIndex(
-  implementation: "js" | "wasm-fallback",
-  dataset: VizFinanceDataset,
-) {
+export function createFinanceIndex(implementation: "js" | "wasm", dataset: VizFinanceDataset) {
   return implementation === "js"
     ? new JsVizFinanceIndex(dataset)
     : new WasmVizFinanceIndex(dataset);

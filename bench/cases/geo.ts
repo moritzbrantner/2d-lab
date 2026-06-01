@@ -42,14 +42,14 @@ export function createGeoCases(config: BenchmarkConfig): BenchmarkCase[] {
     });
 
     for (const viewport of viewports) {
-      for (const implementation of ["js", "wasm-fallback"] as const) {
+      for (const implementation of ["js", "wasm"] as const) {
         cases.push({
           category: "geo",
           id: createCaseId(["geo", "clusters", viewport.name, sizeLabel, implementation]),
           implementation: `viz-engine ${implementation}`,
           notes:
-            implementation === "wasm-fallback"
-              ? ["Geo WASM class currently delegates to the JS implementation."]
+            implementation === "wasm"
+              ? ["Uses @mb-rust/geo-viz-wasm for viewport clustering."]
               : [],
           prepare: () =>
             implementation === "js"

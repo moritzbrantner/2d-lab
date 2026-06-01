@@ -38,14 +38,14 @@ export function createFinanceCases(config: BenchmarkConfig): BenchmarkCase[] {
     ] as const;
 
     for (const query of downsampleQueries) {
-      for (const implementation of ["js", "wasm-fallback"] as const) {
+      for (const implementation of ["js", "wasm"] as const) {
         cases.push({
           category: "finance",
           id: createCaseId(["finance", "downsample", query.name, sizeLabel, implementation]),
           implementation: `viz-engine ${implementation}`,
           notes:
-            implementation === "wasm-fallback"
-              ? ["Finance WASM class currently delegates to the JS implementation."]
+            implementation === "wasm"
+              ? ["Uses @mb-rust/finance-data-wasm for OHLC downsampling."]
               : [],
           prepare: () =>
             implementation === "js"
@@ -67,7 +67,7 @@ export function createFinanceCases(config: BenchmarkConfig): BenchmarkCase[] {
         });
       }
 
-      for (const implementation of ["js", "wasm-fallback"] as const) {
+      for (const implementation of ["js", "wasm"] as const) {
         cases.push({
           category: "finance",
           id: createCaseId([
@@ -79,8 +79,8 @@ export function createFinanceCases(config: BenchmarkConfig): BenchmarkCase[] {
           ]),
           implementation: `viz-engine ${implementation} compact`,
           notes:
-            implementation === "wasm-fallback"
-              ? ["Finance WASM class currently delegates to the JS implementation."]
+            implementation === "wasm"
+              ? ["Uses @mb-rust/finance-data-wasm for OHLC downsampling."]
               : [],
           prepare: () =>
             implementation === "js"
@@ -145,15 +145,13 @@ export function createFinanceCases(config: BenchmarkConfig): BenchmarkCase[] {
     }
 
     for (const query of returnQueries) {
-      for (const implementation of ["js", "wasm-fallback"] as const) {
+      for (const implementation of ["js", "wasm"] as const) {
         cases.push({
           category: "finance",
           id: createCaseId(["finance", "returns", query.name, sizeLabel, implementation]),
           implementation: `viz-engine ${implementation}`,
           notes:
-            implementation === "wasm-fallback"
-              ? ["Finance WASM class currently delegates to the JS implementation."]
-              : [],
+            implementation === "wasm" ? ["Uses @mb-rust/finance-data-wasm for return series."] : [],
           prepare: () =>
             implementation === "js"
               ? new JsVizFinanceIndex(fixture.dataset)
@@ -170,15 +168,13 @@ export function createFinanceCases(config: BenchmarkConfig): BenchmarkCase[] {
         });
       }
 
-      for (const implementation of ["js", "wasm-fallback"] as const) {
+      for (const implementation of ["js", "wasm"] as const) {
         cases.push({
           category: "finance",
           id: createCaseId(["finance", "returns-compact", query.name, sizeLabel, implementation]),
           implementation: `viz-engine ${implementation} compact`,
           notes:
-            implementation === "wasm-fallback"
-              ? ["Finance WASM class currently delegates to the JS implementation."]
-              : [],
+            implementation === "wasm" ? ["Uses @mb-rust/finance-data-wasm for return series."] : [],
           prepare: () =>
             implementation === "js"
               ? new JsVizFinanceIndex(fixture.dataset)

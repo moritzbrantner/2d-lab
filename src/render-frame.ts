@@ -116,6 +116,7 @@ function computeVizRenderLayer<TProperties>(
     case "geo-clusters":
     case "geo-points":
     case "geo-heat":
+    case "geo-scalar-field":
     case "geojson":
     case "geo-flows":
       return computeGeoRenderLayer(layerId, layer, datasetRecord, options, diagnostics);
@@ -214,6 +215,24 @@ function getRenderLayerCacheKey(
         bounds: options.viewport.bounds,
         radiusMeters: layer.radiusMeters,
         weightMetric: layer.weightMetric,
+        zoom: options.viewport.zoom,
+      });
+    case "geo-scalar-field":
+      if (options.viewport.kind !== "geo") {
+        return null;
+      }
+      return stableCacheKey({
+        ...base,
+        bounds: options.viewport.bounds,
+        fieldCellSizeMeters: layer.fieldCellSizeMeters,
+        fieldColumns: layer.fieldColumns,
+        fieldRows: layer.fieldRows,
+        interpolationExtrapolate: layer.interpolationExtrapolate,
+        interpolationK: layer.interpolationK,
+        interpolationMaxDistanceMeters: layer.interpolationMaxDistanceMeters,
+        interpolationPower: layer.interpolationPower,
+        valueDomain: layer.valueDomain,
+        valueMetric: layer.valueMetric,
         zoom: options.viewport.zoom,
       });
     case "geojson":

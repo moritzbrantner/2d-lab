@@ -149,6 +149,45 @@ describe("JsVizGeoPointIndex", () => {
     ).toBeGreaterThan(1);
   });
 
+  test("creates scalar field grids with fixed domains and missing metrics", () => {
+    const index = new JsVizGeoPointIndex([
+      { id: "cold", latitude: 0, longitude: 0, metrics: { temperature: 10 } },
+      { id: "warm", latitude: 0, longitude: 2, metrics: { temperature: 20 } },
+      { id: "missing", latitude: 1, longitude: 1, metrics: { demand: 99 } },
+    ]);
+
+    const grid = index.getScalarFieldGrid(
+      { bounds: [0, -1, 2, 1], zoom: 3 },
+      {
+        fieldColumns: 2,
+        fieldRows: 1,
+        interpolationK: 2,
+        valueDomain: [0, 30],
+        valueMetric: "temperature",
+      },
+    );
+
+    expect(grid).toMatchObject({
+      bounds: [0, -1, 2, 1],
+      columns: 2,
+      rows: 1,
+      valueDomain: [0, 30],
+    });
+    expect(grid.values).toHaveLength(2);
+    expect(grid.values.every((value) => typeof value === "number")).toBe(true);
+
+    expect(
+      index.getScalarFieldGrid(
+        { bounds: [170, -1, -170, 1], zoom: 3 },
+        { fieldColumns: 1, fieldRows: 1, valueMetric: "unknown" },
+      ),
+    ).toMatchObject({
+      bounds: [-170, -1, 170, 1],
+      valueDomain: null,
+      values: [null],
+    });
+  });
+
   test("returns represented counts for broad, city, dense, and antimeridian viewports", () => {
     const densePoints = Array.from({ length: 100 }, (_, index) => ({
       id: `dense-${index}`,

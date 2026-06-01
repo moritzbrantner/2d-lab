@@ -1,6 +1,9 @@
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
+mod finance;
+mod geo;
+
 use js_sys::{Array, Float64Array, Int32Array, Object, Reflect, Uint32Array};
 use viz_engine_core::{
     VizBinnedSeriesQuery, VizDensityIndex, VizHeatmapQuery, VizHistogramQuery, VizHitTestQuery,
