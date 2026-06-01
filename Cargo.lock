@@ -274,11 +274,12 @@ checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
 [[package]]
 name = "moritzbrantner-dense-data"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fce30c0d191fb79a427cb345370f38c910993477115df308419136123871a72f"
 dependencies = [
  "moritzbrantner-math-linear",
  "moritzbrantner-math-statistics",
  "moritzbrantner-numbers-core",
- "moritzbrantner-runtime-core",
  "moritzbrantner-video-analysis-core",
  "serde",
  "serde_json",
@@ -287,6 +288,8 @@ dependencies = [
 [[package]]
 name = "moritzbrantner-finance-data"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0bc7b3a9f57afc1c7bfe4ce8f7a78370037dc7faeaf159d630fa246a91450cf"
 dependencies = [
  "moritzbrantner-finance-statistics",
  "moritzbrantner-runtime-core",
@@ -298,6 +301,8 @@ dependencies = [
 [[package]]
 name = "moritzbrantner-finance-statistics"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1eb6510e869f2298a0fc2111161c6fe2ee9defd2072a3e84fedd7552ce77e07"
 dependencies = [
  "moritzbrantner-numbers-core",
  "moritzbrantner-runtime-core",
@@ -309,6 +314,8 @@ dependencies = [
 [[package]]
 name = "moritzbrantner-geo-clustering"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74d068e8a48017f2f389d12cc575065e8f82415dfd19bda9d6d329c87d9a453e"
 dependencies = [
  "moritzbrantner-geo-core",
  "moritzbrantner-runtime-core",
@@ -320,6 +327,8 @@ dependencies = [
 [[package]]
 name = "moritzbrantner-geo-core"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3cbf6be03631c5056224e3cdb553adbff16932ec893d86a5b0d4171f3fda8f55"
 dependencies = [
  "moritzbrantner-runtime-core",
  "moritzbrantner-video-analysis-core",
@@ -330,6 +339,8 @@ dependencies = [
 [[package]]
 name = "moritzbrantner-geo-io-geojson"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c89d47b9e1853b37ec33b166e8b5d65483412722793614e4eceb283f6693365c"
 dependencies = [
  "geojson",
  "moritzbrantner-geo-core",
@@ -342,6 +353,8 @@ dependencies = [
 [[package]]
 name = "moritzbrantner-geo-viz"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d80f96949c2d869ee1c523248a9f55223c9f2f8b1200d77dd752e069055e1eac"
 dependencies = [
  "moritzbrantner-geo-clustering",
  "moritzbrantner-geo-core",
@@ -357,6 +370,8 @@ dependencies = [
 [[package]]
 name = "moritzbrantner-maps-kernels-core"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "650a900503a48498841ff101263ef298d7b6913dfc57bbdced439f36d75ecbfe"
 dependencies = [
  "moritzbrantner-numbers-core",
  "moritzbrantner-runtime-core",
@@ -368,8 +383,9 @@ dependencies = [
 [[package]]
 name = "moritzbrantner-math-linear"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fd8c93acc5404685e39eba3ed50c976fa8c4fd57b42fca4696ad814ee4994f6"
 dependencies = [
- "moritzbrantner-runtime-core",
  "moritzbrantner-tensor-data",
  "moritzbrantner-vector-analysis-core",
  "moritzbrantner-video-analysis-core",
@@ -380,10 +396,11 @@ dependencies = [
 [[package]]
 name = "moritzbrantner-math-statistics"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11fa966c207ec8abda9039b3bf03faf525327890a65cfc58a4cee3466066039c"
 dependencies = [
  "moritzbrantner-math-linear",
  "moritzbrantner-numbers-core",
- "moritzbrantner-runtime-core",
  "moritzbrantner-video-analysis-core",
  "serde",
  "serde_json",
@@ -392,8 +409,9 @@ dependencies = [
 [[package]]
 name = "moritzbrantner-numbers-core"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec02d7401b099cbaca5384bbeb4dea85aea827b686bb39430b1253f0ce43379b"
 dependencies = [
- "moritzbrantner-runtime-core",
  "moritzbrantner-video-analysis-core",
  "serde",
  "serde_json",
@@ -402,6 +420,8 @@ dependencies = [
 [[package]]
 name = "moritzbrantner-runtime-core"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e02e845002c20377ca4de2e5654a5818c7df1b18c7d46d58438f679fd5dc105"
 dependencies = [
  "serde",
  "serde_json",
@@ -410,8 +430,9 @@ dependencies = [
 [[package]]
 name = "moritzbrantner-tensor-data"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e2f8b946cb67f0af8fdcc7f1f1dab71c3b0ec5c52f28e77333555119a3efa23"
 dependencies = [
- "moritzbrantner-runtime-core",
  "moritzbrantner-video-analysis-core",
  "serde",
  "serde_json",
@@ -420,8 +441,9 @@ dependencies = [
 [[package]]
 name = "moritzbrantner-vector-analysis-core"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9e997c1ef03b4ac3a31902859f893456918c57b9c6b7ac1f93c0225dc06f4df"
 dependencies = [
- "moritzbrantner-runtime-core",
  "moritzbrantner-video-analysis-core",
  "serde",
  "serde_json",
@@ -430,8 +452,9 @@ dependencies = [
 [[package]]
 name = "moritzbrantner-video-analysis-core"
 version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a23a47d5a51128578262be29ecee3daee3b79071c082537972d6573f4e06ede1"
 dependencies = [
- "moritzbrantner-runtime-core",
  "num-rational",
  "num-traits",
  "serde",

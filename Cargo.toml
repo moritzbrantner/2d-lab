@@ -8,11 +8,11 @@ license = "MIT"
 repository = "https://github.com/moritzbrantner/viz-engine"
 
 [workspace.dependencies]
-dense-data = { package = "moritzbrantner-dense-data", version = "0.1.0", path = "../rust-packages/crates/data/dense-data" }
-finance-data = { package = "moritzbrantner-finance-data", version = "0.1.0", path = "../rust-packages/crates/data/finance-data" }
-geo-viz = { package = "moritzbrantner-geo-viz", version = "0.1.0", path = "../rust-packages/crates/data/geo-viz" }
+dense-data = { package = "moritzbrantner-dense-data", version = "0.1.0" }
+finance-data = { package = "moritzbrantner-finance-data", version = "0.1.0" }
+geo-viz = { package = "moritzbrantner-geo-viz", version = "0.1.0" }
 getrandom = { version = "0.3", features = ["wasm_js"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-video-analysis-core = { package = "moritzbrantner-video-analysis-core", version = "0.1.1", path = "../rust-packages/crates/video/video-analysis-core" }
+video-analysis-core = { package = "moritzbrantner-video-analysis-core", version = "0.1.1" }
 viz-engine-core = { package = "moritzbrantner-viz-engine-core", version = "0.2.0", path = "crates/viz-engine-core" }

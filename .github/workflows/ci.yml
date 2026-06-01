@@ -24,10 +24,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          git init "$GITHUB_WORKSPACE"
+          if [ "${ACT:-}" = "true" ]; then
+            git config --global --add safe.directory "$GITHUB_WORKSPACE"
+            exit 0
+          fi
+          git init --initial-branch=main "$GITHUB_WORKSPACE"
           cd "$GITHUB_WORKSPACE"
-          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          git -c http.extraheader="AUTHORIZATION: bearer $GITHUB_TOKEN" fetch --no-tags --depth=1 origin "$GITHUB_REF"
+          git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" || git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          auth_header="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          ref="${GITHUB_SHA:-$GITHUB_REF}"
+          git -c http.extraheader="AUTHORIZATION: basic $auth_header" fetch --no-tags --depth=1 origin "$ref"
           git checkout --force FETCH_HEAD
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
@@ -83,7 +89,8 @@ jobs:
         env:
           CHARTS_REPO_TOKEN: ${{ secrets.CHARTS_REPO_TOKEN }}
         run: |
-          git -c http.extraheader="AUTHORIZATION: bearer $CHARTS_REPO_TOKEN" clone --depth=1 https://github.com/moritzbrantner/charts.git charts
+          auth_header="$(printf 'x-access-token:%s' "$CHARTS_REPO_TOKEN" | base64 -w0)"
+          git -c http.extraheader="AUTHORIZATION: basic $auth_header" clone --depth=1 https://github.com/moritzbrantner/charts.git charts
 
       - name: Set up Bun
         if: env.HAS_CHARTS_REPO_TOKEN == 'true'
