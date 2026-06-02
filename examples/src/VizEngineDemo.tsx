@@ -5,12 +5,12 @@ import {
   VizEngineProvider,
   useVizDataset,
   useVizEngine,
-  useVizFrame,
   useVizLayer,
+  useVizTypedFrame,
   type VizHitTestResult,
   type VizOhlcvBar,
-  type VizRenderLayer,
   type VizSeriesPoint,
+  type VizTypedRenderFrame,
   type VizValueMode,
 } from "../../src";
 
@@ -177,7 +177,7 @@ function VizEngineDemoLayers({
       histogramLayerId,
     ],
   );
-  const frame = useVizFrame({ dependencies: frameDependencies, frameFormat: "objects", viewport });
+  const frame = useVizTypedFrame({ dependencies: frameDependencies, viewport });
   const chartYDomain = useMemo(() => deriveChartYDomain(frame.layers), [frame.layers]);
 
   const summary = {
@@ -275,27 +275,43 @@ function ChartFrame({ yDomain }: { yDomain: [number, number] }) {
   );
 }
 
-function VizEngineLayer({ layer, yDomain }: { layer: VizRenderLayer; yDomain: [number, number] }) {
-  if (layer.kind === "heatmap") {
-    const maxCount = Math.max(1, ...layer.cells.map((cell) => cell.pointCount));
+function VizEngineLayer({
+  layer,
+  yDomain,
+}: {
+  layer: VizTypedRenderFrame["layers"][number];
+  yDomain: [number, number];
+}) {
+  if (layer.kind === "heatmap" && "typedHeatmap" in layer) {
+    const heatmap = layer.typedHeatmap;
+    const [xMin, xMax] = heatmap.summary.xDomain;
+    const [yMin, yMax] = heatmap.summary.yDomain;
+    const xStep = (xMax - xMin) / heatmap.summary.xBinCount;
+    const yStep = (yMax - yMin) / heatmap.summary.yBinCount;
+    const maxCount = maxArrayValue(heatmap.pointCount);
 
     return (
       <g className="heatmap-layer">
-        {layer.cells.map((cell) => {
-          if (cell.pointCount === 0) {
+        {Array.from({ length: heatmap.pointCount.length }, (_, index) => {
+          const pointCount = heatmap.pointCount[index]!;
+          if (pointCount === 0) {
             return null;
           }
 
-          const opacity = Math.min(0.72, 0.08 + (cell.pointCount / maxCount) * 0.64);
+          const x0 = xMin + heatmap.xIndex[index]! * xStep;
+          const x1 = x0 + xStep;
+          const y0 = yMin + heatmap.yIndex[index]! * yStep;
+          const y1 = y0 + yStep;
+          const opacity = Math.min(0.72, 0.08 + (pointCount / maxCount) * 0.64);
 
           return (
             <rect
-              height={Math.max(1, scaleY(cell.y0, yDomain) - scaleY(cell.y1, yDomain) - 1)}
-              key={cell.index}
+              height={Math.max(1, scaleY(y0, yDomain) - scaleY(y1, yDomain) - 1)}
+              key={index}
               opacity={opacity}
-              width={Math.max(1, scaleX(cell.x1) - scaleX(cell.x0) - 1)}
-              x={scaleX(cell.x0)}
-              y={scaleY(cell.y1, yDomain)}
+              width={Math.max(1, scaleX(x1) - scaleX(x0) - 1)}
+              x={scaleX(x0)}
+              y={scaleY(y1, yDomain)}
             />
           );
         })}
@@ -303,21 +319,24 @@ function VizEngineLayer({ layer, yDomain }: { layer: VizRenderLayer; yDomain: [n
     );
   }
 
-  if (layer.kind === "histogram") {
-    const maxCount = Math.max(1, ...layer.buckets.map((bucket) => bucket.pointCount));
+  if (layer.kind === "histogram" && "typedHistogram" in layer) {
+    const histogram = layer.typedHistogram;
+    const maxCount = maxArrayValue(histogram.pointCount);
 
     return (
       <g className="histogram-layer">
-        {layer.buckets.map((bucket) => {
-          const height = (bucket.pointCount / maxCount) * 108;
+        {Array.from({ length: histogram.pointCount.length }, (_, index) => {
+          const height = (histogram.pointCount[index]! / maxCount) * 108;
+          const value0 = histogram.value0[index]!;
+          const value1 = histogram.value1[index]!;
 
           return (
             <rect
               height={height}
-              key={bucket.index}
+              key={index}
               rx={1}
-              width={Math.max(1, scaleX(bucket.value1) - scaleX(bucket.value0) - 2)}
-              x={scaleX(bucket.value0)}
+              width={Math.max(1, scaleX(value1) - scaleX(value0) - 2)}
+              x={scaleX(value0)}
               y={viewport.height - plotPadding.bottom - height}
             />
           );
@@ -326,25 +345,32 @@ function VizEngineLayer({ layer, yDomain }: { layer: VizRenderLayer; yDomain: [n
     );
   }
 
-  if (layer.kind === "finance-candles") {
+  if (layer.kind === "finance-candles" && "typedCandles" in layer) {
+    const candles = layer.typedCandles;
+
     return (
       <g className="finance-candle-layer">
-        {layer.bars.map((bar) => {
-          const x = scaleX(bar.timestamp);
-          const openY = scaleY(bar.open, yDomain);
-          const closeY = scaleY(bar.close, yDomain);
+        {Array.from({ length: candles.timestamp.length }, (_, index) => {
+          const timestamp = candles.timestamp[index]!;
+          const open = candles.open[index]!;
+          const high = candles.high[index]!;
+          const low = candles.low[index]!;
+          const close = candles.close[index]!;
+          const x = scaleX(timestamp);
+          const openY = scaleY(open, yDomain);
+          const closeY = scaleY(close, yDomain);
           const top = Math.min(openY, closeY);
           const height = Math.max(2, Math.abs(closeY - openY));
 
           return (
-            <g key={bar.timestamp}>
-              <line x1={x} x2={x} y1={scaleY(bar.high, yDomain)} y2={scaleY(bar.low, yDomain)} />
+            <g key={`${timestamp}-${index}`}>
+              <line x1={x} x2={x} y1={scaleY(high, yDomain)} y2={scaleY(low, yDomain)} />
               <rect
                 height={height}
                 width={8}
                 x={x - 4}
                 y={top}
-                data-direction={bar.close >= bar.open ? "up" : "down"}
+                data-direction={close >= open ? "up" : "down"}
               />
             </g>
           );
@@ -353,16 +379,12 @@ function VizEngineLayer({ layer, yDomain }: { layer: VizRenderLayer; yDomain: [n
     );
   }
 
-  if (layer.kind === "finance-line" || layer.kind === "finance-returns") {
-    const path = layer.rows
-      .filter((row) => row.value !== null)
-      .map((row, index) => {
-        const x = scaleX(row.x);
-        const y = scaleY(row.value ?? 0, yDomain);
-
-        return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-      })
-      .join(" ");
+  if (
+    (layer.kind === "finance-line" && "typedFinanceLine" in layer) ||
+    (layer.kind === "finance-returns" && "typedReturns" in layer)
+  ) {
+    const series = layer.kind === "finance-line" ? layer.typedFinanceLine : layer.typedReturns;
+    const path = createTypedSeriesPath(series.x, series.y, yDomain);
 
     return (
       <path
@@ -372,19 +394,16 @@ function VizEngineLayer({ layer, yDomain }: { layer: VizRenderLayer; yDomain: [n
     );
   }
 
-  if (layer.kind !== "binned-series") {
+  if (layer.kind !== "binned-series" || !("typedSeries" in layer)) {
     return null;
   }
 
-  const path = layer.rows
-    .filter((row) => row.value !== null)
-    .map((row, index) => {
-      const x = scaleX(row.x);
-      const y = scaleY(row.value ?? 0, yDomain);
-
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
-    .join(" ");
+  const path = createBinnedSeriesPath(
+    layer.typedSeries.x0,
+    layer.typedSeries.x1,
+    layer.typedSeries.y,
+    yDomain,
+  );
 
   return <path className="series-layer" d={path} />;
 }
@@ -417,36 +436,22 @@ function scaleY(value: number, yDomain: [number, number]) {
   return plotPadding.top + (1 - (value - min) / (max - min)) * plotHeight;
 }
 
-function deriveChartYDomain(layers: Array<VizRenderLayer>): [number, number] {
+function deriveChartYDomain(layers: VizTypedRenderFrame["layers"]): [number, number] {
   let min = defaultYDomain[0];
   let max = defaultYDomain[1];
 
   for (const layer of layers) {
-    if (layer.kind !== "binned-series") {
-      if (layer.kind === "finance-candles") {
-        for (const bar of layer.bars) {
-          min = Math.min(min, bar.low);
-          max = Math.max(max, bar.high);
-        }
-      }
-      if (layer.kind === "finance-line") {
-        for (const row of layer.rows) {
-          if (row.value !== null && Number.isFinite(row.value)) {
-            min = Math.min(min, row.value);
-            max = Math.max(max, row.value);
-          }
-        }
-      }
+    if (
+      layer.kind !== "binned-series" &&
+      layer.kind !== "finance-candles" &&
+      layer.kind !== "finance-line"
+    ) {
       continue;
     }
 
-    for (const row of layer.rows) {
-      if (row.value === null || !Number.isFinite(row.value)) {
-        continue;
-      }
-
-      min = Math.min(min, row.value);
-      max = Math.max(max, row.value);
+    if (layer.bounds) {
+      min = Math.min(min, layer.bounds[1]);
+      max = Math.max(max, layer.bounds[3]);
     }
   }
 
@@ -478,6 +483,61 @@ function getSvgPoint(event: PointerEvent<SVGSVGElement>) {
     x: ((event.clientX - bounds.left) / bounds.width) * viewport.width,
     y: ((event.clientY - bounds.top) / bounds.height) * viewport.height,
   };
+}
+
+function createBinnedSeriesPath(
+  x0: Float64Array,
+  x1: Float64Array,
+  yValues: Float64Array,
+  yDomain: [number, number],
+) {
+  const commands: string[] = [];
+
+  for (let index = 0; index < yValues.length; index += 1) {
+    const yValue = yValues[index]!;
+    if (!Number.isFinite(yValue)) {
+      continue;
+    }
+
+    const x = scaleX((x0[index]! + x1[index]!) / 2);
+    const y = scaleY(yValue, yDomain);
+
+    commands.push(`${commands.length === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`);
+  }
+
+  return commands.join(" ");
+}
+
+function createTypedSeriesPath(
+  xValues: Float64Array,
+  yValues: Float64Array,
+  yDomain: [number, number],
+) {
+  const commands: string[] = [];
+
+  for (let index = 0; index < xValues.length; index += 1) {
+    const yValue = yValues[index]!;
+    if (!Number.isFinite(yValue)) {
+      continue;
+    }
+
+    const x = scaleX(xValues[index]!);
+    const y = scaleY(yValue, yDomain);
+
+    commands.push(`${commands.length === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`);
+  }
+
+  return commands.join(" ");
+}
+
+function maxArrayValue(values: Uint32Array) {
+  let max = 1;
+
+  for (const value of values) {
+    max = Math.max(max, value);
+  }
+
+  return max;
 }
 
 function minuteLabel(value: number) {
