@@ -132,18 +132,26 @@ describe("JsVizGeoPointIndex", () => {
     const full = index.getViewportAggregation(query, { radius: 80 });
     const fast = index.getViewportAggregation(query, { fast: true, radius: 80 });
 
-    expect(fast.summary).toEqual(full.summary);
+    expect(fast.summary).toMatchObject({
+      bounds: full.summary.bounds,
+      metrics: {},
+      visibleClusterCount: full.summary.visibleClusterCount,
+      visiblePointCount: full.summary.visiblePointCount,
+      visibleUnclusteredCount: full.summary.visibleUnclusteredCount,
+      zoom: full.summary.zoom,
+    });
     expect(
       fast.features.map((feature) =>
         feature.kind === "cluster"
           ? {
               expansionZoom: feature.expansionZoom,
               kind: feature.kind,
+              metrics: feature.metrics,
               pointCount: feature.pointCount,
             }
           : { kind: feature.kind },
       ),
-    ).toEqual([{ expansionZoom: 0, kind: "cluster", pointCount: 2 }]);
+    ).toEqual([{ expansionZoom: 0, kind: "cluster", metrics: {}, pointCount: 2 }]);
     expect(
       full.features[0]?.kind === "cluster" ? full.features[0].expansionZoom : 0,
     ).toBeGreaterThan(1);

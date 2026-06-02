@@ -398,6 +398,7 @@ impl VizEngineWasmDensityIndex {
         let mut last_indexes = vec![-1_i32; cell_count];
         let mut metric_sums = vec![vec![0.0; cell_count]; metric_keys.len()];
         let mut max_cell_count = 0_u32;
+        let mut summary_point_count = 0_u32;
 
         for point in points {
             if point.y < y_domain[0] || point.y > y_domain[1] {
@@ -413,81 +414,95 @@ impl VizEngineWasmDensityIndex {
             }
             last_indexes[index] = point.source_index as i32;
             max_cell_count = max_cell_count.max(counts[index]);
+            summary_point_count += 1;
             for (metric_index, value) in point.metrics.iter().enumerate().take(metric_keys.len()) {
                 metric_sums[metric_index][index] += *value;
             }
         }
 
-        let visible = visible_indexes(&counts, include_empty_cells);
+        let output_len = if include_empty_cells {
+            cell_count
+        } else {
+            counts.iter().filter(|count| **count > 0).count()
+        };
+        let mut average_value = vec![f64::NAN; output_len];
+        let mut first_point_index = vec![-1_i32; output_len];
+        let mut last_point_index = vec![-1_i32; output_len];
+        let mut point_count = vec![0_u32; output_len];
+        let mut sum_value = vec![0.0; output_len];
+        let mut value = vec![0.0; output_len];
+        let mut x_index = vec![0_u32; output_len];
+        let mut y_index = vec![0_u32; output_len];
+        let mut output_metrics = vec![vec![0.0; output_len]; metric_keys.len()];
+        let mut output_index = 0;
+
+        for source_index in 0..cell_count {
+            let count = counts[source_index];
+            if !include_empty_cells && count == 0 {
+                continue;
+            }
+
+            if count > 0 {
+                average_value[output_index] = sums[source_index] / count as f64;
+            }
+            first_point_index[output_index] = first_indexes[source_index];
+            last_point_index[output_index] = last_indexes[source_index];
+            point_count[output_index] = count;
+            sum_value[output_index] = sums[source_index];
+            value[output_index] = if max_cell_count > 0 {
+                count as f64 / max_cell_count as f64
+            } else {
+                0.0
+            };
+            x_index[output_index] = (source_index % x_bin_count) as u32;
+            y_index[output_index] = (source_index / x_bin_count) as u32;
+            for metric_index in 0..metric_keys.len() {
+                output_metrics[metric_index][output_index] =
+                    metric_sums[metric_index][source_index];
+            }
+            output_index += 1;
+        }
+
         let object = Object::new();
         set(
             &object,
             "averageValue",
-            f64_array_from_iter(visible.iter().map(|index| {
-                if counts[*index] > 0 {
-                    sums[*index] / counts[*index] as f64
-                } else {
-                    f64::NAN
-                }
-            })),
+            Float64Array::from(average_value.as_slice()),
         )?;
         set(
             &object,
             "firstPointIndex",
-            i32_array_from_iter(visible.iter().map(|index| first_indexes[*index])),
+            Int32Array::from(first_point_index.as_slice()),
         )?;
         set(
             &object,
             "lastPointIndex",
-            i32_array_from_iter(visible.iter().map(|index| last_indexes[*index])),
+            Int32Array::from(last_point_index.as_slice()),
         )?;
         set(
             &object,
             "pointCount",
-            u32_array_from_iter(visible.iter().map(|index| counts[*index])),
+            Uint32Array::from(point_count.as_slice()),
         )?;
         set(
             &object,
             "sumValue",
-            f64_array_from_iter(visible.iter().map(|index| sums[*index])),
+            Float64Array::from(sum_value.as_slice()),
         )?;
-        set(
-            &object,
-            "value",
-            f64_array_from_iter(visible.iter().map(|index| {
-                if max_cell_count > 0 {
-                    counts[*index] as f64 / max_cell_count as f64
-                } else {
-                    0.0
-                }
-            })),
-        )?;
-        set(
-            &object,
-            "xIndex",
-            u32_array_from_iter(visible.iter().map(|index| (*index % x_bin_count) as u32)),
-        )?;
-        set(
-            &object,
-            "yIndex",
-            u32_array_from_iter(visible.iter().map(|index| (*index / x_bin_count) as u32)),
-        )?;
+        set(&object, "value", Float64Array::from(value.as_slice()))?;
+        set(&object, "xIndex", Uint32Array::from(x_index.as_slice()))?;
+        set(&object, "yIndex", Uint32Array::from(y_index.as_slice()))?;
         set(
             &object,
             "metrics",
-            metric_object(metric_keys, &metric_sums, &visible)?,
+            metric_output_object(metric_keys, &output_metrics)?,
         )?;
         set(
             &object,
             "summary",
             summary_object(&[
                 ("maxCellCount", JsValue::from_f64(max_cell_count as f64)),
-                (
-                    "pointCount",
-                    JsValue::from_f64(
-                        counts.iter().map(|value| *value as usize).sum::<usize>() as f64
-                    ),
-                ),
+                ("pointCount", JsValue::from_f64(summary_point_count as f64)),
                 ("xBinCount", JsValue::from_f64(x_bin_count as f64)),
                 ("xDomain", domain_array(x_domain)),
                 ("yBinCount", JsValue::from_f64(y_bin_count as f64)),
@@ -967,6 +982,21 @@ fn metric_object(
                     .iter()
                     .map(|index| metric_sums[metric_index][*index]),
             ),
+        )?;
+    }
+    Ok(object.into())
+}
+
+fn metric_output_object(
+    metric_keys: &[String],
+    metric_arrays: &[Vec<f64>],
+) -> Result<JsValue, JsValue> {
+    let object = Object::new();
+    for (metric_index, metric_key) in metric_keys.iter().enumerate() {
+        set(
+            &object,
+            metric_key,
+            Float64Array::from(metric_arrays[metric_index].as_slice()),
         )?;
     }
     Ok(object.into())

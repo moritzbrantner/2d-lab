@@ -1,6 +1,12 @@
 import { FinanceDataSeriesIndex, initVizEngineWasm } from "../wasm/viz-engine-wasm-bindings";
 
-import { compactOhlcvBars, normalizeFinanceInstrument, normalizeOhlcvBars } from "./finance-utils";
+import {
+  downsampleOhlcvBarsCompactInRange,
+  lowerBoundTimestamp,
+  normalizeFinanceInstrument,
+  normalizeOhlcvBars,
+  upperBoundTimestamp,
+} from "./finance-utils";
 
 import type {
   VizCompactFinanceReturns,
@@ -102,11 +108,24 @@ export class WasmVizFinanceIndex<
   }
 
   getCompactBars(query: VizFinanceBarsQuery) {
-    return compactOhlcvBars(this.getBars(query), query.xDomain);
+    return downsampleOhlcvBarsCompactInRange(
+      this.bars,
+      {
+        targetBarCount: Number.MAX_SAFE_INTEGER,
+        xDomain: query.xDomain,
+      },
+      {
+        end: upperBoundTimestamp(this.bars, query.xDomain[1]),
+        start: lowerBoundTimestamp(this.bars, query.xDomain[0]),
+      },
+    );
   }
 
   getCompactDownsampledBars(query: VizFinanceDownsampleQuery) {
-    return compactOhlcvBars(this.getDownsampledBars(query), query.xDomain);
+    return downsampleOhlcvBarsCompactInRange(this.bars, query, {
+      end: upperBoundTimestamp(this.bars, query.xDomain[1]),
+      start: lowerBoundTimestamp(this.bars, query.xDomain[0]),
+    });
   }
 
   getCompactReturns(query: VizFinanceReturnsQuery): VizCompactFinanceReturns {

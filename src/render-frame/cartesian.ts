@@ -44,7 +44,7 @@ export function computeCartesianRenderLayer<TProperties>(
       }
       const valueMode = layer.valueMode ?? "average";
       if (resolveFrameFormat(options) === "typed") {
-        preferWasmForCompactOutput(index);
+        preferCompactBackend(index, layer.kind, getXyDatasetPointCount(datasetRecord));
         const compactSeries = index.getCompactChartSeries({
           includeEmptyBins: layer.includeEmptyBins ?? true,
           targetBinCount: layer.targetBinCount,
@@ -85,7 +85,7 @@ export function computeCartesianRenderLayer<TProperties>(
         return null;
       }
       if (resolveFrameFormat(options) === "typed") {
-        preferWasmForCompactOutput(index);
+        preferCompactBackend(index, layer.kind, getXyDatasetPointCount(datasetRecord));
         const compactHistogram = index.getCompactHistogram({
           bucketCount: layer.bucketCount,
           includeEmptyBuckets: true,
@@ -122,7 +122,7 @@ export function computeCartesianRenderLayer<TProperties>(
         return null;
       }
       if (resolveFrameFormat(options) === "typed") {
-        preferWasmForCompactOutput(index);
+        preferCompactBackend(index, layer.kind, getXyDatasetPointCount(datasetRecord));
         const compactHeatmap = index.getCompactHeatmap({
           includeEmptyCells: true,
           xBinCount: layer.xBinCount,
@@ -164,7 +164,7 @@ export function computeCartesianRenderLayer<TProperties>(
       }
       const statistic = layer.statistic ?? "mean";
       if (resolveFrameFormat(options) === "typed") {
-        preferWasmForCompactOutput(index);
+        preferCompactBackend(index, layer.kind, getXyDatasetPointCount(datasetRecord));
         const compactRollingSeries = index.getCompactRollingSeries({
           alpha: layer.alpha,
           minPeriods: layer.minPeriods,
@@ -206,10 +206,32 @@ export function computeCartesianRenderLayer<TProperties>(
   }
 }
 
-function preferWasmForCompactOutput(index: unknown) {
-  const maybeProgressiveIndex = index as { useWasmIndex?: () => void };
+function preferCompactBackend(
+  index: {
+    preferCompactBackend?: (context: {
+      layerKind: CartesianLayer["kind"];
+      pointCount?: number;
+    }) => void;
+  },
+  layerKind: CartesianLayer["kind"],
+  pointCount: number | undefined,
+) {
+  index.preferCompactBackend?.({ layerKind, pointCount });
+}
 
-  maybeProgressiveIndex.useWasmIndex?.();
+function getXyDatasetPointCount<TProperties>(
+  datasetRecord: VizEngineDatasetRecord<TProperties>,
+): number | undefined {
+  const dataset = datasetRecord.dataset;
+  if (dataset.kind !== "xy") {
+    return undefined;
+  }
+
+  if ("points" in dataset) {
+    return dataset.points.length;
+  }
+
+  return Math.min(dataset.x.length, dataset.y.length);
 }
 
 function getCompactSeriesBounds(series: VizCompactDensitySeries): VizRenderBounds | null {

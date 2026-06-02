@@ -6,9 +6,9 @@ use dense_data::{
 };
 use std::collections::{BTreeMap, VecDeque};
 
-#[derive(Clone, Debug)]
 pub struct VizDensityIndex {
     metric_schema: VizMetricSchema,
+    numeric_y_index: NumericSeriesIndex,
     points: Vec<VizSeriesPoint>,
 }
 
@@ -29,8 +29,11 @@ impl VizDensityIndex {
                 .then(left.source_index.cmp(&right.source_index))
         });
 
+        let numeric_y_index = create_numeric_y_index(&points, &metric_schema);
+
         Self {
             metric_schema,
+            numeric_y_index,
             points,
         }
     }
@@ -138,31 +141,38 @@ impl VizDensityIndex {
         let x_bin_count = clamp_count(query.x_bin_count);
         let y_bin_count = clamp_count(query.y_bin_count);
         let x_domain = normalize_domain(query.x_domain);
-        let numeric_points = self
-            .points
-            .iter()
-            .filter_map(|point| {
-                self.point_accessor_value(point, &query.value_accessor)
-                    .map(|value| NumericSeriesPoint {
-                        source_index: point.source_index,
-                        x: point.x,
-                        y: value,
-                        metrics: self.point_metrics(point),
-                    })
-            })
-            .collect::<Vec<_>>();
-        let index = NumericSeriesIndex::from_points(numeric_points)
-            .expect("viz heatmap adapter only passes finite numeric points and metrics");
-        let heatmap = index
-            .get_heatmap(NumericHeatmapQuery {
-                include_empty_cells: query.include_empty_cells,
-                value_accessor: NumericValueAccessor::Y,
-                x_bin_count,
-                x_domain,
-                y_bin_count,
-                y_domain: query.y_domain.map(normalize_domain),
-            })
-            .expect("viz heatmap adapter clamps bin counts and normalizes domains");
+        let heatmap_query = NumericHeatmapQuery {
+            include_empty_cells: query.include_empty_cells,
+            value_accessor: NumericValueAccessor::Y,
+            x_bin_count,
+            x_domain,
+            y_bin_count,
+            y_domain: query.y_domain.map(normalize_domain),
+        };
+        let heatmap = if is_default_y_accessor(&query.value_accessor) {
+            self.numeric_y_index
+                .get_heatmap(heatmap_query)
+                .expect("viz heatmap adapter clamps bin counts and normalizes domains")
+        } else {
+            let numeric_points = self
+                .points_in_x_domain(x_domain)
+                .filter_map(|point| {
+                    self.point_accessor_value(point, &query.value_accessor)
+                        .map(|value| NumericSeriesPoint {
+                            source_index: point.source_index,
+                            x: point.x,
+                            y: value,
+                            metrics: self.point_metrics(point),
+                        })
+                })
+                .collect::<Vec<_>>();
+            let index = NumericSeriesIndex::from_points(numeric_points)
+                .expect("viz heatmap adapter only passes finite numeric points and metrics");
+
+            index
+                .get_heatmap(heatmap_query)
+                .expect("viz heatmap adapter clamps bin counts and normalizes domains")
+        };
         let cells = heatmap
             .cells
             .into_iter()
@@ -526,6 +536,38 @@ fn numeric_heatmap_cell_to_viz(
         y1: cell.y1,
         y_index: cell.y_index,
     }
+}
+
+fn create_numeric_y_index(
+    points: &[VizSeriesPoint],
+    metric_schema: &VizMetricSchema,
+) -> NumericSeriesIndex {
+    NumericSeriesIndex::from_points(
+        points
+            .iter()
+            .map(|point| NumericSeriesPoint {
+                source_index: point.source_index,
+                x: point.x,
+                y: point.y,
+                metrics: metric_schema
+                    .keys
+                    .iter()
+                    .enumerate()
+                    .map(|(index, key)| {
+                        (
+                            key.clone(),
+                            point.metrics.get(index).copied().unwrap_or(0.0),
+                        )
+                    })
+                    .collect(),
+            })
+            .collect(),
+    )
+    .expect("viz density index only stores finite points and normalized metrics")
+}
+
+fn is_default_y_accessor(accessor: &VizPointValueAccessor) -> bool {
+    matches!(accessor, VizPointValueAccessor::Axis(axis) if axis != "x")
 }
 
 fn ensure_metric_schema(

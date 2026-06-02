@@ -339,6 +339,10 @@ export type VizDensityIndex<TProperties = Record<string, unknown>> = {
   /** @deprecated Use getCompactHistogram for render workloads, or hydrate typed frames for debugging. */
   getHistogram(query: VizHistogramQuery): VizHistogram<TProperties>;
   getPointById(pointId: string): VizIndexedSeriesPoint<TProperties> | null;
+  preferCompactBackend?(context: {
+    layerKind: "binned-series" | "heatmap" | "histogram" | "rolling-series";
+    pointCount?: number;
+  }): void;
   /** @deprecated Use getCompactRollingSeries for render workloads, or hydrate typed frames for debugging. */
   getRollingSeries(query: VizRollingSeriesQuery): VizRollingSeries<TProperties>;
   getSeriesBounds(): VizSeriesBounds | null;

@@ -16,9 +16,12 @@ import type {
 export class ProgressiveVizDensityIndex<
   TProperties = Record<string, unknown>,
 > implements VizDensityIndex<TProperties> {
-  private activeIndex: VizDensityIndex<TProperties>;
+  private readonly jsIndex: VizDensityIndex<TProperties>;
+  private readonly pointCount: number;
+  private compactIndex: VizDensityIndex<TProperties>;
   private warmupError: unknown = null;
   private warmupPromise: Promise<void> | null = null;
+  private wasmIndex: VizDensityIndex<TProperties> | null = null;
 
   constructor(
     private readonly points: readonly VizSeriesPoint<TProperties>[] | VizXyDataset<TProperties>,
@@ -26,66 +29,92 @@ export class ProgressiveVizDensityIndex<
       points: readonly VizSeriesPoint<TProperties>[] | VizXyDataset<TProperties>,
     ) => VizDensityIndex<TProperties> = (points) => new RustWasmVizDensityIndex(points),
   ) {
-    this.activeIndex = new JsVizDensityIndex(points);
-    this.scheduleWarmup();
+    this.pointCount = getXyPointCount(points);
+    this.jsIndex = new JsVizDensityIndex(points);
+    this.compactIndex = this.jsIndex;
+    if (this.pointCount >= WASM_COMPACT_WARMUP_POINT_THRESHOLD) {
+      this.scheduleWarmup();
+    }
   }
 
   getBackendCapabilities() {
-    return this.activeIndex.getBackendCapabilities();
+    return this.compactIndex.getBackendCapabilities();
   }
 
   getBinnedSeries(query: VizBinnedSeriesQuery) {
-    return this.activeIndex.getBinnedSeries(query);
+    return this.jsIndex.getBinnedSeries(query);
   }
 
   getChartSeries(query: VizDensityQuery) {
-    return this.activeIndex.getChartSeries(query);
+    return this.jsIndex.getChartSeries(query);
   }
 
   getCompactChartSeries(query: VizDensityQuery) {
-    return this.activeIndex.getCompactChartSeries(query);
+    return this.compactIndex.getCompactChartSeries(query);
   }
 
   getCompactHeatmap(query: VizHeatmapQuery) {
-    return this.activeIndex.getCompactHeatmap(query);
+    return this.compactIndex.getCompactHeatmap(query);
   }
 
   getCompactHistogram(query: VizHistogramQuery) {
-    return this.activeIndex.getCompactHistogram(query);
+    return this.compactIndex.getCompactHistogram(query);
   }
 
   getCompactRollingSeries(query: VizRollingSeriesQuery) {
-    return this.activeIndex.getCompactRollingSeries(query);
+    return this.compactIndex.getCompactRollingSeries(query);
   }
 
   getHeatmap(query: VizHeatmapQuery) {
-    return this.activeIndex.getHeatmap(query);
+    return this.jsIndex.getHeatmap(query);
   }
 
   getHistogram(query: VizHistogramQuery) {
-    return this.activeIndex.getHistogram(query);
+    return this.jsIndex.getHistogram(query);
   }
 
   getPointById(pointId: string): VizIndexedSeriesPoint<TProperties> | null {
-    return this.activeIndex.getPointById(pointId);
+    return this.jsIndex.getPointById(pointId);
   }
 
   getRollingSeries(query: VizRollingSeriesQuery) {
-    return this.activeIndex.getRollingSeries(query);
+    return this.jsIndex.getRollingSeries(query);
   }
 
   getSeriesBounds() {
-    return this.activeIndex.getSeriesBounds();
+    return this.jsIndex.getSeriesBounds();
   }
 
   useWasmIndex() {
-    if (this.activeIndex.getBackendCapabilities().backend === "wasm") {
+    if (this.wasmIndex) {
+      this.compactIndex = this.wasmIndex;
       return;
     }
 
-    this.activeIndex = this.createWasmIndex(this.points);
+    this.wasmIndex = this.createWasmIndex(this.points);
+    this.compactIndex = this.wasmIndex;
     this.warmupError = null;
     this.warmupPromise = Promise.resolve();
+  }
+
+  preferCompactBackend(context: {
+    layerKind: "binned-series" | "heatmap" | "histogram" | "rolling-series";
+    pointCount?: number;
+  }) {
+    if (!isWasmCompactCandidate(context.layerKind)) {
+      return;
+    }
+
+    if ((context.pointCount ?? this.pointCount) < WASM_COMPACT_WARMUP_POINT_THRESHOLD) {
+      return;
+    }
+
+    if (this.wasmIndex) {
+      this.compactIndex = this.wasmIndex;
+      return;
+    }
+
+    void this.warmWasmIndex();
   }
 
   warmWasmIndex() {
@@ -113,5 +142,34 @@ export class ProgressiveVizDensityIndex<
     scheduler(() => {
       void this.warmWasmIndex();
     });
+  }
+}
+
+const WASM_COMPACT_WARMUP_POINT_THRESHOLD = 5_000;
+
+function getXyPointCount<TProperties>(
+  points: readonly VizSeriesPoint<TProperties>[] | VizXyDataset<TProperties>,
+) {
+  if (Array.isArray(points)) {
+    return points.length;
+  }
+
+  const dataset = points as VizXyDataset<TProperties>;
+  if ("points" in dataset) {
+    return dataset.points.length;
+  }
+
+  return Math.min(dataset.x.length, dataset.y.length);
+}
+
+function isWasmCompactCandidate(
+  layerKind: "binned-series" | "heatmap" | "histogram" | "rolling-series",
+) {
+  switch (layerKind) {
+    case "binned-series":
+    case "heatmap":
+    case "histogram":
+    case "rolling-series":
+      return true;
   }
 }

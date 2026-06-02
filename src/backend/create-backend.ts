@@ -74,7 +74,7 @@ function createDatasetIndex<TProperties>(
     case "xy":
       return {
         index:
-          config.xy === "js" || isBrowserRuntime()
+          config.xy === "js"
             ? new JsVizDensityIndex(dataset)
             : config.xy === "wasm"
               ? new RustWasmVizDensityIndex(dataset)
@@ -100,14 +100,6 @@ function normalizeBackendConfig(
     geo: option.geo ?? option.xy ?? "auto",
     xy: option.xy ?? "auto",
   };
-}
-
-function isBrowserRuntime() {
-  return (
-    typeof window !== "undefined" &&
-    typeof document !== "undefined" &&
-    !globalThis.navigator?.userAgent.toLowerCase().includes("jsdom")
-  );
 }
 
 export function resolveFrameBackend<TProperties>(

@@ -581,6 +581,7 @@ export function createCompactHeatmap<TProperties>(
   const lastPointIndex = filledInt32Array(cellCount, -1);
   const metricArrays = createMetricArrays(metricKeys, cellCount);
   let maxCellCount = 0;
+  let pointCount = 0;
 
   for (let pointIndex = start; pointIndex < end; pointIndex++) {
     const point = points[pointIndex]!;
@@ -599,39 +600,39 @@ export function createCompactHeatmap<TProperties>(
     }
     lastPointIndex[cellIndex] = point.sourceIndex;
     maxCellCount = Math.max(maxCellCount, nextCount);
+    pointCount += 1;
     addMetricArrays(metricArrays, metricKeys, point.metrics, cellIndex);
   }
 
-  const visibleIndexes =
+  const output =
     query.includeEmptyCells === false
-      ? indexesWhere(counts, (count) => count > 0)
-      : Array.from({ length: cellCount }, (_, index) => index);
-  const output = createCompactHeatmapArrays(visibleIndexes.length);
-  const outputMetrics = createMetricArrays(metricKeys, visibleIndexes.length);
-
-  for (const [outputIndex, sourceIndex] of visibleIndexes.entries()) {
-    const count = counts[sourceIndex]!;
-    output.averageValue[outputIndex] = count > 0 ? sums[sourceIndex]! / count : Number.NaN;
-    output.firstPointIndex[outputIndex] = firstPointIndex[sourceIndex]!;
-    output.lastPointIndex[outputIndex] = lastPointIndex[sourceIndex]!;
-    output.pointCount[outputIndex] = count;
-    output.sumValue[outputIndex] = sums[sourceIndex]!;
-    output.value[outputIndex] = maxCellCount > 0 ? count / maxCellCount : 0;
-    output.xIndex[outputIndex] = sourceIndex % xBinCount;
-    output.yIndex[outputIndex] = Math.floor(sourceIndex / xBinCount);
-
-    for (const metricKey of metricKeys) {
-      outputMetrics[metricKey]![outputIndex] = metricArrays[metricKey]![sourceIndex]!;
-    }
-  }
+      ? createSparseCompactHeatmapOutput(
+          counts,
+          sums,
+          firstPointIndex,
+          lastPointIndex,
+          metricArrays,
+          metricKeys,
+          xBinCount,
+          maxCellCount,
+        )
+      : createFullCompactHeatmapOutput(
+          counts,
+          sums,
+          firstPointIndex,
+          lastPointIndex,
+          metricArrays,
+          metricKeys,
+          xBinCount,
+          maxCellCount,
+        );
 
   return {
     ...output,
-    metrics: outputMetrics,
     summary: {
       maxCellCount,
       metricKeys: [...metricKeys],
-      pointCount: sumUint32(output.pointCount),
+      pointCount,
       xBinCount,
       xDomain,
       yBinCount,
@@ -747,27 +748,104 @@ export function createCompactRollingSeries<TProperties>(
   points: readonly NormalizedSeriesPoint<TProperties>[],
   query: VizRollingSeriesQuery,
 ): VizCompactRollingSeries {
-  const series = createRollingSeries(points, query);
-  const length = series.points.length;
+  const xDomain = normalizeDomain(query.xDomain);
+  const windowSize = clampCount(query.windowSize);
+  const minPeriods = Math.min(windowSize, Math.max(1, Math.floor(query.minPeriods ?? windowSize)));
+  const statistic = query.statistic ?? "mean";
+  const alpha = normalizeAlpha(query.alpha, windowSize);
+  const start = lowerBoundX(points, xDomain[0]);
+  const end = upperBoundX(points, xDomain[1]);
+  const length = end - start;
   const output = createCompactRollingArrays(length);
+  const minQueue: Array<{ index: number; value: number }> = [];
+  const maxQueue: Array<{ index: number; value: number }> = [];
+  let minHead = 0;
+  let maxHead = 0;
+  let sampleCount = 0;
+  let sum = 0;
+  let sumSquares = 0;
+  let ema: number | null = null;
 
-  for (const [index, point] of series.points.entries()) {
-    output.ema[index] = point.ema ?? Number.NaN;
-    output.max[index] = point.max ?? Number.NaN;
-    output.mean[index] = point.mean ?? Number.NaN;
-    output.min[index] = point.min ?? Number.NaN;
-    output.pointCount[index] = point.pointCount;
-    output.sourcePointIndex[index] = point.sourcePointIndex ?? -1;
-    output.stdDev[index] = point.stdDev ?? Number.NaN;
-    output.sum[index] = point.sum ?? Number.NaN;
-    output.x[index] = point.x;
-    output.y[index] = point.y ?? Number.NaN;
-    output.zScore[index] = point.zScore ?? Number.NaN;
+  for (let outputIndex = 0; outputIndex < length; outputIndex += 1) {
+    const point = points[start + outputIndex]!;
+    const value = point.y;
+    ema = ema === null ? value : alpha * value + (1 - alpha) * ema;
+    sum += value;
+    sumSquares += value * value;
+
+    while (minQueue.length > minHead && minQueue[minQueue.length - 1]!.value >= value) {
+      minQueue.pop();
+    }
+    minQueue.push({ index: outputIndex, value });
+
+    while (maxQueue.length > maxHead && maxQueue[maxQueue.length - 1]!.value <= value) {
+      maxQueue.pop();
+    }
+    maxQueue.push({ index: outputIndex, value });
+
+    if (outputIndex >= windowSize) {
+      const expiredIndex = outputIndex - windowSize;
+      const expired = points[start + expiredIndex]!.y;
+      sum -= expired;
+      sumSquares -= expired * expired;
+
+      while (minQueue[minHead] && minQueue[minHead]!.index <= expiredIndex) {
+        minHead += 1;
+      }
+      while (maxQueue[maxHead] && maxQueue[maxHead]!.index <= expiredIndex) {
+        maxHead += 1;
+      }
+    }
+
+    const pointCount = Math.min(outputIndex + 1, windowSize);
+    const hasEnoughPoints = pointCount >= minPeriods;
+    const mean = hasEnoughPoints ? sum / pointCount : null;
+    const min = hasEnoughPoints ? (minQueue[minHead]?.value ?? null) : null;
+    const max = hasEnoughPoints ? (maxQueue[maxHead]?.value ?? null) : null;
+    const stdDev = hasEnoughPoints ? sampleStdDev(sum, sumSquares, pointCount) : null;
+    const zScore =
+      mean !== null && stdDev !== null && stdDev > Number.EPSILON
+        ? (point.y - mean) / stdDev
+        : null;
+    const rollingEma = hasEnoughPoints ? ema : null;
+    const rollingSum = hasEnoughPoints ? sum : null;
+    const y = rollingStatisticValue(statistic, {
+      ema: rollingEma,
+      max,
+      mean,
+      min,
+      stdDev,
+      zScore,
+    });
+
+    if (y !== null) {
+      sampleCount += 1;
+    }
+
+    output.ema[outputIndex] = rollingEma ?? Number.NaN;
+    output.max[outputIndex] = max ?? Number.NaN;
+    output.mean[outputIndex] = mean ?? Number.NaN;
+    output.min[outputIndex] = min ?? Number.NaN;
+    output.pointCount[outputIndex] = pointCount;
+    output.sourcePointIndex[outputIndex] = point.sourceIndex;
+    output.stdDev[outputIndex] = stdDev ?? Number.NaN;
+    output.sum[outputIndex] = rollingSum ?? Number.NaN;
+    output.x[outputIndex] = point.x;
+    output.y[outputIndex] = y ?? Number.NaN;
+    output.zScore[outputIndex] = zScore ?? Number.NaN;
   }
 
   return {
     ...output,
-    summary: series.summary,
+    summary: {
+      alpha,
+      minPeriods,
+      pointCount: length,
+      sampleCount,
+      statistic,
+      windowSize,
+      xDomain,
+    },
   };
 }
 
@@ -1273,6 +1351,116 @@ function createCompactHeatmapArrays(length: number) {
     xIndex: new Uint32Array(length),
     yIndex: new Uint32Array(length),
   };
+}
+
+function createFullCompactHeatmapOutput(
+  counts: Uint32Array,
+  sums: Float64Array,
+  firstPointIndex: Int32Array,
+  lastPointIndex: Int32Array,
+  metricArrays: VizCompactMetricArrays,
+  metricKeys: readonly string[],
+  xBinCount: number,
+  maxCellCount: number,
+) {
+  const length = counts.length;
+  const output = createCompactHeatmapArrays(length);
+  const outputMetrics = createMetricArrays(metricKeys, length);
+
+  for (let sourceIndex = 0; sourceIndex < length; sourceIndex += 1) {
+    writeCompactHeatmapCell(
+      output,
+      outputMetrics,
+      sourceIndex,
+      sourceIndex,
+      counts,
+      sums,
+      firstPointIndex,
+      lastPointIndex,
+      metricArrays,
+      metricKeys,
+      xBinCount,
+      maxCellCount,
+    );
+  }
+
+  return { ...output, metrics: outputMetrics };
+}
+
+function createSparseCompactHeatmapOutput(
+  counts: Uint32Array,
+  sums: Float64Array,
+  firstPointIndex: Int32Array,
+  lastPointIndex: Int32Array,
+  metricArrays: VizCompactMetricArrays,
+  metricKeys: readonly string[],
+  xBinCount: number,
+  maxCellCount: number,
+) {
+  let length = 0;
+  for (let sourceIndex = 0; sourceIndex < counts.length; sourceIndex += 1) {
+    if (counts[sourceIndex]! > 0) {
+      length += 1;
+    }
+  }
+
+  const output = createCompactHeatmapArrays(length);
+  const outputMetrics = createMetricArrays(metricKeys, length);
+  let outputIndex = 0;
+
+  for (let sourceIndex = 0; sourceIndex < counts.length; sourceIndex += 1) {
+    if (counts[sourceIndex]! === 0) {
+      continue;
+    }
+
+    writeCompactHeatmapCell(
+      output,
+      outputMetrics,
+      outputIndex,
+      sourceIndex,
+      counts,
+      sums,
+      firstPointIndex,
+      lastPointIndex,
+      metricArrays,
+      metricKeys,
+      xBinCount,
+      maxCellCount,
+    );
+    outputIndex += 1;
+  }
+
+  return { ...output, metrics: outputMetrics };
+}
+
+function writeCompactHeatmapCell(
+  output: ReturnType<typeof createCompactHeatmapArrays>,
+  outputMetrics: VizCompactMetricArrays,
+  outputIndex: number,
+  sourceIndex: number,
+  counts: Uint32Array,
+  sums: Float64Array,
+  firstPointIndex: Int32Array,
+  lastPointIndex: Int32Array,
+  metricArrays: VizCompactMetricArrays,
+  metricKeys: readonly string[],
+  xBinCount: number,
+  maxCellCount: number,
+) {
+  const count = counts[sourceIndex]!;
+  output.averageValue[outputIndex] = count > 0 ? sums[sourceIndex]! / count : Number.NaN;
+  output.firstPointIndex[outputIndex] = firstPointIndex[sourceIndex]!;
+  output.lastPointIndex[outputIndex] = lastPointIndex[sourceIndex]!;
+  output.pointCount[outputIndex] = count;
+  output.sumValue[outputIndex] = sums[sourceIndex]!;
+  output.value[outputIndex] = maxCellCount > 0 ? count / maxCellCount : 0;
+  output.xIndex[outputIndex] = sourceIndex % xBinCount;
+  output.yIndex[outputIndex] = Math.floor(sourceIndex / xBinCount);
+
+  for (let metricIndex = 0; metricIndex < metricKeys.length; metricIndex += 1) {
+    const metricKey = metricKeys[metricIndex]!;
+    outputMetrics[metricKey]![outputIndex] = metricArrays[metricKey]![sourceIndex]!;
+  }
 }
 
 function createCompactRollingArrays(length: number) {

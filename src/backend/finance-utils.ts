@@ -143,6 +143,42 @@ export function downsampleOhlcvBars<TProperties>(
   return downsampled;
 }
 
+export function downsampleOhlcvBarsInRange<TProperties>(
+  bars: readonly VizOhlcvBar<TProperties>[],
+  query: { targetBarCount: number; xDomain: [number, number] },
+  range: { end: number; start: number } = {
+    end: upperBoundTimestamp(bars, query.xDomain[1]),
+    start: lowerBoundTimestamp(bars, query.xDomain[0]),
+  },
+): Array<VizOhlcvBar<TProperties>> {
+  if (!Number.isFinite(query.targetBarCount) || query.targetBarCount <= 0) {
+    throw new TypeError("targetBarCount must be greater than zero");
+  }
+
+  const start = Math.max(0, Math.min(bars.length, range.start));
+  const end = Math.max(start, Math.min(bars.length, range.end));
+  const length = end - start;
+  const target = Math.floor(query.targetBarCount);
+
+  if (length <= target) {
+    return bars.slice(start, end);
+  }
+
+  const bucketCount = Math.min(target, length);
+  const downsampled: Array<VizOhlcvBar<TProperties>> = [];
+
+  for (let bucketIndex = 0; bucketIndex < bucketCount; bucketIndex++) {
+    const bucketStart = start + Math.floor((bucketIndex * length) / bucketCount);
+    const bucketEnd = start + Math.max(
+      Math.floor((bucketIndex * length) / bucketCount) + 1,
+      Math.floor(((bucketIndex + 1) * length) / bucketCount),
+    );
+    downsampled.push(aggregateOhlcvRange(bars, bucketStart, bucketEnd));
+  }
+
+  return downsampled;
+}
+
 export function compactOhlcvBars<TProperties>(
   bars: readonly VizOhlcvBar<TProperties>[],
   xDomain: [number, number],
@@ -184,10 +220,75 @@ export function downsampleOhlcvBarsCompact<TProperties>(
   bars: readonly VizOhlcvBar<TProperties>[],
   query: { targetBarCount: number; xDomain: [number, number] },
 ): VizCompactOhlcvBars {
-  return compactOhlcvBars(
-    downsampleOhlcvBars(barsInRange(bars, query.xDomain), query.targetBarCount),
-    query.xDomain,
-  );
+  return downsampleOhlcvBarsCompactInRange(bars, query);
+}
+
+export function downsampleOhlcvBarsCompactInRange<TProperties>(
+  bars: readonly VizOhlcvBar<TProperties>[],
+  query: { targetBarCount: number; xDomain: [number, number] },
+  range: { end: number; start: number } = {
+    end: upperBoundTimestamp(bars, query.xDomain[1]),
+    start: lowerBoundTimestamp(bars, query.xDomain[0]),
+  },
+): VizCompactOhlcvBars {
+  if (!Number.isFinite(query.targetBarCount) || query.targetBarCount <= 0) {
+    throw new TypeError("targetBarCount must be greater than zero");
+  }
+
+  const start = Math.max(0, Math.min(bars.length, range.start));
+  const end = Math.max(start, Math.min(bars.length, range.end));
+  const length = end - start;
+  const target = Math.floor(query.targetBarCount);
+
+  if (length <= target) {
+    return compactOhlcvBarsRange(bars, query.xDomain, start, end);
+  }
+
+  const bucketCount = Math.min(target, length);
+  const adjustedClose = filledFloat64Array(bucketCount, Number.NaN);
+  const close = new Float64Array(bucketCount);
+  const high = new Float64Array(bucketCount);
+  const low = new Float64Array(bucketCount);
+  const open = new Float64Array(bucketCount);
+  const timestamp = new Float64Array(bucketCount);
+  const volume = filledFloat64Array(bucketCount, Number.NaN);
+
+  for (let bucketIndex = 0; bucketIndex < bucketCount; bucketIndex++) {
+    const bucketStart = start + Math.floor((bucketIndex * length) / bucketCount);
+    const bucketEnd = start + Math.max(
+      Math.floor((bucketIndex * length) / bucketCount) + 1,
+      Math.floor(((bucketIndex + 1) * length) / bucketCount),
+    );
+    writeCompactOhlcvBucket(
+      bars,
+      bucketStart,
+      bucketEnd,
+      {
+        adjustedClose,
+        close,
+        high,
+        low,
+        open,
+        timestamp,
+        volume,
+      },
+      bucketIndex,
+    );
+  }
+
+  return {
+    adjustedClose,
+    close,
+    high,
+    low,
+    open,
+    timestamp,
+    volume,
+    summary: {
+      barCount: bucketCount,
+      xDomain: query.xDomain,
+    },
+  };
 }
 
 export function createFinanceReturnSeries<TProperties>(
@@ -421,6 +522,94 @@ function aggregateOhlcvRange<TProperties>(
     timestamp: first.timestamp,
     volume: hasVolume ? volume : undefined,
   };
+}
+
+function compactOhlcvBarsRange<TProperties>(
+  bars: readonly VizOhlcvBar<TProperties>[],
+  xDomain: [number, number],
+  start: number,
+  end: number,
+): VizCompactOhlcvBars {
+  const length = end - start;
+  const adjustedClose = filledFloat64Array(length, Number.NaN);
+  const close = new Float64Array(length);
+  const high = new Float64Array(length);
+  const low = new Float64Array(length);
+  const open = new Float64Array(length);
+  const timestamp = new Float64Array(length);
+  const volume = filledFloat64Array(length, Number.NaN);
+
+  for (let index = 0; index < length; index += 1) {
+    const bar = bars[start + index]!;
+    adjustedClose[index] = bar.adjustedClose ?? Number.NaN;
+    close[index] = bar.close;
+    high[index] = bar.high;
+    low[index] = bar.low;
+    open[index] = bar.open;
+    timestamp[index] = bar.timestamp;
+    volume[index] = bar.volume ?? Number.NaN;
+  }
+
+  return {
+    adjustedClose,
+    close,
+    high,
+    low,
+    open,
+    timestamp,
+    volume,
+    summary: {
+      barCount: length,
+      xDomain,
+    },
+  };
+}
+
+function writeCompactOhlcvBucket<TProperties>(
+  bars: readonly VizOhlcvBar<TProperties>[],
+  start: number,
+  end: number,
+  output: Pick<
+    VizCompactOhlcvBars,
+    "adjustedClose" | "close" | "high" | "low" | "open" | "timestamp" | "volume"
+  >,
+  outputIndex: number,
+) {
+  const first = bars[start];
+  const last = bars[end - 1];
+
+  if (!first || !last) {
+    throw new TypeError("cannot aggregate an empty OHLCV bucket");
+  }
+
+  let adjustedClose = last.adjustedClose;
+  let hasVolume = false;
+  let high = first.high;
+  let low = first.low;
+  let volume = 0;
+
+  for (let index = end - 1; index >= start && adjustedClose == null; index -= 1) {
+    adjustedClose = bars[index]?.adjustedClose;
+  }
+
+  for (let index = start; index < end; index += 1) {
+    const bar = bars[index]!;
+    high = Math.max(high, bar.high);
+    low = Math.min(low, bar.low);
+
+    if (bar.volume != null) {
+      hasVolume = true;
+      volume += bar.volume;
+    }
+  }
+
+  output.adjustedClose[outputIndex] = adjustedClose ?? Number.NaN;
+  output.close[outputIndex] = last.close;
+  output.high[outputIndex] = high;
+  output.low[outputIndex] = low;
+  output.open[outputIndex] = first.open;
+  output.timestamp[outputIndex] = first.timestamp;
+  output.volume[outputIndex] = hasVolume ? volume : Number.NaN;
 }
 
 type ReturnBinState = {

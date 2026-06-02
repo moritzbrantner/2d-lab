@@ -177,7 +177,7 @@ describe("computeVizRenderFrame", () => {
     ).toEqual([Number.NaN, 3, 14 / 3, 28 / 3, 56 / 3]);
   });
 
-  test("auto backend promotes to wasm for compact cartesian frames", () => {
+  test("auto backend defers wasm promotion for compact cartesian frames until warmup", async () => {
     const engine = createVizEngine({ backend: "auto" });
     const datasetId = engine.addDataset({ kind: "xy", points });
 
@@ -199,6 +199,53 @@ describe("computeVizRenderFrame", () => {
 
     expect(["js", "wasm"]).toContain(objectFrame.stats.backend);
     expect(compactFrame.stats).toMatchObject({
+      backend: "js",
+      backendImplementation: "js",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const smallWarmedCompactFrame = engine.computeFrame({
+      outputMode: "compact",
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+
+    expect(smallWarmedCompactFrame.stats).toMatchObject({
+      backend: "js",
+      backendImplementation: "js",
+    });
+
+    const largePoints = Array.from({ length: 5_000 }, (_, index) => ({
+      id: `point-${index}`,
+      x: index,
+      y: index % 97,
+    }));
+    const largeEngine = createVizEngine({ backend: "auto" });
+    const largeDatasetId = largeEngine.addDataset({ kind: "xy", points: largePoints });
+    largeEngine.addLayer({
+      datasetId: largeDatasetId,
+      kind: "binned-series",
+      targetBinCount: 64,
+      valueMode: "average",
+      xDomain: [0, 4_999],
+    });
+    const largeFirstCompactFrame = largeEngine.computeFrame({
+      outputMode: "compact",
+      viewport: { height: 320, width: 800, xDomain: [0, 4_999] },
+    });
+
+    expect(largeFirstCompactFrame.stats).toMatchObject({
+      backend: "js",
+      backendImplementation: "js",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
+    const largeWarmedCompactFrame = largeEngine.computeFrame({
+      outputMode: "compact",
+      viewport: { height: 320, width: 800, xDomain: [0, 4_999] },
+    });
+
+    expect(largeWarmedCompactFrame.stats).toMatchObject({
       backend: "wasm",
       backendImplementation: "rust-viz-engine-wasm",
     });
@@ -518,7 +565,7 @@ describe("computeVizRenderFrame", () => {
     ]);
     expect(
       frame.layers[0]?.kind === "geo-clusters" ? frame.layers[0].aggregation.summary : null,
-    ).toMatchObject({ metrics: { demand: 5, weight: 5 }, visiblePointCount: 3 });
+    ).toMatchObject({ metrics: {}, visiblePointCount: 3 });
     expect(
       frame.layers[1]?.kind === "geo-points"
         ? frame.layers[1].features.map((point) => point.id)

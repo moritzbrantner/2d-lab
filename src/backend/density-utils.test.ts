@@ -4,6 +4,8 @@ import {
   collectMetricKeys,
   createBins,
   createChartSeries,
+  createCompactHeatmap,
+  createCompactRollingSeries,
   createHeatmap,
   createHistogram,
   createPointLookup,
@@ -214,4 +216,114 @@ describe("density utils", () => {
       }).cells.map((cell) => cell.pointCount),
     ).toEqual([3, 1]);
   });
+
+  test("creates compact heatmaps with full and sparse cell shapes", () => {
+    const points: NormalizedSeriesPoint<Record<string, unknown>>[] = normalizeSeriesPoints([
+      { id: "a", x: 0, y: 0, metrics: { demand: 2 } },
+      { id: "b", x: 4, y: 4, metrics: { demand: 3 } },
+      { id: "c", x: 4, y: 4, metrics: { demand: 5 } },
+      { id: "d", x: 10, y: 10, metrics: { demand: 7 } },
+    ]);
+    const metricKeys = collectMetricKeys(points);
+    const full = createCompactHeatmap(points, metricKeys, {
+      includeEmptyCells: true,
+      xBinCount: 2,
+      xDomain: [0, 10],
+      yBinCount: 2,
+      yDomain: [0, 10],
+    });
+
+    expect(full.summary).toMatchObject({
+      maxCellCount: 3,
+      metricKeys: ["demand"],
+      pointCount: 4,
+      xBinCount: 2,
+      yBinCount: 2,
+    });
+    expect([...full.pointCount]).toEqual([3, 0, 0, 1]);
+    expect([...full.xIndex]).toEqual([0, 1, 0, 1]);
+    expect([...full.yIndex]).toEqual([0, 0, 1, 1]);
+    expect([...full.firstPointIndex]).toEqual([0, -1, -1, 3]);
+    expect([...full.lastPointIndex]).toEqual([2, -1, -1, 3]);
+    expect([...full.sumValue]).toEqual([8, 0, 0, 10]);
+    expect([...(full.metrics?.demand ?? [])]).toEqual([10, 0, 0, 7]);
+
+    const sparse = createCompactHeatmap(points, metricKeys, {
+      includeEmptyCells: false,
+      xBinCount: 2,
+      xDomain: [0, 10],
+      yBinCount: 2,
+      yDomain: [0, 10],
+    });
+
+    expect([...sparse.pointCount]).toEqual([3, 1]);
+    expect([...sparse.xIndex]).toEqual([0, 1]);
+    expect([...sparse.yIndex]).toEqual([0, 1]);
+    expect([...sparse.firstPointIndex]).toEqual([0, 3]);
+    expect([...sparse.lastPointIndex]).toEqual([2, 3]);
+    expect([...sparse.sumValue]).toEqual([8, 10]);
+    expect([...(sparse.metrics?.demand ?? [])]).toEqual([10, 7]);
+  });
+
+  test("matches compact rolling output to object rolling output", () => {
+    const points: NormalizedSeriesPoint<Record<string, unknown>>[] = normalizeSeriesPoints<
+      Record<string, unknown>
+    >([
+      { id: "c", x: 20, y: 8 },
+      { id: "a", x: 0, y: 2 },
+      { id: "b", x: 10, y: 4 },
+      { id: "d", x: 30, y: 16 },
+      { id: "e", x: 40, y: 32 },
+    ]);
+
+    for (const statistic of ["mean", "stdDev", "zScore"] as const) {
+      expectCompactRollingParity(points, {
+        minPeriods: 1,
+        statistic,
+        windowSize: 3,
+        xDomain: [0, 40],
+      });
+    }
+
+    expectCompactRollingParity(points, {
+      minPeriods: 3,
+      statistic: "mean",
+      windowSize: 3,
+      xDomain: [0, 40],
+    });
+  });
 });
+
+function expectCompactRollingParity(
+  points: readonly NormalizedSeriesPoint<Record<string, unknown>>[],
+  query: Parameters<typeof createRollingSeries>[1],
+) {
+  const objectSeries = createRollingSeries(points, query);
+  const compactSeries = createCompactRollingSeries(points, query);
+
+  expect(compactSeries.summary).toEqual(objectSeries.summary);
+  expect([...compactSeries.pointCount]).toEqual(
+    objectSeries.points.map((point) => point.pointCount),
+  );
+  expect([...compactSeries.sourcePointIndex]).toEqual(
+    objectSeries.points.map((point) => point.sourcePointIndex),
+  );
+
+  for (const [index, point] of objectSeries.points.entries()) {
+    expect(compactSeries.x[index]).toBe(point.x);
+    expectCompactNumber(compactSeries.y[index], point.y);
+    expectCompactNumber(compactSeries.mean[index], point.mean);
+    expectCompactNumber(compactSeries.stdDev[index], point.stdDev);
+    expectCompactNumber(compactSeries.zScore[index], point.zScore);
+    expectCompactNumber(compactSeries.sum[index], point.sum);
+  }
+}
+
+function expectCompactNumber(actual: number | undefined, expected: number | null) {
+  if (expected === null) {
+    expect(actual).toBe(Number.NaN);
+    return;
+  }
+
+  expect(actual).toBeCloseTo(expected);
+}

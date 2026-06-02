@@ -165,9 +165,12 @@ export class JsVizGeoPointIndex<
   ): VizGeoAggregation<TProperties> {
     const cacheEntry = this.getClusterIndex(options);
     this.latestClusterIndexKey = cacheEntry.key;
-    const includeExpansionZoom = options.fast !== true;
+    if (options.fast === true) {
+      return this.getFastViewportAggregation(cacheEntry.index, query);
+    }
+
     const features = getClusterFeatures(cacheEntry.index, query.bounds, query.zoom).map((feature) =>
-      this.mapClusterFeature(feature, includeExpansionZoom),
+      this.mapClusterFeature(feature, true),
     );
 
     return {
@@ -284,6 +287,70 @@ export class JsVizGeoPointIndex<
       point,
     };
   }
+
+  private getFastViewportAggregation(
+    index: GeoSupercluster,
+    query: VizGeoViewportQuery,
+  ): VizGeoAggregation<TProperties> {
+    const rawFeatures = getClusterFeatures(index, query.bounds, query.zoom);
+    const features: VizGeoAggregation<TProperties>["features"] = [];
+    let visibleClusterCount = 0;
+    let visiblePointCount = 0;
+    let visibleUnclusteredCount = 0;
+
+    for (const feature of rawFeatures) {
+      const properties = feature.properties as GeoPointFeatureProperties &
+        GeoClusterProperties & {
+          cluster?: boolean;
+          cluster_id?: number;
+          point_count?: number;
+          point_count_abbreviated?: string | number;
+        };
+
+      if (properties.cluster) {
+        const pointCount = properties.point_count ?? 0;
+
+        visibleClusterCount += 1;
+        visiblePointCount += pointCount;
+        features.push({
+          clusterId: properties.cluster_id ?? 0,
+          coordinates: feature.geometry.coordinates as [number, number],
+          expansionZoom: 0,
+          kind: "cluster",
+          metrics: EMPTY_GEO_METRICS,
+          pointCount,
+          pointCountAbbreviated: String(properties.point_count_abbreviated ?? pointCount),
+        });
+        continue;
+      }
+
+      const point = this.points[properties.sourceIndex];
+      if (!point) {
+        throw new Error(`Missing geo point for source index ${properties.sourceIndex}.`);
+      }
+
+      visiblePointCount += 1;
+      visibleUnclusteredCount += 1;
+      features.push({
+        coordinates: [point.longitude, point.latitude],
+        kind: "point",
+        metrics: point.metrics,
+        point,
+      });
+    }
+
+    return {
+      features,
+      summary: {
+        bounds: query.bounds,
+        metrics: EMPTY_GEO_METRICS,
+        visibleClusterCount,
+        visiblePointCount,
+        visibleUnclusteredCount,
+        zoom: query.zoom,
+      },
+    };
+  }
 }
 
 export function normalizeGeoPoints<TProperties>(
@@ -378,12 +445,16 @@ function sumMetrics(records: readonly VizMetricRecord[]): VizMetricRecord {
   const result: VizMetricRecord = {};
 
   for (const record of records) {
-    for (const [key, value] of Object.entries(record)) {
-      result[key] = (result[key] ?? 0) + value;
-    }
+    addMetricRecord(result, record);
   }
 
   return result;
+}
+
+function addMetricRecord(target: VizMetricRecord, record: VizMetricRecord) {
+  for (const [key, value] of Object.entries(record)) {
+    target[key] = (target[key] ?? 0) + value;
+  }
 }
 
 export function getGeoWeight(metrics: VizMetricRecord, weightMetric: string | undefined) {
@@ -461,6 +532,8 @@ function pickMetrics(properties: GeoClusterProperties, metricKeys: readonly stri
 type InternalScalarFieldOptions = VizGeoScalarFieldOptions & {
   domainBounds?: VizGeoBounds;
 };
+
+const EMPTY_GEO_METRICS: VizMetricRecord = {};
 
 export function createGeoScalarFieldGrid<TProperties>(
   points: readonly VizIndexedGeoPoint<TProperties>[],

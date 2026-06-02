@@ -2,8 +2,9 @@ import {
   barsInRange,
   createCompactFinanceReturnSeries,
   createFinanceReturnSeries,
+  downsampleOhlcvBarsCompactInRange,
+  downsampleOhlcvBarsInRange,
   downsampleOhlcvBarsCompact,
-  downsampleOhlcvBars,
   getFinanceBounds,
   getFinanceRiskSummary,
   lowerBoundTimestamp,
@@ -60,7 +61,10 @@ export class JsVizFinanceIndex<
   }
 
   getCompactDownsampledBars(query: VizFinanceDownsampleQuery) {
-    return downsampleOhlcvBarsCompact(this.bars, query);
+    return downsampleOhlcvBarsCompactInRange(this.bars, query, {
+      end: upperBoundTimestamp(this.bars, query.xDomain[1]),
+      start: lowerBoundTimestamp(this.bars, query.xDomain[0]),
+    });
   }
 
   getCompactReturns(query: VizFinanceReturnsQuery) {
@@ -71,7 +75,10 @@ export class JsVizFinanceIndex<
   }
 
   getDownsampledBars(query: VizFinanceDownsampleQuery): Array<VizOhlcvBar<TProperties>> {
-    return downsampleOhlcvBars(this.getBars(query), query.targetBarCount);
+    return downsampleOhlcvBarsInRange(this.bars, query, {
+      end: upperBoundTimestamp(this.bars, query.xDomain[1]),
+      start: lowerBoundTimestamp(this.bars, query.xDomain[0]),
+    });
   }
 
   getInstrument(): VizFinancialInstrument {
