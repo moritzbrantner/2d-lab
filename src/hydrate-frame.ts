@@ -11,12 +11,22 @@ import type {
   VizCompactRollingSeries,
   VizDensityBin,
   VizDensitySample,
+  VizGeoAggregationFeature,
+  VizGeoFlowFeature,
+  VizGeoHeatFeature,
   VizHeatmapCell,
   VizHistogramBucket,
+  VizIndexedGeoFlow,
+  VizIndexedGeoPoint,
   VizOhlcvBar,
   VizRenderDatum,
   VizRenderFrame,
   VizRenderLayer,
+  VizTypedGeoClusters,
+  VizTypedGeoFlows,
+  VizTypedGeoHeat,
+  VizTypedGeoPoints,
+  VizTypedGeoScalarField,
 } from "./types";
 
 export function hydrateVizRenderFrame<TProperties = Record<string, unknown>>(
@@ -148,6 +158,71 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
       kind: "finance-returns",
       layerId: layer.layerId,
       rows: rowsFromTypedFinance<TProperties>(typedLayer.typedReturns),
+    };
+  }
+
+  if ("typedGeoClusters" in record) {
+    const typedLayer = layer as { typedGeoClusters: VizTypedGeoClusters };
+    const aggregation = geoAggregationFromTyped<TProperties>(typedLayer.typedGeoClusters);
+
+    return {
+      aggregation,
+      bounds: layer.bounds,
+      datasetId: layer.datasetId,
+      features: aggregation.features,
+      kind: "geo-clusters",
+      layerId: layer.layerId,
+    };
+  }
+
+  if ("typedGeoPoints" in record) {
+    const typedLayer = layer as { typedGeoPoints: VizTypedGeoPoints };
+
+    return {
+      bounds: layer.bounds,
+      datasetId: layer.datasetId,
+      features: geoPointsFromTyped<TProperties>(typedLayer.typedGeoPoints),
+      kind: "geo-points",
+      layerId: layer.layerId,
+    };
+  }
+
+  if ("typedGeoHeat" in record) {
+    const typedLayer = layer as { maxWeight: number; typedGeoHeat: VizTypedGeoHeat };
+
+    return {
+      bounds: layer.bounds,
+      datasetId: layer.datasetId,
+      features: geoHeatFromTyped<TProperties>(typedLayer.typedGeoHeat),
+      kind: "geo-heat",
+      layerId: layer.layerId,
+      maxWeight: typedLayer.maxWeight,
+    };
+  }
+
+  if ("typedGeoScalarField" in record) {
+    const typedLayer = layer as { typedGeoScalarField: VizTypedGeoScalarField };
+
+    return {
+      bounds: layer.bounds,
+      datasetId: layer.datasetId,
+      grid: geoScalarFieldFromTyped(typedLayer.typedGeoScalarField),
+      kind: "geo-scalar-field",
+      layerId: layer.layerId,
+    };
+  }
+
+  if ("typedGeoFlows" in record) {
+    const typedLayer = layer as { typedGeoFlows: VizTypedGeoFlows };
+    const aggregation = geoFlowsFromTyped<TProperties>(typedLayer.typedGeoFlows);
+
+    return {
+      aggregation,
+      bounds: layer.bounds,
+      datasetId: layer.datasetId,
+      features: aggregation.features,
+      kind: "geo-flows",
+      layerId: layer.layerId,
     };
   }
 
@@ -341,6 +416,148 @@ function rowsFromTypedFinance<TProperties>(
       x1: x,
     };
   });
+}
+
+function geoPointsFromTyped<TProperties>(
+  points: VizTypedGeoPoints,
+): Array<VizIndexedGeoPoint<TProperties>> {
+  return Array.from({ length: points.longitude.length }, (_, index) =>
+    geoPointAt<TProperties>(points, index),
+  );
+}
+
+function geoHeatFromTyped<TProperties>(
+  heat: VizTypedGeoHeat,
+): Array<VizGeoHeatFeature<TProperties>> {
+  const points = geoPointsFromTyped<TProperties>(heat);
+
+  return points.map((point, index) => ({
+    coordinates: [point.longitude, point.latitude],
+    id: heat.id[index] ?? String(index),
+    label: heat.label[index] ?? "",
+    metrics: point.metrics,
+    point,
+    pointCount: heat.pointCount[index] ?? 0,
+    rawWeight: heat.rawWeight[index] ?? 0,
+    value: heat.value[index] ?? 0,
+  }));
+}
+
+function geoAggregationFromTyped<TProperties>(clusters: VizTypedGeoClusters) {
+  const features: Array<VizGeoAggregationFeature<TProperties>> = Array.from(
+    { length: clusters.longitude.length },
+    (_, index) => {
+      const metrics = metricsAt(clusters.metrics, clusters.summary.metricKeys, index);
+      const coordinates: [longitude: number, latitude: number] = [
+        clusters.longitude[index] ?? 0,
+        clusters.latitude[index] ?? 0,
+      ];
+
+      if (clusters.kindCode[index] === 1) {
+        return {
+          clusterId: clusters.clusterId[index] ?? -1,
+          coordinates,
+          expansionZoom: clusters.expansionZoom[index] ?? -1,
+          kind: "cluster",
+          metrics,
+          pointCount: clusters.pointCount[index] ?? 0,
+          pointCountAbbreviated: clusters.label[index] ?? String(clusters.pointCount[index] ?? 0),
+        };
+      }
+
+      const point: VizIndexedGeoPoint<TProperties> = {
+        id: clusters.id[index] ?? String(index),
+        label: clusters.label[index] ?? "",
+        latitude: coordinates[1],
+        longitude: coordinates[0],
+        metrics,
+        properties: {} as TProperties,
+        sourceIndex: clusters.sourceIndex[index] ?? index,
+      };
+
+      return {
+        coordinates,
+        kind: "point",
+        metrics,
+        point,
+      };
+    },
+  );
+
+  return {
+    features,
+    summary: {
+      bounds: clusters.summary.bounds ?? [0, 0, 0, 0],
+      metrics: sumTypedMetrics(clusters.metrics, clusters.summary.metricKeys),
+      visibleClusterCount: features.filter((feature) => feature.kind === "cluster").length,
+      visiblePointCount: features.reduce(
+        (sum, feature) => sum + (feature.kind === "cluster" ? feature.pointCount : 1),
+        0,
+      ),
+      visibleUnclusteredCount: features.filter((feature) => feature.kind === "point").length,
+      zoom: 0,
+    },
+  };
+}
+
+function geoScalarFieldFromTyped(field: VizTypedGeoScalarField) {
+  return {
+    bounds: field.bounds,
+    columns: field.columns,
+    rows: field.rows,
+    valueDomain: field.valueDomain,
+    values: Array.from(field.values, (value) => finiteOrNull(value)),
+  };
+}
+
+function geoFlowsFromTyped<TProperties>(flows: VizTypedGeoFlows) {
+  const features: Array<VizGeoFlowFeature<TProperties>> = Array.from(
+    { length: flows.fromLongitude.length },
+    (_, index) => {
+      const flow: VizIndexedGeoFlow<TProperties> = {
+        from: [flows.fromLongitude[index] ?? 0, flows.fromLatitude[index] ?? 0],
+        id: flows.id[index] ?? String(index),
+        label: flows.label[index] ?? "",
+        metrics: metricsAt(flows.metrics, flows.summary.metricKeys, index),
+        properties: {} as TProperties,
+        sourceIndex: flows.sourceIndex[index] ?? index,
+        to: [flows.toLongitude[index] ?? 0, flows.toLatitude[index] ?? 0],
+      };
+
+      return {
+        flow,
+        rawWeight: flows.rawWeight[index] ?? 0,
+        value: flows.value[index] ?? 0,
+      };
+    },
+  );
+
+  return {
+    features,
+    summary: {
+      bounds: flows.summary.bounds,
+      maxWeight: flows.summary.maxWeight,
+      metrics: sumTypedMetrics(flows.metrics, flows.summary.metricKeys),
+      viewportBounds: flows.summary.bounds ?? [0, 0, 0, 0],
+      visibleFlowCount: flows.summary.flowCount,
+      zoom: 0,
+    },
+  };
+}
+
+function geoPointAt<TProperties>(
+  points: VizTypedGeoPoints,
+  index: number,
+): VizIndexedGeoPoint<TProperties> {
+  return {
+    id: points.id[index] ?? String(index),
+    label: points.label[index] ?? "",
+    latitude: points.latitude[index] ?? 0,
+    longitude: points.longitude[index] ?? 0,
+    metrics: metricsAt(points.metrics, points.summary.metricKeys, index),
+    properties: {} as TProperties,
+    sourceIndex: points.sourceIndex[index] ?? index,
+  };
 }
 
 function metricsAt(

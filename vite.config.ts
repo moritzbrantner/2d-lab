@@ -9,6 +9,14 @@ const projectRoot = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [tailwindcss(), wasm(), react()],
+  resolve: {
+    alias: [
+      {
+        find: "@moritzbrantner/viz-engine",
+        replacement: resolve(projectRoot, "src/index.ts"),
+      },
+    ],
+  },
   root: "examples",
   server: {
     fs: {

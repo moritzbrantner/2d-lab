@@ -24,8 +24,27 @@ import {
   SurfaceTitle,
 } from "@moritzbrantner/ui/shell";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import {
+  BinnedChart,
+  ChartMetricStrip,
+  ChartPanel,
+  ChartValueModeSelector,
+  createChartDensityIndex,
+  createChartDensityViewportSummary,
+  type ChartSeriesPoint,
+  type ChartValueMode as PackageChartValueMode,
+} from "@moritzbrantner/charts";
+import {
+  createBubbleMapFeatures,
+  createFlowMapFeatures,
+  createHeatMapFeatureCollection,
+  type BubbleMapFeature,
+  type FlowMapFeature,
+  type HeatMapFeature,
+} from "@moritzbrantner/maps/flat";
 
 import {
   createVizEngine,
@@ -56,11 +75,13 @@ type ExamplePointProperties = {
 };
 
 type VisualizationSlug = "overview" | VizLayer["kind"];
+type PackageExampleSlug = "charts-package" | "maps-package";
+type ExampleSlug = VisualizationSlug | PackageExampleSlug;
 
 type VisualizationPage = {
   description: string;
   label: string;
-  slug: VisualizationSlug;
+  slug: ExampleSlug;
 };
 
 type FocusedFrame = {
@@ -69,6 +90,7 @@ type FocusedFrame = {
 };
 
 const valueModes: VizValueMode[] = ["average", "count", "max", "sum"];
+const packageChartValueModes: PackageChartValueMode[] = ["average", "count", "max", "sum"];
 const queryClient = new QueryClient();
 const cartesianViewport: VizCartesianViewport = {
   height: 440,
@@ -166,6 +188,16 @@ const visualizationPages: VisualizationPage[] = [
     label: "Finance returns",
     slug: "finance-returns",
   },
+  {
+    description: "Use @moritzbrantner/charts to bin and render viz-engine compatible points.",
+    label: "Charts package",
+    slug: "charts-package",
+  },
+  {
+    description: "Use @moritzbrantner/maps feature builders with the same geo sample data.",
+    label: "Maps package",
+    slug: "maps-package",
+  },
 ];
 
 function ExampleApp() {
@@ -174,7 +206,7 @@ function ExampleApp() {
   const [targetBinCount, setTargetBinCount] = useState(180);
   const [valueMode, setValueMode] = useState<VizValueMode>("average");
   const [showHeatmap, setShowHeatmap] = useState(true);
-  const [currentSlug, setCurrentSlug] = useState<VisualizationSlug>(getPageSlugFromLocation);
+  const [currentSlug, setCurrentSlug] = useState<ExampleSlug>(getPageSlugFromLocation);
 
   useEffect(() => {
     function handlePopState() {
@@ -258,8 +290,15 @@ function ExampleApp() {
             targetBinCount={targetBinCount}
             valueMode={valueMode}
           />
+        ) : currentPage.slug === "charts-package" ? (
+          <ChartsPackageExample points={points} />
+        ) : currentPage.slug === "maps-package" ? (
+          <MapsPackageExample />
         ) : (
-          <FocusedVisualizationPage page={currentPage} seed={seed} />
+          <FocusedVisualizationPage
+            page={{ ...currentPage, slug: currentPage.slug as VisualizationSlug }}
+            seed={seed}
+          />
         )}
       </PageContent>
     </PageShell>
@@ -365,7 +404,13 @@ function OverviewPage({
   );
 }
 
-function FocusedVisualizationPage({ page, seed }: { page: VisualizationPage; seed: number }) {
+function FocusedVisualizationPage({
+  page,
+  seed,
+}: {
+  page: VisualizationPage & { slug: VisualizationSlug };
+  seed: number;
+}) {
   const focusedQuery = useQuery({
     initialData: () => createFocusedFrame(page.slug, seed),
     queryFn: () => createFocusedFrame(page.slug, seed),
@@ -488,6 +533,232 @@ function GeoEngineDemo() {
   );
 }
 
+function ChartsPackageExample({
+  points,
+}: {
+  points: readonly VizSeriesPoint<ExamplePointProperties>[];
+}) {
+  const [domain, setDomain] = useState<[number, number]>([240, 1_260]);
+  const [valueMode, setValueMode] = useState<PackageChartValueMode>("average");
+  const index = useMemo(
+    () =>
+      createChartDensityIndex(points as readonly ChartSeriesPoint<ExamplePointProperties>[], {
+        backend: "auto",
+      }),
+    [points],
+  );
+  const series = useMemo(
+    () =>
+      index.getChartSeries({
+        includeEmptyBins: true,
+        targetBinCount: 96,
+        valueMode,
+        xDomain: domain,
+      }),
+    [domain, index, valueMode],
+  );
+  const summary = createChartDensityViewportSummary(series);
+
+  return (
+    <Surface>
+      <SurfaceHeader className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <div>
+          <Badge variant="outline" className="mb-3">
+            @moritzbrantner/charts@0.1.1
+          </Badge>
+          <SurfaceTitle>Chart package rendering</SurfaceTitle>
+          <SurfaceDescription>
+            The chart package consumes the same XY point shape and delegates binning to its density
+            index.
+          </SurfaceDescription>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <ChartMetricStrip label="Points" value={summary.itemCount.toLocaleString()} />
+          <ChartMetricStrip label="Bins" value={summary.binCount.toLocaleString()} />
+          <ChartMetricStrip label="Mode" value={summary.valueMode} />
+        </div>
+      </SurfaceHeader>
+      <SurfaceContent className="grid gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <ChartValueModeSelector
+            aria-label="Chart package value mode"
+            definitions={packageChartValueModes.map((mode) => ({
+              axisLabel: mode,
+              color: mode === "count" ? "#d25435" : "#0f6b78",
+              description: mode,
+              formatValue: (value) => (value == null ? "No value" : formatTick(value).toString()),
+              id: mode,
+              label: mode,
+              renderer: mode === "count" ? "bar" : "line",
+            }))}
+            onValueChange={setValueMode}
+            value={valueMode}
+          />
+        </div>
+        <ChartPanel
+          badge={`${minuteLabel(domain[0])} - ${minuteLabel(domain[1])}`}
+          title="Binned traffic"
+          description="Drag or wheel the plot to change the active domain."
+        >
+          <BinnedChart
+            chartClassName="package-chart"
+            config={{
+              value: {
+                color: valueMode === "count" ? "#d25435" : "#0f6b78",
+                label: valueMode,
+              },
+            }}
+            domain={domain}
+            formatDomainValue={minuteLabel}
+            fullDomain={cartesianViewport.xDomain}
+            index={index}
+            minSpan={120}
+            onDomainChange={setDomain}
+            renderDataOptions={{
+              xLabel: (sample) => minuteLabel(sample.x),
+            }}
+            valueMode={valueMode}
+          >
+            {({ rows }) =>
+              valueMode === "count" ? (
+                <BarChart data={rows} margin={{ bottom: 8, left: 4, right: 14, top: 12 }}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={28} />
+                  <YAxis tickLine={false} axisLine={false} width={46} />
+                  <Bar dataKey="value" fill="var(--color-value)" radius={0} />
+                </BarChart>
+              ) : (
+                <LineChart data={rows} margin={{ bottom: 8, left: 4, right: 14, top: 12 }}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={28} />
+                  <YAxis tickLine={false} axisLine={false} width={46} />
+                  <Line
+                    connectNulls
+                    dataKey="value"
+                    dot={false}
+                    isAnimationActive={false}
+                    stroke="var(--color-value)"
+                    strokeWidth={2.4}
+                    type="monotone"
+                  />
+                </LineChart>
+              )
+            }
+          </BinnedChart>
+        </ChartPanel>
+      </SurfaceContent>
+    </Surface>
+  );
+}
+
+function MapsPackageExample() {
+  const points = useMemo(() => createGeoPoints(), []);
+  const flows = useMemo(
+    () => createGeoFlows().map((flow, index) => ({ ...flow, id: flow.id ?? `flow-${index}` })),
+    [],
+  );
+  const bubbleFeatures = useMemo(
+    () =>
+      createBubbleMapFeatures(points, {
+        maxRadius: 30,
+        minRadius: 7,
+        weightMetric: "demand",
+      }),
+    [points],
+  );
+  const heatFeatures = useMemo(
+    () => createHeatMapFeatureCollection(points, { weightMetric: "demand" }).features,
+    [points],
+  );
+  const flowFeatures = useMemo(
+    () =>
+      createFlowMapFeatures(flows, {
+        maxWidth: 10,
+        minWidth: 2,
+        weightMetric: "demand",
+      }),
+    [flows],
+  );
+
+  return (
+    <Surface>
+      <SurfaceHeader className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <div>
+          <Badge variant="outline" className="mb-3">
+            @moritzbrantner/maps@0.1.4
+          </Badge>
+          <SurfaceTitle>Map package feature builders</SurfaceTitle>
+          <SurfaceDescription>
+            The maps package derives bubble, heat, and flow features from the same geographic sample
+            data used by viz-engine.
+          </SurfaceDescription>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <ChartMetricStrip label="Bubbles" value={bubbleFeatures.length.toLocaleString()} />
+          <ChartMetricStrip label="Heat points" value={heatFeatures.length.toLocaleString()} />
+          <ChartMetricStrip label="Flows" value={flowFeatures.length.toLocaleString()} />
+        </div>
+      </SurfaceHeader>
+      <SurfaceContent>
+        <svg
+          aria-label="@moritzbrantner/maps package feature example"
+          className="package-map"
+          role="img"
+          viewBox={`0 0 ${geoViewport.width} ${geoViewport.height}`}
+        >
+          <GeoBackdrop viewport={geoViewport} />
+          <g className="package-map-heat">
+            {heatFeatures.map((feature) => (
+              <MapsHeatFeature key={feature.properties.pointId} feature={feature} />
+            ))}
+          </g>
+          <g className="package-map-flows">
+            {flowFeatures.map((feature) => (
+              <MapsFlowFeature key={feature.flow.id} feature={feature} />
+            ))}
+          </g>
+          <g className="package-map-bubbles">
+            {bubbleFeatures.map((feature) => (
+              <MapsBubbleFeature key={feature.point.id} feature={feature} />
+            ))}
+          </g>
+        </svg>
+      </SurfaceContent>
+    </Surface>
+  );
+}
+
+function MapsHeatFeature({ feature }: { feature: HeatMapFeature }) {
+  const [cx, cy] = projectGeo(feature.geometry.coordinates, geoViewport);
+
+  return <circle cx={cx} cy={cy} r={18 + feature.properties.weight * 34} />;
+}
+
+function MapsFlowFeature({ feature }: { feature: FlowMapFeature }) {
+  const [x1, y1] = projectGeo(feature.flow.from, geoViewport);
+  const [x2, y2] = projectGeo(feature.flow.to, geoViewport);
+  const midX = (x1 + x2) / 2;
+  const midY = (y1 + y2) / 2 - Math.hypot(x2 - x1, y2 - y1) * 0.16;
+
+  return (
+    <path
+      d={`M ${x1.toFixed(2)} ${y1.toFixed(2)} Q ${midX.toFixed(2)} ${midY.toFixed(2)} ${x2.toFixed(2)} ${y2.toFixed(2)}`}
+      strokeWidth={feature.width}
+    />
+  );
+}
+
+function MapsBubbleFeature({ feature }: { feature: BubbleMapFeature }) {
+  const [cx, cy] = projectGeo(feature.coordinates, geoViewport);
+
+  return (
+    <g transform={`translate(${cx} ${cy})`}>
+      <circle r={feature.radius} />
+      <text y={feature.radius + 14}>{feature.point.label}</text>
+    </g>
+  );
+}
+
 function createFocusedFrame(slug: VisualizationSlug, seed: number): FocusedFrame {
   const engine = createVizEngine({ backend: "auto" });
 
@@ -504,7 +775,9 @@ function createFocusedFrame(slug: VisualizationSlug, seed: number): FocusedFrame
     engine.addLayer(createCartesianLayer(slug, datasetId));
 
     return {
-      frame: engine.computeFrame({ frameFormat: "objects", viewport: cartesianViewport }),
+      frame: engine.hydrateFrame(
+        engine.computeFrame({ frameFormat: "typed", viewport: cartesianViewport }),
+      ),
       viewport: cartesianViewport,
     };
   }
@@ -519,7 +792,9 @@ function createFocusedFrame(slug: VisualizationSlug, seed: number): FocusedFrame
     engine.addLayer(createFinanceLayer(slug, datasetId));
 
     return {
-      frame: engine.computeFrame({ frameFormat: "objects", viewport: financeViewport }),
+      frame: engine.hydrateFrame(
+        engine.computeFrame({ frameFormat: "typed", viewport: financeViewport }),
+      ),
       viewport: financeViewport,
     };
   }
@@ -530,7 +805,7 @@ function createFocusedFrame(slug: VisualizationSlug, seed: number): FocusedFrame
   engine.addLayer(createGeoLayer(slug, datasetId));
 
   return {
-    frame: engine.computeFrame({ frameFormat: "objects", viewport }),
+    frame: engine.hydrateFrame(engine.computeFrame({ frameFormat: "typed", viewport })),
     viewport,
   };
 }

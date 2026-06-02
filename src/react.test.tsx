@@ -36,6 +36,7 @@ function createFakeEngine(): VizEngine {
   return {
     addDataset: vi.fn(() => "dataset-1"),
     addLayer: vi.fn(() => "layer-1"),
+    clear: vi.fn(),
     computeFrame: vi.fn(() => createFrame()),
     getDatasetCount: vi.fn(() => 0),
     getLayerCount: vi.fn(() => 0),
@@ -44,6 +45,8 @@ function createFakeEngine(): VizEngine {
     hitTest: vi.fn(() => null),
     removeDataset: vi.fn(),
     removeLayer: vi.fn(),
+    updateDataset: vi.fn(() => true),
+    updateLayer: vi.fn(() => true),
   };
 }
 
@@ -138,6 +141,43 @@ describe("React viz engine bindings", () => {
 
     await waitFor(() => expect(engine.addDataset).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(engine.addLayer).toHaveBeenCalledTimes(2));
+    expect(engine.removeDataset).toHaveBeenCalledWith("dataset-1");
+    expect(engine.removeLayer).toHaveBeenCalledWith("layer-1");
+  });
+
+  test("updates dataset and layer registrations when update lifecycle is requested", async () => {
+    const engine = createFakeEngine();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <VizEngineProvider engine={engine}>{children}</VizEngineProvider>
+    );
+    const { rerender, unmount } = renderHook(
+      ({ dataset, layer }) => ({
+        datasetId: useVizDataset(dataset, { lifecycle: "update" }),
+        layerId: useVizLayer(layer, { lifecycle: "update" }),
+      }),
+      {
+        initialProps: {
+          dataset: [{ id: "p-1", x: 1, y: 1 }],
+          layer: { datasetId: "dataset-1", kind: "histogram" as const, bucketCount: 2 },
+        },
+        wrapper,
+      },
+    );
+
+    await waitFor(() => expect(engine.addDataset).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(engine.addLayer).toHaveBeenCalledTimes(1));
+
+    rerender({
+      dataset: [{ id: "p-2", x: 2, y: 2 }],
+      layer: { datasetId: "dataset-1", kind: "histogram" as const, bucketCount: 4 },
+    });
+
+    await waitFor(() => expect(engine.updateDataset).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(engine.updateLayer).toHaveBeenCalledTimes(1));
+    expect(engine.addDataset).toHaveBeenCalledTimes(1);
+    expect(engine.addLayer).toHaveBeenCalledTimes(1);
+
+    unmount();
     expect(engine.removeDataset).toHaveBeenCalledWith("dataset-1");
     expect(engine.removeLayer).toHaveBeenCalledWith("layer-1");
   });

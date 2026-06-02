@@ -1,4 +1,9 @@
-import type { VizBackendCapabilities, VizGeoBounds, VizMetricRecord } from "./core";
+import type {
+  VizBackendCapabilities,
+  VizCompactMetricArrays,
+  VizGeoBounds,
+  VizMetricRecord,
+} from "./core";
 
 export type VizMapDisplayMode = "flat" | "globe";
 
@@ -215,4 +220,72 @@ export type VizGeoFlowIndex<TProperties = Record<string, unknown>> = {
     query: VizGeoViewportQuery,
     options?: VizGeoFlowOptions,
   ): VizGeoFlowAggregation<TProperties>;
+};
+
+export type VizTypedGeoPoints = {
+  id: readonly string[];
+  label: readonly string[];
+  latitude: Float64Array;
+  longitude: Float64Array;
+  metrics?: VizCompactMetricArrays;
+  sourceIndex: Uint32Array;
+  summary: {
+    bounds: VizGeoBounds | null;
+    metricKeys: string[];
+    pointCount: number;
+  };
+};
+
+export type VizTypedGeoHeat = Omit<VizTypedGeoPoints, "summary"> & {
+  pointCount: Uint32Array;
+  rawWeight: Float64Array;
+  summary: VizTypedGeoPoints["summary"] & {
+    maxWeight: number;
+  };
+  value: Float64Array;
+};
+
+export type VizTypedGeoScalarField = {
+  bounds: VizGeoBounds;
+  columns: number;
+  rows: number;
+  valueDomain: [number, number] | null;
+  values: Float64Array;
+};
+
+export type VizTypedGeoFlows = {
+  fromLatitude: Float64Array;
+  fromLongitude: Float64Array;
+  id: readonly string[];
+  label: readonly string[];
+  metrics?: VizCompactMetricArrays;
+  rawWeight: Float64Array;
+  sourceIndex: Uint32Array;
+  summary: {
+    bounds: VizGeoBounds | null;
+    flowCount: number;
+    maxWeight: number;
+    metricKeys: string[];
+  };
+  toLatitude: Float64Array;
+  toLongitude: Float64Array;
+  value: Float64Array;
+};
+
+export type VizTypedGeoClusters = {
+  clusterId: Int32Array;
+  expansionZoom: Int32Array;
+  id: readonly string[];
+  kindCode: Uint8Array;
+  label: readonly string[];
+  latitude: Float64Array;
+  longitude: Float64Array;
+  metrics?: VizCompactMetricArrays;
+  pointCount: Uint32Array;
+  sourceIndex: Int32Array;
+  summary: {
+    bounds: VizGeoBounds | null;
+    featureCount: number;
+    metricKeys: string[];
+  };
 };

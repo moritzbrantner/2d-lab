@@ -5,6 +5,10 @@
     "jsx": "react-jsx",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@moritzbrantner/viz-engine": ["src/index.ts"]
+    },
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2022"

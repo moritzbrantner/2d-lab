@@ -1,4 +1,4 @@
-import { createPreparedFrame } from "../adapters/viz-engine";
+import { createPreparedFrame, createVizEngine } from "../adapters/viz-engine";
 import { formatSize } from "../config";
 import { createXyFixture } from "../fixtures/xy";
 import { assert, assertPositive, createCaseId } from "./utils";
@@ -68,9 +68,123 @@ export function createFrameCases(config: BenchmarkConfig): BenchmarkCase[] {
         );
       }
     }
+
+    cases.push(createFilteredFrameCase(sizeLabel, size, fixture, layers));
+    cases.push(createHitTestFrameCase(sizeLabel, size, fixture, layers));
   }
 
   return cases;
+}
+
+function createFilteredFrameCase(
+  sizeLabel: string,
+  size: number,
+  fixture: ReturnType<typeof createXyFixture>,
+  layers: VizLayer[],
+): BenchmarkCase {
+  return {
+    category: "frame",
+    id: createCaseId(["frame", "typed", "filtered-layer", sizeLabel, "js"]),
+    implementation: "viz-engine js",
+    prepare: () => {
+      const engine = createVizEngine({ backend: "js" });
+      const datasetId = engine.addDataset({ kind: "xy", points: fixture.points });
+      const layerIds = layers.map((layer) => engine.addLayer({ ...layer, datasetId }));
+
+      return { engine, layerId: layerIds[0]! };
+    },
+    run: (prepared) => {
+      const { engine, layerId } = prepared as {
+        engine: ReturnType<typeof createVizEngine>;
+        layerId: string;
+      };
+
+      return engine.computeFrame({
+        frameFormat: "typed",
+        layerIds: [layerId],
+        viewport: { height: 360, width: 960, xDomain: fixture.domains.viewport },
+      });
+    },
+    size: sizeLabel,
+    sizeValue: size,
+    validate: (prepared) => {
+      const output = (
+        prepared as {
+          engine: ReturnType<typeof createVizEngine>;
+          layerId: string;
+        }
+      ).engine.computeFrame({
+        frameFormat: "typed",
+        layerIds: [(prepared as { layerId: string }).layerId],
+        viewport: { height: 360, width: 960, xDomain: fixture.domains.viewport },
+      });
+      assert(output.layers.length === 1, "filtered frame layer count");
+    },
+    workload: "computeFrame/typed/filtered-layer",
+  };
+}
+
+function createHitTestFrameCase(
+  sizeLabel: string,
+  size: number,
+  fixture: ReturnType<typeof createXyFixture>,
+  layers: VizLayer[],
+): BenchmarkCase {
+  return {
+    category: "frame",
+    id: createCaseId(["frame", "hit-test", "typed", sizeLabel, "js"]),
+    implementation: "viz-engine js",
+    prepare: () => {
+      const prepared = createPreparedFrame({
+        backend: "js",
+        dataset: { kind: "xy", points: fixture.points },
+        frameOptions: {
+          frameFormat: "typed",
+          viewport: { height: 360, width: 960, xDomain: fixture.domains.viewport },
+        },
+        layers,
+      });
+
+      return {
+        engine: prepared.engine,
+        frame: prepared.compute(),
+        viewport: { height: 360, width: 960, xDomain: fixture.domains.viewport },
+      };
+    },
+    run: (prepared) => {
+      const context = prepared as {
+        engine: ReturnType<typeof createVizEngine>;
+        frame: ReturnType<ReturnType<typeof createPreparedFrame>["compute"]>;
+        viewport: { height: number; width: number; xDomain: [number, number] };
+      };
+
+      return context.engine.hitTest({
+        frame: context.frame,
+        viewport: context.viewport,
+        x: 480,
+        y: 180,
+      });
+    },
+    size: sizeLabel,
+    sizeValue: size,
+    validate: (prepared) => {
+      const context = prepared as {
+        engine: ReturnType<typeof createVizEngine>;
+        frame: ReturnType<ReturnType<typeof createPreparedFrame>["compute"]>;
+        viewport: { height: number; width: number; xDomain: [number, number] };
+      };
+      assert(
+        context.engine.hitTest({
+          frame: context.frame,
+          viewport: context.viewport,
+          x: 480,
+          y: 180,
+        }) != null,
+        "hit test result",
+      );
+    },
+    workload: "hitTest/typed/cartesian",
+  };
 }
 
 function createFirstFrameCase(

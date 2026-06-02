@@ -379,6 +379,40 @@ describe("computeVizRenderFrame", () => {
     expect(calls).toBe(2);
   });
 
+  test("filters computed layers and reports renderer stats", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({ kind: "xy", points });
+    const firstLayerId = engine.addLayer({
+      datasetId,
+      kind: "binned-series",
+      targetBinCount: 2,
+      xDomain: [0, 40],
+    });
+    const secondLayerId = engine.addLayer({ bucketCount: 2, datasetId, kind: "histogram" });
+
+    const frame = engine.computeFrame({
+      layerIds: [secondLayerId, "missing-layer", firstLayerId],
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+    const cachedFrame = engine.computeFrame({
+      layerIds: [secondLayerId],
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+
+    expect(frame.layers.map((layer) => layer.layerId)).toEqual([secondLayerId, firstLayerId]);
+    expect(frame.stats).toMatchObject({
+      cacheHitCount: 0,
+      layerCount: 2,
+      renderedLayerCount: 2,
+      skippedLayerCount: 0,
+    });
+    expect(frame.stats.diagnostics[0]).toMatchObject({
+      code: "missing-layer",
+      layerId: "missing-layer",
+    });
+    expect(cachedFrame.stats.cacheHitCount).toBe(1);
+  });
+
   test("reports incompatible viewport diagnostics", () => {
     const cartesianEngine = createVizEngine({ backend: "js" });
     const xyDatasetId = cartesianEngine.addDataset({ kind: "xy", points });
@@ -513,6 +547,73 @@ describe("computeVizRenderFrame", () => {
       { flow: { id: "flow-a" }, rawWeight: 2, value: 1 },
     ]);
     expect(frame.layers[5]?.bounds).toEqual([13, 52, 14, 53]);
+  });
+
+  test("hydrates typed geo frame payloads back to object layers", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const geoDatasetId = engine.addDataset({
+      kind: "geo-points",
+      points: [
+        { id: "a", latitude: 52, longitude: 13, metrics: { demand: 2 } },
+        { id: "b", latitude: 52.1, longitude: 13.1, metrics: { demand: 3 } },
+      ],
+    });
+    const flowDatasetId = engine.addDataset({
+      flows: [{ from: [13, 52], id: "flow-a", metrics: { demand: 2 }, to: [14, 53] }],
+      kind: "geo-flows",
+    });
+
+    engine.addLayer({ datasetId: geoDatasetId, kind: "geo-points" });
+    engine.addLayer({ datasetId: geoDatasetId, kind: "geo-heat", weightMetric: "demand" });
+    engine.addLayer({
+      datasetId: geoDatasetId,
+      fieldColumns: 2,
+      fieldRows: 1,
+      kind: "geo-scalar-field",
+      valueMetric: "demand",
+    });
+    engine.addLayer({ datasetId: flowDatasetId, kind: "geo-flows", weightMetric: "demand" });
+
+    const frame = engine.computeFrame({
+      frameFormat: "typed",
+      viewport: {
+        bounds: [12.9, 51.9, 14.1, 53.1],
+        center: [13.5, 52.5],
+        display: "flat",
+        height: 320,
+        kind: "geo",
+        width: 800,
+        zoom: 7,
+      },
+    });
+    const hydrated = engine.hydrateFrame(frame);
+
+    expect(
+      frame.layers[0]?.kind === "geo-points" ? "typedGeoPoints" in frame.layers[0] : false,
+    ).toBe(true);
+    expect(frame.layers[1]?.kind === "geo-heat" ? "typedGeoHeat" in frame.layers[1] : false).toBe(
+      true,
+    );
+    expect(
+      frame.layers[2]?.kind === "geo-scalar-field"
+        ? "typedGeoScalarField" in frame.layers[2]
+        : false,
+    ).toBe(true);
+    expect(frame.layers[3]?.kind === "geo-flows" ? "typedGeoFlows" in frame.layers[3] : false).toBe(
+      true,
+    );
+    expect(hydrated.layers.map((layer) => layer.kind)).toEqual([
+      "geo-points",
+      "geo-heat",
+      "geo-scalar-field",
+      "geo-flows",
+    ]);
+    expect(
+      hydrated.layers[0]?.kind === "geo-points" ? hydrated.layers[0].features : [],
+    ).toHaveLength(2);
+    expect(
+      hydrated.layers[3]?.kind === "geo-flows" ? hydrated.layers[3].features : [],
+    ).toHaveLength(1);
   });
 
   test("reports mixed backend stats when a frame uses mixed indexes", () => {

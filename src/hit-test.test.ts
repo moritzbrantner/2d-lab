@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { createVizEngine } from "./create-viz-engine";
 import { hitTestVizFrame } from "./hit-test";
 
 import type { VizRenderFrame } from "./types";
@@ -186,6 +187,141 @@ describe("hitTestVizFrame", () => {
         }),
       )?.sourcePointId,
     ).toBeNull();
+  });
+
+  test("hit-tests histogram, heatmap, finance, geo flow, and geojson layers", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const xyDatasetId = engine.addDataset({
+      kind: "xy",
+      points: [
+        { id: "a", x: 0, y: 2 },
+        { id: "b", x: 10, y: 4 },
+        { id: "c", x: 20, y: 8 },
+      ],
+    });
+    const financeDatasetId = engine.addDataset({
+      bars: [
+        { close: 10, high: 12, low: 8, open: 9, timestamp: 0 },
+        { close: 12, high: 14, low: 9, open: 10, timestamp: 10 },
+      ],
+      instrument: { symbol: "AAPL" },
+      kind: "finance-ohlcv",
+    });
+    const histogramLayerId = engine.addLayer({
+      bucketCount: 2,
+      datasetId: xyDatasetId,
+      kind: "histogram",
+      xDomain: [0, 20],
+    });
+    const heatmapLayerId = engine.addLayer({
+      datasetId: xyDatasetId,
+      kind: "heatmap",
+      xBinCount: 2,
+      xDomain: [0, 20],
+      yBinCount: 2,
+      yDomain: [0, 10],
+    });
+    const candleLayerId = engine.addLayer({
+      datasetId: financeDatasetId,
+      kind: "finance-candles",
+      xDomain: [0, 10],
+    });
+    const viewport = { height: 100, width: 100, xDomain: [0, 20] as [number, number] };
+    const frame = engine.computeFrame({ frameFormat: "objects", viewport });
+
+    expect(
+      engine.hitTest({
+        frame,
+        layerIds: [histogramLayerId],
+        mode: "contains",
+        viewport,
+        x: 35,
+        y: 35,
+      }),
+    ).toMatchObject({ kind: "cartesian", layerId: histogramLayerId, layerKind: "histogram" });
+    expect(
+      engine.hitTest({
+        frame,
+        layerIds: [heatmapLayerId],
+        mode: "contains",
+        viewport,
+        x: 25,
+        y: 50,
+      }),
+    ).toMatchObject({ kind: "cartesian", layerId: heatmapLayerId, layerKind: "heatmap" });
+    expect(
+      engine.hitTest({
+        frame,
+        layerIds: [candleLayerId],
+        maxDistancePx: 1,
+        mode: "contains",
+        viewport,
+        x: 0,
+        y: 50,
+      }),
+    ).toMatchObject({ kind: "cartesian", layerId: candleLayerId, layerKind: "finance-candles" });
+
+    const geoEngine = createVizEngine({ backend: "js" });
+    const flowDatasetId = geoEngine.addDataset({
+      flows: [{ from: [0, 0], id: "flow", to: [1, 1] }],
+      kind: "geo-flows",
+    });
+    const geoJsonDatasetId = geoEngine.addDataset({
+      featureCollection: {
+        features: [
+          {
+            geometry: {
+              coordinates: [
+                [
+                  [0, 0],
+                  [1, 0],
+                  [1, 1],
+                  [0, 1],
+                  [0, 0],
+                ],
+              ],
+              type: "Polygon",
+            },
+            type: "Feature",
+          },
+        ],
+        type: "FeatureCollection",
+      },
+      kind: "geojson",
+    });
+    const flowLayerId = geoEngine.addLayer({ datasetId: flowDatasetId, kind: "geo-flows" });
+    const geoJsonLayerId = geoEngine.addLayer({ datasetId: geoJsonDatasetId, kind: "geojson" });
+    const geoViewport = {
+      bounds: [0, 0, 1, 1] as [number, number, number, number],
+      center: [0.5, 0.5] as [number, number],
+      display: "flat" as const,
+      height: 100,
+      kind: "geo" as const,
+      width: 100,
+      zoom: 1,
+    };
+    const geoFrame = geoEngine.computeFrame({ frameFormat: "objects", viewport: geoViewport });
+
+    expect(
+      geoEngine.hitTest({
+        frame: geoFrame,
+        layerIds: [flowLayerId],
+        maxDistancePx: 2,
+        viewport: geoViewport,
+        x: 50,
+        y: 50,
+      }),
+    ).toMatchObject({ kind: "geo-flow", layerId: flowLayerId, layerKind: "geo-flows" });
+    expect(
+      geoEngine.hitTest({
+        frame: geoFrame,
+        layerIds: [geoJsonLayerId],
+        mode: "contains",
+        viewport: geoViewport,
+        x: 50,
+        y: 50,
+      }),
+    ).toMatchObject({ kind: "geojson", layerId: geoJsonLayerId, layerKind: "geojson" });
   });
 });
 

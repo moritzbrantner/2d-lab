@@ -64,6 +64,11 @@ Typed cartesian layers expose fields such as `typedSeries`, `typedHistogram`,
 `compact*` field names remain as deprecated aliases during the pre-1.0
 migration.
 
+Typed geo layers add renderer-friendly payloads alongside the existing object
+fields: `typedGeoClusters`, `typedGeoPoints`, `typedGeoHeat`,
+`typedGeoScalarField`, and `typedGeoFlows`. GeoJSON remains object-shaped because
+arbitrary geometries and properties are best consumed as GeoJSON.
+
 Request object-shaped layers only when debugging, inspecting data, or using a
 renderer that has not migrated yet:
 
@@ -74,6 +79,38 @@ const objectFrame = engine.computeFrame({
 });
 
 const hydratedFrame = engine.hydrateFrame(typedFrame);
+```
+
+Renderer integrations can compute a subset of registered layers without
+re-registering state:
+
+```ts
+const frame = engine.computeFrame({
+  frameFormat: "typed",
+  layerIds: [mainSeriesLayerId, heatmapLayerId],
+  viewport: { height: 320, width: 800, xDomain: [0, 1_440] },
+});
+
+console.log(frame.stats.renderedLayerCount, frame.stats.cacheHitCount);
+```
+
+Datasets and layers can also be updated without changing ids:
+
+```ts
+engine.updateDataset(datasetId, { kind: "xy", x, y });
+engine.updateLayer(layerId, {
+  datasetId,
+  kind: "binned-series",
+  targetBinCount: 240,
+});
+```
+
+For worker handoff, collect transferables from typed frames:
+
+```ts
+import { getVizFrameTransferables } from "@moritzbrantner/viz-engine";
+
+worker.postMessage(frame, getVizFrameTransferables(frame));
 ```
 
 Large XY datasets can avoid object allocation by providing typed arrays:
@@ -239,6 +276,30 @@ const frame = useVizFrame({
 
 The legacy `useVizFrame(viewport, dependencies)` signature still works during
 the migration window and returns typed frames by default.
+
+By default, `useVizDataset` and `useVizLayer` recreate registrations when input
+identity changes. Renderer integrations that want stable ids can opt into update
+lifecycle mode:
+
+```ts
+const datasetId = useVizDataset(dataset, { lifecycle: "update" });
+const layerId = useVizLayer(layer, { lifecycle: "update" });
+```
+
+Hit testing can use the last computed frame or an explicit frame and can be
+restricted to selected layers:
+
+```ts
+const hit = engine.hitTest({
+  frame,
+  layerIds: [layerId],
+  maxDistancePx: 12,
+  mode: "nearest-point",
+  viewport,
+  x: pointerX,
+  y: pointerY,
+});
+```
 
 ## CI
 

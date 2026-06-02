@@ -55,8 +55,25 @@ export function computeVizRenderFrame<TProperties>(
   const renderLayers: Array<VizAnyRenderLayer<TProperties>> = [];
   const usedIndexes: Array<VizEngineDatasetRecord<TProperties>["index"]> = [];
   const diagnostics: VizFrameDiagnostic[] = [];
+  let cacheHitCount = 0;
+  const requestedLayerEntries = options.layerIds
+    ? options.layerIds.flatMap((layerId) => {
+        const layer = layers.get(layerId);
+        if (!layer) {
+          diagnostics.push({
+            code: "missing-layer",
+            layerId,
+            message: `Requested layer ${layerId} does not exist.`,
+            severity: "warning",
+          });
+          return [];
+        }
 
-  for (const [layerId, layer] of layers) {
+        return [[layerId, layer] as const];
+      })
+    : [...layers];
+
+  for (const [layerId, layer] of requestedLayerEntries) {
     const datasetRecord = datasets.get(layer.datasetId);
 
     if (!datasetRecord) {
@@ -73,6 +90,7 @@ export function computeVizRenderFrame<TProperties>(
     const cacheKey = getRenderLayerCacheKey(layerId, layer, options);
     const cachedLayer = cacheKey ? layerCache?.get(cacheKey) : undefined;
     if (cachedLayer) {
+      cacheHitCount += 1;
       renderLayers.push(cachedLayer);
       continue;
     }
@@ -93,9 +111,12 @@ export function computeVizRenderFrame<TProperties>(
       backend: resolveFrameBackend(backend, usedIndexes),
       backendImplementation: resolveFrameBackendImplementation(usedIndexes),
       computeMs: now() - startedAt,
+      cacheHitCount,
       datasetCount: datasets.size,
       diagnostics,
       layerCount: layers.size,
+      renderedLayerCount: renderLayers.length,
+      skippedLayerCount: Math.max(0, layers.size - renderLayers.length),
     },
   };
 }

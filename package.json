@@ -25,7 +25,7 @@
   },
   "scripts": {
     "build": "bun run build:wasm && tsup",
-    "build:wasm": "wasm-pack build crates/viz-engine-wasm --target bundler --out-dir ../../src/wasm/pkg && bun ./scripts/embed-wasm.mjs",
+    "build:wasm": "bun ./scripts/check-wasm-output-writable.mjs && wasm-pack build crates/viz-engine-wasm --target bundler --out-dir ../../src/wasm/pkg && bun ./scripts/embed-wasm.mjs",
     "bench": "bun run bench:node && bun run bench:browser",
     "bench:browser": "bun run bench/browser/run-browser.ts --quick",
     "bench:node": "bun run bench/run.ts --runtime bun",
@@ -46,6 +46,8 @@
     "supercluster": "^8.0.1"
   },
   "devDependencies": {
+    "@moritzbrantner/charts": "0.1.1",
+    "@moritzbrantner/maps": "0.1.4",
     "@moritzbrantner/ui": "^0.9.1",
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/react-query": "^5.100.14",
@@ -62,6 +64,7 @@
     "playwright": "^1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "recharts": "^3.8.1",
     "simple-statistics": "^7.8.9",
     "tailwindcss": "^4.3.0",
     "tinybench": "^4.0.1",

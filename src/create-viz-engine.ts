@@ -44,6 +44,24 @@ export function createVizEngine<TProperties = Record<string, unknown>>(
     lastFrame = null;
   }
 
+  function invalidateDatasetFrames(datasetId: VizDatasetId) {
+    for (const cacheKey of layerCache.keys()) {
+      if (cacheKey.includes(`"datasetId":"${datasetId}"`)) {
+        layerCache.delete(cacheKey);
+      }
+    }
+    lastFrame = null;
+  }
+
+  function invalidateLayerFrames(layerId: VizLayerId) {
+    for (const cacheKey of layerCache.keys()) {
+      if (cacheKey.includes(`"layerId":"${layerId}"`)) {
+        layerCache.delete(cacheKey);
+      }
+    }
+    lastFrame = null;
+  }
+
   function computeFrame(frameOptions: VizObjectComputeFrameOptions): VizRenderFrame<TProperties>;
   function computeFrame(
     frameOptions: VizCompactComputeFrameOptions,
@@ -94,6 +112,14 @@ export function createVizEngine<TProperties = Record<string, unknown>>(
 
     computeFrame,
 
+    clear() {
+      datasets.clear();
+      layers.clear();
+      nextDatasetId = 0;
+      nextLayerId = 0;
+      invalidateFrames();
+    },
+
     getDatasetCount() {
       return datasets.size;
     },
@@ -110,8 +136,8 @@ export function createVizEngine<TProperties = Record<string, unknown>>(
       return hydrateVizRenderLayer(layer);
     },
 
-    hitTest(hitOptions: VizHitTestOptions): VizHitTestResult<TProperties> | null {
-      if (!lastFrame && hitOptions.viewport) {
+    hitTest(hitOptions: VizHitTestOptions<TProperties>): VizHitTestResult<TProperties> | null {
+      if (!lastFrame && !hitOptions.frame && hitOptions.viewport) {
         lastFrame = computeVizRenderFrame(
           datasets,
           layers,
@@ -123,7 +149,7 @@ export function createVizEngine<TProperties = Record<string, unknown>>(
         );
       }
 
-      return hitTestVizFrame(lastFrame, hitOptions);
+      return hitTestVizFrame(hitOptions.frame ?? lastFrame, hitOptions);
     },
 
     removeDataset(datasetId: VizDatasetId) {
@@ -140,6 +166,31 @@ export function createVizEngine<TProperties = Record<string, unknown>>(
     removeLayer(layerId: VizLayerId) {
       layers.delete(layerId);
       invalidateFrames();
+    },
+
+    updateDataset(datasetId: VizDatasetId, dataset: VizDataset<TProperties>) {
+      if (!datasets.has(datasetId)) {
+        return false;
+      }
+
+      datasets.set(datasetId, {
+        dataset,
+        index: backend.createIndex(dataset),
+      });
+      invalidateDatasetFrames(datasetId);
+
+      return true;
+    },
+
+    updateLayer(layerId: VizLayerId, layer: VizLayer) {
+      if (!layers.has(layerId)) {
+        return false;
+      }
+
+      layers.set(layerId, layer);
+      invalidateLayerFrames(layerId);
+
+      return true;
     },
   };
 }

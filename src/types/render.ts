@@ -48,6 +48,11 @@ import type {
   VizIndexedGeoFlow,
   VizIndexedGeoPoint,
   VizMapDisplayMode,
+  VizTypedGeoClusters,
+  VizTypedGeoFlows,
+  VizTypedGeoHeat,
+  VizTypedGeoPoints,
+  VizTypedGeoScalarField,
 } from "./geo";
 
 export type VizDataset<TProperties = Record<string, unknown>> =
@@ -188,12 +193,14 @@ export type VizFrameFormat = "objects" | "typed";
 export type VizObjectComputeFrameOptions =
   | {
       frameFormat: "objects";
+      layerIds?: readonly VizLayerId[];
       /** @deprecated Use frameFormat: "objects". */
       outputMode?: "object";
       viewport: VizViewport;
     }
   | {
       frameFormat?: "objects";
+      layerIds?: readonly VizLayerId[];
       /** @deprecated Use frameFormat: "objects". */
       outputMode: "object";
       viewport: VizViewport;
@@ -201,6 +208,7 @@ export type VizObjectComputeFrameOptions =
 
 export type VizCompactComputeFrameOptions = {
   frameFormat?: "typed";
+  layerIds?: readonly VizLayerId[];
   /** @deprecated Use frameFormat: "typed". */
   outputMode: "compact";
   viewport: VizViewport;
@@ -208,6 +216,7 @@ export type VizCompactComputeFrameOptions = {
 
 export type VizTypedComputeFrameOptions = {
   frameFormat?: "typed";
+  layerIds?: readonly VizLayerId[];
   /** @deprecated Use frameFormat: "typed". */
   outputMode?: "compact";
   viewport: VizViewport;
@@ -413,10 +422,56 @@ export type VizTypedFinanceRenderLayer =
       typedReturns: VizCompactFinanceReturns;
     };
 
+export type VizTypedGeoRenderLayer =
+  | {
+      aggregation: VizGeoAggregation;
+      bounds: VizGeoBounds | null;
+      datasetId: VizDatasetId;
+      features: Array<VizGeoAggregationFeature>;
+      kind: "geo-clusters";
+      layerId: VizLayerId;
+      typedGeoClusters: VizTypedGeoClusters;
+    }
+  | {
+      bounds: VizGeoBounds | null;
+      datasetId: VizDatasetId;
+      features: Array<VizIndexedGeoPoint>;
+      kind: "geo-points";
+      layerId: VizLayerId;
+      typedGeoPoints: VizTypedGeoPoints;
+    }
+  | {
+      bounds: VizGeoBounds | null;
+      datasetId: VizDatasetId;
+      features: Array<VizGeoHeatFeature>;
+      kind: "geo-heat";
+      layerId: VizLayerId;
+      maxWeight: number;
+      typedGeoHeat: VizTypedGeoHeat;
+    }
+  | {
+      bounds: VizGeoBounds | null;
+      datasetId: VizDatasetId;
+      grid: VizGeoScalarFieldGrid;
+      kind: "geo-scalar-field";
+      layerId: VizLayerId;
+      typedGeoScalarField: VizTypedGeoScalarField;
+    }
+  | {
+      aggregation: VizGeoFlowAggregation;
+      bounds: VizGeoBounds | null;
+      datasetId: VizDatasetId;
+      features: Array<VizGeoFlowFeature>;
+      kind: "geo-flows";
+      layerId: VizLayerId;
+      typedGeoFlows: VizTypedGeoFlows;
+    };
+
 export type VizAnyRenderLayer<TProperties = Record<string, unknown>> =
   | VizRenderLayer<TProperties>
   | VizTypedCartesianRenderLayer
-  | VizTypedFinanceRenderLayer;
+  | VizTypedFinanceRenderLayer
+  | VizTypedGeoRenderLayer;
 
 export type VizFrameDiagnostic = {
   code: string;
@@ -431,9 +486,12 @@ export type VizRenderFrame<TProperties = Record<string, unknown>> = {
     backend: VizResolvedBackend;
     backendImplementation?: VizBackendImplementation;
     computeMs: number;
+    cacheHitCount?: number;
     datasetCount: number;
     diagnostics: VizFrameDiagnostic[];
     layerCount: number;
+    renderedLayerCount?: number;
+    skippedLayerCount?: number;
   };
 };
 
@@ -449,7 +507,10 @@ export type VizTypedRenderFrame<TProperties = Record<string, unknown>> = Omit<
   "layers"
 > & {
   layers: Array<
-    VizRenderLayer<TProperties> | VizTypedCartesianRenderLayer | VizTypedFinanceRenderLayer
+    | VizRenderLayer<TProperties>
+    | VizTypedCartesianRenderLayer
+    | VizTypedFinanceRenderLayer
+    | VizTypedGeoRenderLayer
   >;
 };
 
@@ -458,7 +519,13 @@ export type VizAnyRenderFrame<TProperties = Record<string, unknown>> =
   | VizCompactRenderFrame<TProperties>
   | VizTypedRenderFrame<TProperties>;
 
-export type VizHitTestOptions = {
+export type VizHitTestMode = "contains" | "nearest-point" | "nearest-x";
+
+export type VizHitTestOptions<TProperties = Record<string, unknown>> = {
+  frame?: VizAnyRenderFrame<TProperties>;
+  layerIds?: readonly VizLayerId[];
+  maxDistancePx?: number;
+  mode?: VizHitTestMode;
   viewport?: VizViewport;
   x: number;
   y: number;
@@ -466,7 +533,9 @@ export type VizHitTestOptions = {
 
 export type VizCartesianHitTestResult = {
   datasetId: VizDatasetId;
+  distancePx?: number;
   kind: "cartesian";
+  layerKind: VizLayer["kind"];
   layerId: VizLayerId;
   pointCount: number;
   sampleIndex: number;
@@ -478,15 +547,19 @@ export type VizCartesianHitTestResult = {
 export type VizGeoPointHitTestResult<TProperties = Record<string, unknown>> = {
   datasetId: VizDatasetId;
   distance: number;
+  distancePx?: number;
   kind: "geo-point";
+  layerKind: VizLayer["kind"];
   layerId: VizLayerId;
   point: VizIndexedGeoPoint<TProperties>;
 };
 
 export type VizGeoFlowHitTestResult<TProperties = Record<string, unknown>> = {
   datasetId: VizDatasetId;
+  distancePx?: number;
   flow: VizIndexedGeoFlow<TProperties>;
   kind: "geo-flow";
+  layerKind: VizLayer["kind"];
   layerId: VizLayerId;
 };
 
@@ -494,6 +567,7 @@ export type VizGeoJsonHitTestResult = {
   datasetId: VizDatasetId;
   featureIndex: number;
   kind: "geojson";
+  layerKind: VizLayer["kind"];
   layerId: VizLayerId;
 };
 
@@ -506,6 +580,7 @@ export type VizHitTestResult<TProperties = Record<string, unknown>> =
 export type VizEngine<TProperties = Record<string, unknown>> = {
   addDataset(dataset: VizDataset<TProperties>): VizDatasetId;
   addLayer(layer: VizLayer): VizLayerId;
+  clear(): void;
   computeFrame(options: VizObjectComputeFrameOptions): VizRenderFrame<TProperties>;
   computeFrame(options: VizCompactComputeFrameOptions): VizCompactRenderFrame<TProperties>;
   computeFrame(options: VizTypedComputeFrameOptions): VizTypedRenderFrame<TProperties>;
@@ -513,9 +588,11 @@ export type VizEngine<TProperties = Record<string, unknown>> = {
   getLayerCount(): number;
   hydrateFrame(frame: VizAnyRenderFrame<TProperties>): VizRenderFrame<TProperties>;
   hydrateLayer(layer: VizAnyRenderLayer<TProperties>): VizRenderLayer<TProperties> | null;
-  hitTest(options: VizHitTestOptions): VizHitTestResult<TProperties> | null;
+  hitTest(options: VizHitTestOptions<TProperties>): VizHitTestResult<TProperties> | null;
   removeDataset(datasetId: VizDatasetId): void;
   removeLayer(layerId: VizLayerId): void;
+  updateDataset(datasetId: VizDatasetId, dataset: VizDataset<TProperties>): boolean;
+  updateLayer(layerId: VizLayerId, layer: VizLayer): boolean;
 };
 
 export type VizEngineBackend<TProperties = Record<string, unknown>> = {

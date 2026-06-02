@@ -73,6 +73,62 @@ describe("createVizEngine", () => {
     ).toHaveLength(0);
   });
 
+  test("updates datasets and layers without changing ids", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({ kind: "xy", points: points.slice(0, 2) });
+    const layerId = engine.addLayer({
+      datasetId,
+      kind: "binned-series",
+      targetBinCount: 2,
+      xDomain: [0, 40],
+    });
+
+    const first = engine.computeFrame({ viewport: { height: 320, width: 800, xDomain: [0, 40] } });
+    expect(
+      first.layers[0]?.kind === "binned-series" && "typedSeries" in first.layers[0]
+        ? [...first.layers[0].typedSeries.pointCount]
+        : [],
+    ).toEqual([2, 0]);
+
+    expect(engine.updateDataset(datasetId, { kind: "xy", points })).toBe(true);
+    const afterDatasetUpdate = engine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+    expect(
+      afterDatasetUpdate.layers[0]?.kind === "binned-series" &&
+        "typedSeries" in afterDatasetUpdate.layers[0]
+        ? [...afterDatasetUpdate.layers[0].typedSeries.pointCount]
+        : [],
+    ).toEqual([2, 3]);
+
+    expect(
+      engine.updateLayer(layerId, {
+        datasetId,
+        kind: "binned-series",
+        targetBinCount: 5,
+        xDomain: [0, 40],
+      }),
+    ).toBe(true);
+    const afterLayerUpdate = engine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+    expect(afterLayerUpdate.layers[0]?.layerId).toBe(layerId);
+    expect(
+      afterLayerUpdate.layers[0]?.kind === "binned-series" &&
+        "typedSeries" in afterLayerUpdate.layers[0]
+        ? [...afterLayerUpdate.layers[0].typedSeries.pointCount]
+        : [],
+    ).toEqual([1, 1, 1, 1, 1]);
+    expect(engine.updateDataset("missing", { kind: "xy", points })).toBe(false);
+    expect(engine.updateLayer("missing", { datasetId, kind: "histogram", bucketCount: 2 })).toBe(
+      false,
+    );
+
+    engine.clear();
+    expect(engine.getDatasetCount()).toBe(0);
+    expect(engine.getLayerCount()).toBe(0);
+  });
+
   test("reuses repeated layer output and clears cache on layer changes", () => {
     const engine = createVizEngine({ backend: "js" });
     const datasetId = engine.addDataset({ kind: "xy", points });
