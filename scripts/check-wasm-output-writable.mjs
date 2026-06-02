@@ -1,9 +1,13 @@
-import { accessSync, constants, readdirSync, statSync } from "node:fs";
+import { accessSync, constants, existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageDir = path.join(rootDir, "src", "wasm", "pkg");
+
+if (!existsSync(packageDir)) {
+  process.exit(0);
+}
 
 try {
   accessSync(packageDir, constants.W_OK);
