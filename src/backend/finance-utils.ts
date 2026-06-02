@@ -169,10 +169,12 @@ export function downsampleOhlcvBarsInRange<TProperties>(
 
   for (let bucketIndex = 0; bucketIndex < bucketCount; bucketIndex++) {
     const bucketStart = start + Math.floor((bucketIndex * length) / bucketCount);
-    const bucketEnd = start + Math.max(
-      Math.floor((bucketIndex * length) / bucketCount) + 1,
-      Math.floor(((bucketIndex + 1) * length) / bucketCount),
-    );
+    const bucketEnd =
+      start +
+      Math.max(
+        Math.floor((bucketIndex * length) / bucketCount) + 1,
+        Math.floor(((bucketIndex + 1) * length) / bucketCount),
+      );
     downsampled.push(aggregateOhlcvRange(bars, bucketStart, bucketEnd));
   }
 
@@ -255,10 +257,12 @@ export function downsampleOhlcvBarsCompactInRange<TProperties>(
 
   for (let bucketIndex = 0; bucketIndex < bucketCount; bucketIndex++) {
     const bucketStart = start + Math.floor((bucketIndex * length) / bucketCount);
-    const bucketEnd = start + Math.max(
-      Math.floor((bucketIndex * length) / bucketCount) + 1,
-      Math.floor(((bucketIndex + 1) * length) / bucketCount),
-    );
+    const bucketEnd =
+      start +
+      Math.max(
+        Math.floor((bucketIndex * length) / bucketCount) + 1,
+        Math.floor(((bucketIndex + 1) * length) / bucketCount),
+      );
     writeCompactOhlcvBucket(
       bars,
       bucketStart,
