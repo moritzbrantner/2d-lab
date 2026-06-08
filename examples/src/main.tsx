@@ -1,6 +1,7 @@
 import {
   Badge,
   Button,
+  ChartContainer,
   Slider,
   Stat,
   StatGroup,
@@ -26,48 +27,59 @@ import {
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ReferenceLine,
+  XAxis,
+  YAxis,
+} from "recharts";
 import {
   BinnedChart,
+  ChartHeatmapGrid,
   ChartMetricStrip,
   ChartPanel,
   ChartValueModeSelector,
   createChartDensityIndex,
   createChartDensityViewportSummary,
+  createRollingChartSeries,
+  getChartDataYBounds,
   type ChartSeriesPoint,
   type ChartValueMode as PackageChartValueMode,
 } from "@moritzbrantner/charts";
 import {
+  FlatBubbleMap,
+  FlatClusteredMap,
+  FlatFlowMap,
+  FlatGeoJsonMap,
+  FlatHeatFieldMap,
+  FlatHeatMap,
+  FlatPointMap,
   createBubbleMapFeatures,
   createFlowMapFeatures,
   createHeatMapFeatureCollection,
-  type BubbleMapFeature,
-  type FlowMapFeature,
-  type HeatMapFeature,
 } from "@moritzbrantner/maps/flat";
 
 import {
   createVizEngine,
   type VizCartesianViewport,
-  type VizGeoAggregationFeature,
-  type VizGeoBounds,
   type VizGeoFlow,
-  type VizGeoFlowFeature,
-  type VizGeoHeatFeature,
   type VizGeoJsonFeatureCollection,
   type VizGeoPoint,
   type VizGeoViewport,
   type VizLayer,
   type VizOhlcvBar,
   type VizRenderFrame,
-  type VizRenderLayer,
   type VizSeriesPoint,
   type VizValueMode,
   type VizViewport,
 } from "../../src";
 
-import { VizEngineDemo } from "./VizEngineDemo";
 import "@moritzbrantner/ui/atlas/styles.css";
+import "@moritzbrantner/maps/styles.css";
 import "./styles.css";
 
 type ExamplePointProperties = {
@@ -111,12 +123,7 @@ const geoViewport: VizGeoViewport = {
   width: 920,
   zoom: 7,
 };
-const plotPadding = {
-  bottom: 42,
-  left: 54,
-  right: 20,
-  top: 20,
-};
+const packageMapStyle = { tiles: false } as const;
 const visualizationPages: VisualizationPage[] = [
   {
     description: "All sample layers rendered together with live controls and hit testing.",
@@ -317,7 +324,7 @@ function OverviewPage({
   valueMode,
 }: {
   pointCount: number;
-  points: readonly VizSeriesPoint[];
+  points: readonly VizSeriesPoint<ExamplePointProperties>[];
   setPointCount: (value: number) => void;
   setShowHeatmap: (value: boolean) => void;
   setTargetBinCount: (value: number) => void;
@@ -391,7 +398,7 @@ function OverviewPage({
         </SurfaceContent>
       </Surface>
 
-      <VizEngineDemo
+      <ChartsOverview
         bucketCount={48}
         points={points}
         showHeatmap={showHeatmap}
@@ -399,7 +406,7 @@ function OverviewPage({
         valueMode={valueMode}
       />
 
-      <GeoEngineDemo />
+      <MapsOverview />
     </>
   );
 }
@@ -419,9 +426,6 @@ function FocusedVisualizationPage({
   });
   const focused = focusedQuery.data;
   const layer = focused.frame.layers[0] ?? null;
-  const viewport = focused.viewport;
-  const yDomain =
-    viewport.kind === "geo" ? null : deriveFocusedYDomain(focused.frame.layers, page.slug);
   const summary = createFrameSummary(focused.frame, layer);
 
   return (
@@ -448,88 +452,523 @@ function FocusedVisualizationPage({
       </SurfaceHeader>
 
       <SurfaceContent className="min-w-0">
-        <svg
-          aria-label={`${page.label} visualization`}
-          className={viewport.kind === "geo" ? "focused-map" : "focused-chart"}
-          role="img"
-          viewBox={`0 0 ${viewport.width} ${viewport.height}`}
-        >
-          {viewport.kind === "geo" ? (
-            <>
-              <GeoBackdrop viewport={viewport} />
-              {focused.frame.layers.map((renderLayer) => (
-                <GeoLayer key={renderLayer.layerId} layer={renderLayer} viewport={viewport} />
-              ))}
-            </>
-          ) : (
-            <>
-              <CartesianFrame viewport={viewport} yDomain={yDomain ?? [0, 1]} />
-              {focused.frame.layers.map((renderLayer) => (
-                <CartesianLayer
-                  key={renderLayer.layerId}
-                  layer={renderLayer}
-                  viewport={viewport}
-                  yDomain={yDomain ?? [0, 1]}
-                />
-              ))}
-            </>
-          )}
-        </svg>
+        {isCartesianLayerKind(page.slug) || isFinanceLayerKind(page.slug) ? (
+          <FocusedChartPackageView seed={seed} slug={page.slug} />
+        ) : page.slug === "overview" ? null : (
+          <FocusedMapPackageView slug={page.slug} />
+        )}
       </SurfaceContent>
     </Surface>
   );
 }
 
-function GeoEngineDemo() {
-  const geoQuery = useQuery({
-    initialData: () => ({
-      clusters: createFocusedFrame("geo-clusters", 7),
-      flow: createFocusedFrame("geo-flows", 7),
-      heat: createFocusedFrame("geo-heat", 7),
-      scalar: createFocusedFrame("geo-scalar-field", 7),
-      shape: createFocusedFrame("geojson", 7),
-    }),
-    queryFn: () => ({
-      clusters: createFocusedFrame("geo-clusters", 7),
-      flow: createFocusedFrame("geo-flows", 7),
-      heat: createFocusedFrame("geo-heat", 7),
-      scalar: createFocusedFrame("geo-scalar-field", 7),
-      shape: createFocusedFrame("geojson", 7),
-    }),
-    queryKey: ["overview-geo-frame"],
-    staleTime: Number.POSITIVE_INFINITY,
-  });
-  const { clusters, flow, heat, scalar, shape } = geoQuery.data;
-  const viewport = geoViewport;
-  const layers = [
-    ...shape.frame.layers,
-    ...scalar.frame.layers,
-    ...flow.frame.layers,
-    ...heat.frame.layers,
-    ...clusters.frame.layers,
-  ];
+function ChartsOverview({
+  bucketCount,
+  points,
+  showHeatmap,
+  targetBinCount,
+  valueMode,
+}: {
+  bucketCount: number;
+  points: readonly VizSeriesPoint<ExamplePointProperties>[];
+  showHeatmap: boolean;
+  targetBinCount: number;
+  valueMode: VizValueMode;
+}) {
+  const index = useMemo(
+    () =>
+      createChartDensityIndex(points as readonly ChartSeriesPoint<ExamplePointProperties>[], {
+        backend: "auto",
+      }),
+    [points],
+  );
+  const summarySeries = useMemo(
+    () =>
+      index.getChartSeries({
+        includeEmptyBins: true,
+        targetBinCount,
+        valueMode,
+        xDomain: cartesianViewport.xDomain,
+      }),
+    [index, targetBinCount, valueMode],
+  );
+  const summary = createChartDensityViewportSummary(summarySeries);
 
   return (
-    <Surface aria-label="Geo frame demo">
+    <section className="demo-grid">
+      <ChartPanel
+        badge="@moritzbrantner/charts"
+        title="Dense traffic"
+        description="The overview uses the chart package density index, chart shell, minimap, and heatmap grid."
+      >
+        <BinnedChart
+          chartClassName="package-chart"
+          config={{
+            value: {
+              color: valueMode === "count" ? "#d25435" : "#0f6b78",
+              label: valueMode,
+            },
+          }}
+          domain={cartesianViewport.xDomain}
+          formatDomainValue={minuteLabel}
+          fullDomain={cartesianViewport.xDomain}
+          index={index}
+          minimap
+          query={{ includeEmptyBins: true }}
+          renderDataOptions={{ xLabel: (sample) => minuteLabel(sample.x) }}
+          valueMode={valueMode}
+          wheel={false}
+        >
+          {({ rows }) =>
+            valueMode === "count" ? (
+              <BarChart data={rows} margin={{ bottom: 8, left: 4, right: 14, top: 12 }}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={28} />
+                <YAxis tickLine={false} axisLine={false} width={46} />
+                <Bar dataKey="value" fill="var(--color-value)" radius={0} />
+              </BarChart>
+            ) : (
+              <LineChart data={rows} margin={{ bottom: 8, left: 4, right: 14, top: 12 }}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={28} />
+                <YAxis tickLine={false} axisLine={false} width={46} />
+                <Line
+                  connectNulls
+                  dataKey="value"
+                  dot={false}
+                  isAnimationActive={false}
+                  stroke="var(--color-value)"
+                  strokeWidth={2.4}
+                  type="monotone"
+                />
+              </LineChart>
+            )
+          }
+        </BinnedChart>
+        {showHeatmap ? (
+          <ChartHeatmapGrid
+            className="mt-4 package-heatmap"
+            cells={
+              index.getHeatmap({
+                includeEmptyCells: true,
+                xBinCount: Math.min(72, targetBinCount),
+                xDomain: cartesianViewport.xDomain,
+                yBinCount: 28,
+                yDomain: [0, 130],
+              }).cells
+            }
+            formatX={minuteLabel}
+            formatY={(value) => formatTick(value).toString()}
+          />
+        ) : null}
+      </ChartPanel>
+
+      <CardLikeStats
+        summary={[
+          ["Points", points.length.toLocaleString()],
+          ["Bins", summary.binCount.toLocaleString()],
+          ["Mode", summary.valueMode],
+          ["Histogram buckets", bucketCount.toLocaleString()],
+        ]}
+      />
+    </section>
+  );
+}
+
+function MapsOverview() {
+  const points = useMemo(() => createGeoPoints(), []);
+  const flows = useMemo(
+    () => createGeoFlows().map((flow, index) => ({ ...flow, id: flow.id ?? `flow-${index}` })),
+    [],
+  );
+
+  return (
+    <Surface aria-label="Map package overview">
       <SurfaceHeader>
         <Badge variant="outline" className="mb-3">
-          Geo frame
+          @moritzbrantner/maps
         </Badge>
-        <SurfaceTitle>Rust-backed map layers</SurfaceTitle>
+        <SurfaceTitle>Map package layers</SurfaceTitle>
       </SurfaceHeader>
-      <SurfaceContent>
-        <svg className="geo-map" role="img" viewBox={`0 0 ${viewport.width} ${viewport.height}`}>
-          <GeoBackdrop viewport={viewport} />
-          {layers.map((layer, index) => (
-            <GeoLayer
-              key={`${layer.kind}-${layer.layerId}-${index}`}
-              layer={layer}
-              viewport={viewport}
-            />
-          ))}
-        </svg>
+      <SurfaceContent className="package-map-grid">
+        <FlatClusteredMap
+          mapLabel="Clustered demand map"
+          mapStyle={packageMapStyle}
+          points={points}
+          showAttributionControl={false}
+          style={{ height: 360 }}
+        />
+        <FlatFlowMap
+          flowColor="#c84830"
+          flowShape="arc"
+          flows={flows}
+          mapLabel="Flow demand map"
+          mapStyle={packageMapStyle}
+          showAttributionControl={false}
+          style={{ height: 360 }}
+          weightMetric="demand"
+        />
       </SurfaceContent>
     </Surface>
+  );
+}
+
+function CardLikeStats({ summary }: { summary: Array<[string, string]> }) {
+  return (
+    <Surface className="stats-panel" aria-label="Package rendering stats">
+      <SurfaceContent className="grid h-full content-between gap-4 p-0">
+        <StatGroup className="grid gap-2">
+          {summary.map(([label, value]) => (
+            <Stat key={label}>
+              <StatLabel>{label}</StatLabel>
+              <StatValue>{value}</StatValue>
+            </Stat>
+          ))}
+        </StatGroup>
+      </SurfaceContent>
+    </Surface>
+  );
+}
+
+function FocusedChartPackageView({
+  seed,
+  slug,
+}: {
+  seed: number;
+  slug:
+    | "binned-series"
+    | "histogram"
+    | "heatmap"
+    | "rolling-series"
+    | "finance-candles"
+    | "finance-line"
+    | "finance-returns";
+}) {
+  return isFinanceLayerKind(slug) ? (
+    <FinancePackageChart seed={seed} slug={slug} />
+  ) : (
+    <CartesianPackageChart seed={seed} slug={slug} />
+  );
+}
+
+function CartesianPackageChart({
+  seed,
+  slug,
+}: {
+  seed: number;
+  slug: "binned-series" | "histogram" | "heatmap" | "rolling-series";
+}) {
+  const points = useMemo(() => createExamplePoints(32_000, seed), [seed]);
+  const index = useMemo(
+    () =>
+      createChartDensityIndex(points as readonly ChartSeriesPoint<ExamplePointProperties>[], {
+        backend: "auto",
+      }),
+    [points],
+  );
+  const focusedSeries = useMemo(
+    () =>
+      index.getChartSeries({
+        includeEmptyBins: true,
+        targetBinCount: 180,
+        valueMode: "average",
+        xDomain: cartesianViewport.xDomain,
+      }),
+    [index],
+  );
+  const rollingValuesByIndex = useMemo(
+    () =>
+      new Map(
+        createRollingChartSeries(focusedSeries.samples, {
+          minPoints: 8,
+          statistic: "average",
+          windowSize: 24,
+        }).map((point) => [point.index, point.value] as const),
+      ),
+    [focusedSeries],
+  );
+
+  if (slug === "heatmap") {
+    const heatmap = index.getHeatmap({
+      includeEmptyCells: true,
+      xBinCount: 72,
+      xDomain: cartesianViewport.xDomain,
+      yBinCount: 32,
+      yDomain: [0, 130],
+    });
+
+    return (
+      <ChartPanel badge="@moritzbrantner/charts" title="Heatmap">
+        <ChartHeatmapGrid
+          className="package-heatmap"
+          cells={heatmap.cells}
+          formatX={minuteLabel}
+          formatY={(value) => formatTick(value).toString()}
+        />
+      </ChartPanel>
+    );
+  }
+
+  if (slug === "histogram") {
+    return (
+      <ChartPanel badge="@moritzbrantner/charts" title="Histogram">
+        <BinnedChart
+          chartClassName="package-chart"
+          config={{ count: { color: "#0f6b78", label: "Count" } }}
+          domain={cartesianViewport.xDomain}
+          formatDomainValue={minuteLabel}
+          fullDomain={cartesianViewport.xDomain}
+          index={index}
+          query={{ includeEmptyBins: true }}
+          renderDataOptions={{
+            modes: ["count"],
+            xLabel: (sample) => minuteLabel(sample.x),
+          }}
+          valueMode="count"
+        >
+          {({ rows }) => (
+            <BarChart data={rows} margin={{ bottom: 8, left: 4, right: 14, top: 12 }}>
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={28} />
+              <YAxis tickLine={false} axisLine={false} width={46} />
+              <Bar dataKey="count" fill="var(--color-count)" radius={0} />
+            </BarChart>
+          )}
+        </BinnedChart>
+      </ChartPanel>
+    );
+  }
+
+  return (
+    <ChartPanel
+      badge="@moritzbrantner/charts"
+      title={slug === "rolling-series" ? "Rolling series" : "Binned series"}
+    >
+      <BinnedChart
+        chartClassName="package-chart"
+        config={{
+          average: { color: "#0f6b78", label: "Average" },
+          rolling: { color: "#c84830", label: "Rolling" },
+        }}
+        domain={cartesianViewport.xDomain}
+        formatDomainValue={minuteLabel}
+        fullDomain={cartesianViewport.xDomain}
+        index={index}
+        query={{ includeEmptyBins: true }}
+        renderDataOptions={{
+          derived:
+            slug === "rolling-series"
+              ? {
+                  rolling: (sample) => rollingValuesByIndex.get(sample.index) ?? null,
+                }
+              : undefined,
+          modes: ["average"],
+          xLabel: (sample) => minuteLabel(sample.x),
+        }}
+        valueMode="average"
+      >
+        {({ rows }) => (
+          <LineChart data={rows} margin={{ bottom: 8, left: 4, right: 14, top: 12 }}>
+            <CartesianGrid vertical={false} />
+            <XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={28} />
+            <YAxis tickLine={false} axisLine={false} width={46} />
+            <Line
+              connectNulls
+              dataKey={slug === "rolling-series" ? "rolling" : "average"}
+              dot={false}
+              isAnimationActive={false}
+              stroke={slug === "rolling-series" ? "var(--color-rolling)" : "var(--color-average)"}
+              strokeWidth={2.4}
+              type="monotone"
+            />
+          </LineChart>
+        )}
+      </BinnedChart>
+    </ChartPanel>
+  );
+}
+
+function FinancePackageChart({
+  seed,
+  slug,
+}: {
+  seed: number;
+  slug: "finance-candles" | "finance-line" | "finance-returns";
+}) {
+  const bars = useMemo(() => createFinanceBars(seed), [seed]);
+  const rows = useMemo(() => createFinanceRows(bars, slug), [bars, slug]);
+  const yBounds = getChartDataYBounds(
+    rows,
+    slug === "finance-candles"
+      ? ["high", "low", "close"]
+      : [slug === "finance-returns" ? "return" : "close"],
+  );
+
+  return (
+    <ChartPanel badge="@moritzbrantner/charts" title={financeTitle(slug)}>
+      <ChartContainer
+        className="package-chart"
+        config={{
+          close: { color: "#0f6b78", label: "Close" },
+          high: { color: "#9f7aea", label: "High" },
+          low: { color: "#d25435", label: "Low" },
+          return: { color: "#c84830", label: "Return" },
+        }}
+      >
+        <LineChart data={rows} margin={{ bottom: 8, left: 4, right: 14, top: 12 }}>
+          <CartesianGrid vertical={false} />
+          <XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={28} />
+          <YAxis
+            domain={[
+              yBounds.minY == null ? "auto" : yBounds.minY,
+              yBounds.maxY == null ? "auto" : yBounds.maxY,
+            ]}
+            tickLine={false}
+            axisLine={false}
+            width={54}
+          />
+          {slug === "finance-returns" ? <ReferenceLine y={0} stroke="hsl(var(--border))" /> : null}
+          {slug === "finance-candles" ? (
+            <>
+              <Line
+                dataKey="high"
+                dot={false}
+                isAnimationActive={false}
+                stroke="var(--color-high)"
+                strokeWidth={1.6}
+                type="monotone"
+              />
+              <Line
+                dataKey="low"
+                dot={false}
+                isAnimationActive={false}
+                stroke="var(--color-low)"
+                strokeWidth={1.6}
+                type="monotone"
+              />
+            </>
+          ) : null}
+          <Line
+            dataKey={slug === "finance-returns" ? "return" : "close"}
+            dot={false}
+            isAnimationActive={false}
+            stroke={slug === "finance-returns" ? "var(--color-return)" : "var(--color-close)"}
+            strokeWidth={2.4}
+            type="monotone"
+          />
+        </LineChart>
+      </ChartContainer>
+    </ChartPanel>
+  );
+}
+
+function createFinanceRows(
+  bars: readonly VizOhlcvBar[],
+  slug: "finance-candles" | "finance-line" | "finance-returns",
+) {
+  let previousClose: number | null = null;
+
+  return bars.map((bar) => {
+    const row = {
+      close: bar.close,
+      high: bar.high,
+      label: minuteLabel(bar.timestamp),
+      low: bar.low,
+      open: bar.open,
+      return:
+        slug === "finance-returns" && previousClose && previousClose !== 0
+          ? (bar.close - previousClose) / previousClose
+          : null,
+      timestamp: bar.timestamp,
+    };
+
+    previousClose = bar.close;
+
+    return row;
+  });
+}
+
+function financeTitle(slug: "finance-candles" | "finance-line" | "finance-returns") {
+  if (slug === "finance-candles") {
+    return "Finance range";
+  }
+
+  return slug === "finance-line" ? "Finance line" : "Finance returns";
+}
+
+function FocusedMapPackageView({
+  slug,
+}: {
+  slug: "geo-clusters" | "geo-points" | "geo-heat" | "geo-scalar-field" | "geojson" | "geo-flows";
+}) {
+  const points = useMemo(() => createGeoPoints(), []);
+  const flows = useMemo(
+    () => createGeoFlows().map((flow, index) => ({ ...flow, id: flow.id ?? `flow-${index}` })),
+    [],
+  );
+  const geoJson = useMemo(() => createGeoJsonFeatureCollection(), []);
+  const commonMapProps = {
+    mapStyle: packageMapStyle,
+    showAttributionControl: false,
+    style: { height: 460 },
+  };
+
+  if (slug === "geo-clusters") {
+    return <FlatClusteredMap {...commonMapProps} mapLabel="Clustered point map" points={points} />;
+  }
+
+  if (slug === "geo-points") {
+    return <FlatPointMap {...commonMapProps} mapLabel="Point map" points={points} />;
+  }
+
+  if (slug === "geo-heat") {
+    return (
+      <FlatHeatMap
+        {...commonMapProps}
+        heatmapRadius={{ meters: 36_000 }}
+        mapLabel="Heat map"
+        points={points}
+        weightMetric="demand"
+      />
+    );
+  }
+
+  if (slug === "geo-scalar-field") {
+    return (
+      <FlatHeatFieldMap
+        {...commonMapProps}
+        domainBounds={geoViewport.bounds}
+        fieldColumns={48}
+        fieldRows={28}
+        interpolationK={8}
+        mapLabel="Scalar field map"
+        points={points}
+        showDataPoints
+        valueMetric="demand"
+      />
+    );
+  }
+
+  if (slug === "geojson") {
+    return (
+      <FlatGeoJsonMap
+        {...commonMapProps}
+        fitToData
+        geoJson={geoJson as never}
+        mapLabel="GeoJSON map"
+      />
+    );
+  }
+
+  return (
+    <FlatFlowMap
+      {...commonMapProps}
+      flowColor="#c84830"
+      flowShape="arc"
+      flows={flows}
+      mapLabel="Flow map"
+      weightMetric="demand"
+    />
   );
 }
 
@@ -699,63 +1138,40 @@ function MapsPackageExample() {
           <ChartMetricStrip label="Flows" value={flowFeatures.length.toLocaleString()} />
         </div>
       </SurfaceHeader>
-      <SurfaceContent>
-        <svg
-          aria-label="@moritzbrantner/maps package feature example"
-          className="package-map"
-          role="img"
-          viewBox={`0 0 ${geoViewport.width} ${geoViewport.height}`}
-        >
-          <GeoBackdrop viewport={geoViewport} />
-          <g className="package-map-heat">
-            {heatFeatures.map((feature) => (
-              <MapsHeatFeature key={feature.properties.pointId} feature={feature} />
-            ))}
-          </g>
-          <g className="package-map-flows">
-            {flowFeatures.map((feature) => (
-              <MapsFlowFeature key={feature.flow.id} feature={feature} />
-            ))}
-          </g>
-          <g className="package-map-bubbles">
-            {bubbleFeatures.map((feature) => (
-              <MapsBubbleFeature key={feature.point.id} feature={feature} />
-            ))}
-          </g>
-        </svg>
+      <SurfaceContent className="package-map-grid">
+        <FlatBubbleMap
+          bubbleColor="#0f6b78"
+          mapLabel="@moritzbrantner/maps bubble map"
+          mapStyle={packageMapStyle}
+          maxRadius={30}
+          minRadius={7}
+          points={points}
+          showAttributionControl={false}
+          style={{ height: 360 }}
+          weightMetric="demand"
+        />
+        <FlatHeatMap
+          mapLabel="@moritzbrantner/maps heat map"
+          mapStyle={packageMapStyle}
+          points={points}
+          showAttributionControl={false}
+          style={{ height: 360 }}
+          weightMetric="demand"
+        />
+        <FlatFlowMap
+          flowColor="#c84830"
+          flowShape="arc"
+          flows={flows}
+          mapLabel="@moritzbrantner/maps flow map"
+          mapStyle={packageMapStyle}
+          maxWidth={10}
+          minWidth={2}
+          showAttributionControl={false}
+          style={{ height: 360 }}
+          weightMetric="demand"
+        />
       </SurfaceContent>
     </Surface>
-  );
-}
-
-function MapsHeatFeature({ feature }: { feature: HeatMapFeature }) {
-  const [cx, cy] = projectGeo(feature.geometry.coordinates, geoViewport);
-
-  return <circle cx={cx} cy={cy} r={18 + feature.properties.weight * 34} />;
-}
-
-function MapsFlowFeature({ feature }: { feature: FlowMapFeature }) {
-  const [x1, y1] = projectGeo(feature.flow.from, geoViewport);
-  const [x2, y2] = projectGeo(feature.flow.to, geoViewport);
-  const midX = (x1 + x2) / 2;
-  const midY = (y1 + y2) / 2 - Math.hypot(x2 - x1, y2 - y1) * 0.16;
-
-  return (
-    <path
-      d={`M ${x1.toFixed(2)} ${y1.toFixed(2)} Q ${midX.toFixed(2)} ${midY.toFixed(2)} ${x2.toFixed(2)} ${y2.toFixed(2)}`}
-      strokeWidth={feature.width}
-    />
-  );
-}
-
-function MapsBubbleFeature({ feature }: { feature: BubbleMapFeature }) {
-  const [cx, cy] = projectGeo(feature.coordinates, geoViewport);
-
-  return (
-    <g transform={`translate(${cx} ${cy})`}>
-      <circle r={feature.radius} />
-      <text y={feature.radius + 14}>{feature.point.label}</text>
-    </g>
   );
 }
 
@@ -951,336 +1367,7 @@ function createGeoLayer(
   return { datasetId, kind };
 }
 
-function CartesianFrame({
-  viewport,
-  yDomain,
-}: {
-  viewport: VizCartesianViewport;
-  yDomain: [number, number];
-}) {
-  const xTicks = [0, 360, 720, 1_080, 1_440];
-  const yTicks = createYTicks(yDomain);
-
-  return (
-    <g className="chart-frame">
-      <rect
-        height={plotHeight(viewport)}
-        width={plotWidth(viewport)}
-        x={plotPadding.left}
-        y={plotPadding.top}
-      />
-      {yTicks.map((tick) => {
-        const y = scaleY(tick, viewport, yDomain);
-
-        return (
-          <g key={tick}>
-            <line x1={plotPadding.left} x2={viewport.width - plotPadding.right} y1={y} y2={y} />
-            <text x={plotPadding.left - 10} y={y + 4}>
-              {formatTick(tick)}
-            </text>
-          </g>
-        );
-      })}
-      {xTicks.map((tick) => (
-        <text key={tick} x={scaleX(tick, viewport)} y={viewport.height - 12}>
-          {minuteLabel(tick)}
-        </text>
-      ))}
-    </g>
-  );
-}
-
-function CartesianLayer({
-  layer,
-  viewport,
-  yDomain,
-}: {
-  layer: VizRenderLayer;
-  viewport: VizCartesianViewport;
-  yDomain: [number, number];
-}) {
-  if (layer.kind === "binned-series") {
-    return (
-      <path className="series-layer focused-series" d={linePath(layer.rows, viewport, yDomain)} />
-    );
-  }
-
-  if (layer.kind === "rolling-series") {
-    return (
-      <path className="series-layer focused-series" d={linePath(layer.rows, viewport, yDomain)} />
-    );
-  }
-
-  if (layer.kind === "histogram") {
-    return (
-      <g className="histogram-layer focused-histogram">
-        {layer.buckets.map((bucket) => (
-          <rect
-            height={scaleY(0, viewport, yDomain) - scaleY(bucket.pointCount, viewport, yDomain)}
-            key={bucket.index}
-            rx={2}
-            width={Math.max(
-              2,
-              scaleX(bucket.value1, viewport) - scaleX(bucket.value0, viewport) - 2,
-            )}
-            x={scaleX(bucket.value0, viewport)}
-            y={scaleY(bucket.pointCount, viewport, yDomain)}
-          />
-        ))}
-      </g>
-    );
-  }
-
-  if (layer.kind === "heatmap") {
-    const maxCount = Math.max(1, ...layer.cells.map((cell) => cell.pointCount));
-
-    return (
-      <g className="heatmap-layer">
-        {layer.cells.map((cell) =>
-          cell.pointCount > 0 ? (
-            <rect
-              height={Math.max(
-                1,
-                scaleY(cell.y0, viewport, yDomain) - scaleY(cell.y1, viewport, yDomain) - 1,
-              )}
-              key={cell.index}
-              opacity={Math.min(0.82, 0.1 + (cell.pointCount / maxCount) * 0.72)}
-              width={Math.max(1, scaleX(cell.x1, viewport) - scaleX(cell.x0, viewport) - 1)}
-              x={scaleX(cell.x0, viewport)}
-              y={scaleY(cell.y1, viewport, yDomain)}
-            />
-          ) : null,
-        )}
-      </g>
-    );
-  }
-
-  if (layer.kind === "finance-candles") {
-    const candleWidth = Math.max(5, plotWidth(viewport) / Math.max(1, layer.bars.length) / 2.3);
-
-    return (
-      <g className="finance-candle-layer">
-        {layer.bars.map((bar) => {
-          const x = scaleX(bar.timestamp, viewport);
-          const openY = scaleY(bar.open, viewport, yDomain);
-          const closeY = scaleY(bar.close, viewport, yDomain);
-          const top = Math.min(openY, closeY);
-
-          return (
-            <g key={bar.timestamp}>
-              <line
-                x1={x}
-                x2={x}
-                y1={scaleY(bar.high, viewport, yDomain)}
-                y2={scaleY(bar.low, viewport, yDomain)}
-              />
-              <rect
-                data-direction={bar.close >= bar.open ? "up" : "down"}
-                height={Math.max(2, Math.abs(closeY - openY))}
-                width={candleWidth}
-                x={x - candleWidth / 2}
-                y={top}
-              />
-            </g>
-          );
-        })}
-      </g>
-    );
-  }
-
-  if (layer.kind === "finance-line") {
-    return <path className="finance-line-layer" d={linePath(layer.rows, viewport, yDomain)} />;
-  }
-
-  if (layer.kind === "finance-returns") {
-    return (
-      <path
-        className="finance-return-layer focused-return"
-        d={linePath(layer.rows, viewport, yDomain)}
-      />
-    );
-  }
-
-  return null;
-}
-
-function GeoBackdrop({ viewport }: { viewport: VizGeoViewport }) {
-  const ticks = [0.2, 0.4, 0.6, 0.8];
-
-  return (
-    <g className="geo-backdrop">
-      <rect height={viewport.height} width={viewport.width} x={0} y={0} />
-      {ticks.map((tick) => (
-        <g key={tick}>
-          <line x1={viewport.width * tick} x2={viewport.width * tick} y1={0} y2={viewport.height} />
-          <line
-            x1={0}
-            x2={viewport.width}
-            y1={viewport.height * tick}
-            y2={viewport.height * tick}
-          />
-        </g>
-      ))}
-    </g>
-  );
-}
-
-function GeoLayer({ layer, viewport }: { layer: VizRenderLayer; viewport: VizGeoViewport }) {
-  if (layer.kind === "geojson") {
-    return (
-      <g className="geo-shapes">
-        {layer.featureCollection.features.map((feature, index) =>
-          getPolygonRings(feature.geometry).map((ring, ringIndex) => (
-            <polygon
-              key={`${index}-${ringIndex}`}
-              points={ring.map((position) => projectGeo(position, viewport).join(",")).join(" ")}
-            />
-          )),
-        )}
-      </g>
-    );
-  }
-
-  if (layer.kind === "geo-flows") {
-    return (
-      <g className="geo-flows">
-        {layer.features.map((feature) => (
-          <GeoFlowPath key={feature.flow.id} feature={feature} viewport={viewport} />
-        ))}
-      </g>
-    );
-  }
-
-  if (layer.kind === "geo-heat") {
-    return (
-      <g className="geo-heat-points">
-        {layer.features.map((feature) => (
-          <GeoHeatCircle key={feature.id} feature={feature} viewport={viewport} />
-        ))}
-      </g>
-    );
-  }
-
-  if (layer.kind === "geo-scalar-field") {
-    const [min, max] = layer.grid.valueDomain ?? [0, 1];
-    const [west, south, east, north] = layer.grid.bounds;
-    const longitudeStep = (east - west) / Math.max(1, layer.grid.columns);
-    const latitudeStep = (north - south) / Math.max(1, layer.grid.rows);
-
-    return (
-      <g className="geo-scalar-field">
-        {layer.grid.values.map((value, index) => {
-          if (value == null) {
-            return null;
-          }
-          const column = index % layer.grid.columns;
-          const row = Math.floor(index / layer.grid.columns);
-          const northWest = projectGeo(
-            [west + column * longitudeStep, north - row * latitudeStep],
-            viewport,
-          );
-          const southEast = projectGeo(
-            [west + (column + 1) * longitudeStep, north - (row + 1) * latitudeStep],
-            viewport,
-          );
-          const ratio = max > min ? clamp((value - min) / (max - min), 0, 1) : 0.5;
-
-          return (
-            <rect
-              key={index}
-              height={Math.max(0, southEast[1] - northWest[1])}
-              opacity={0.2 + ratio * 0.42}
-              width={Math.max(0, southEast[0] - northWest[0])}
-              x={northWest[0]}
-              y={northWest[1]}
-            />
-          );
-        })}
-      </g>
-    );
-  }
-
-  if (layer.kind === "geo-clusters") {
-    return (
-      <g className="geo-clusters">
-        {layer.features.map((feature, index) => (
-          <GeoClusterMark key={index} feature={feature} viewport={viewport} />
-        ))}
-      </g>
-    );
-  }
-
-  if (layer.kind === "geo-points") {
-    return (
-      <g className="geo-points">
-        {layer.features.map((point) => {
-          const [cx, cy] = projectGeo([point.longitude, point.latitude], viewport);
-
-          return (
-            <g key={point.id} transform={`translate(${cx} ${cy})`}>
-              <circle r={7} />
-              <text y={-12}>{point.label}</text>
-            </g>
-          );
-        })}
-      </g>
-    );
-  }
-
-  return null;
-}
-
-function GeoFlowPath({
-  feature,
-  viewport,
-}: {
-  feature: VizGeoFlowFeature;
-  viewport: VizGeoViewport;
-}) {
-  const [x1, y1] = projectGeo(feature.flow.from, viewport);
-  const [x2, y2] = projectGeo(feature.flow.to, viewport);
-  const midX = (x1 + x2) / 2;
-  const midY = (y1 + y2) / 2 - Math.hypot(x2 - x1, y2 - y1) * 0.12;
-
-  return (
-    <path
-      d={`M ${x1.toFixed(2)} ${y1.toFixed(2)} Q ${midX.toFixed(2)} ${midY.toFixed(2)} ${x2.toFixed(2)} ${y2.toFixed(2)}`}
-      strokeWidth={1 + feature.value * 6}
-    />
-  );
-}
-
-function GeoHeatCircle({
-  feature,
-  viewport,
-}: {
-  feature: VizGeoHeatFeature;
-  viewport: VizGeoViewport;
-}) {
-  const [cx, cy] = projectGeo(feature.coordinates, viewport);
-
-  return <circle cx={cx} cy={cy} r={12 + feature.value * 28} />;
-}
-
-function GeoClusterMark({
-  feature,
-  viewport,
-}: {
-  feature: VizGeoAggregationFeature;
-  viewport: VizGeoViewport;
-}) {
-  const [cx, cy] = projectGeo(feature.coordinates, viewport);
-  const label = feature.kind === "cluster" ? feature.pointCountAbbreviated : feature.point.label;
-
-  return (
-    <g transform={`translate(${cx} ${cy})`}>
-      <circle r={feature.kind === "cluster" ? 16 : 9} />
-      <text y={feature.kind === "cluster" ? 4 : -13}>{label}</text>
-    </g>
-  );
-}
-
-function createFrameSummary(frame: VizRenderFrame, layer: VizRenderLayer | null) {
+function createFrameSummary(frame: VizRenderFrame, layer: VizRenderFrame["layers"][number] | null) {
   const rows =
     layer?.kind === "binned-series" ||
     layer?.kind === "rolling-series" ||
@@ -1302,76 +1389,6 @@ function createFrameSummary(frame: VizRenderFrame, layer: VizRenderLayer | null)
     ["Compute", `${frame.stats.computeMs.toFixed(2)} ms`],
     ["Items", rows.toLocaleString()],
   ];
-}
-
-function deriveFocusedYDomain(
-  layers: readonly VizRenderLayer[],
-  slug: VisualizationSlug,
-): [number, number] {
-  let min = Number.POSITIVE_INFINITY;
-  let max = Number.NEGATIVE_INFINITY;
-
-  for (const layer of layers) {
-    if (layer.bounds) {
-      min = Math.min(min, layer.bounds[1]);
-      max = Math.max(max, layer.bounds[3]);
-    }
-  }
-
-  if (!Number.isFinite(min) || !Number.isFinite(max)) {
-    return slug === "finance-returns" ? [-0.04, 0.04] : [0, 130];
-  }
-
-  if (min === max) {
-    return [min - 1, max + 1];
-  }
-
-  const padding = (max - min) * 0.12;
-
-  return [min - padding, max + padding];
-}
-
-function linePath(
-  rows: Array<{ value: number | null; x: number }>,
-  viewport: VizCartesianViewport,
-  yDomain: [number, number],
-) {
-  return rows
-    .filter((row) => row.value !== null && Number.isFinite(row.value))
-    .map((row, index) => {
-      const x = scaleX(row.x, viewport);
-      const y = scaleY(row.value ?? 0, viewport, yDomain);
-
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
-    .join(" ");
-}
-
-function scaleX(value: number, viewport: VizCartesianViewport) {
-  const [min, max] = viewport.xDomain;
-
-  return plotPadding.left + ((value - min) / (max - min)) * plotWidth(viewport);
-}
-
-function scaleY(value: number, viewport: VizCartesianViewport, yDomain: [number, number]) {
-  const [min, max] = yDomain;
-
-  return plotPadding.top + (1 - (value - min) / (max - min)) * plotHeight(viewport);
-}
-
-function plotWidth(viewport: VizCartesianViewport) {
-  return viewport.width - plotPadding.left - plotPadding.right;
-}
-
-function plotHeight(viewport: VizCartesianViewport) {
-  return viewport.height - plotPadding.top - plotPadding.bottom;
-}
-
-function createYTicks(yDomain: [number, number]) {
-  const [min, max] = yDomain;
-  const step = (max - min) / 4;
-
-  return Array.from({ length: 5 }, (_, index) => min + step * index);
 }
 
 function createExamplePoints(
@@ -1493,25 +1510,6 @@ function createGeoJsonFeatureCollection(): VizGeoJsonFeatureCollection {
     ],
     type: "FeatureCollection",
   };
-}
-
-function getPolygonRings(geometry: unknown): Array<Array<[number, number]>> {
-  if (!geometry || typeof geometry !== "object") {
-    return [];
-  }
-
-  const polygon = geometry as { coordinates?: Array<Array<[number, number]>>; type?: string };
-  return polygon.type === "Polygon" && Array.isArray(polygon.coordinates)
-    ? polygon.coordinates
-    : [];
-}
-
-function projectGeo(position: readonly [number, number], viewport: VizGeoViewport) {
-  const bounds: VizGeoBounds = viewport.bounds;
-  const x = ((position[0] - bounds[0]) / (bounds[2] - bounds[0])) * viewport.width;
-  const y = (1 - (position[1] - bounds[1]) / (bounds[3] - bounds[1])) * viewport.height;
-
-  return [x, y];
 }
 
 function isCartesianLayerKind(
