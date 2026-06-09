@@ -70,24 +70,33 @@ type RustRollingSeries<TProperties> = {
 export class RustWasmVizDensityIndex<
   TProperties = Record<string, unknown>,
 > implements VizDensityIndex<TProperties> {
-  private readonly byId: Map<string, NormalizedSeriesPoint<TProperties>>;
-  private readonly bySourceIndex: Map<number, NormalizedSeriesPoint<TProperties>>;
+  private readonly input: readonly VizSeriesPoint<TProperties>[] | VizXyDataset<TProperties>;
   private readonly index: RustWasmDensityIndex;
+  private normalizedPoints: Array<NormalizedSeriesPoint<TProperties>> | null;
+  private pointLookup: ReturnType<typeof createPointLookup<TProperties>> | null = null;
 
   constructor(points: readonly VizSeriesPoint<TProperties>[] | VizXyDataset<TProperties>) {
     initVizEngineWasm();
+    this.input = points;
+
+    if (isVizXyTypedDataset(points)) {
+      const metricKeys = [...(points.metricKeys ?? [])];
+      const typedIndex = tryCreateWasmDensityIndexFromTyped(points, metricKeys);
+
+      if (typedIndex) {
+        this.normalizedPoints = null;
+        this.index = typedIndex;
+        return;
+      }
+    }
 
     const normalizedPoints = normalizeSeriesInput<TProperties>(points);
     const metricKeys = isVizXyTypedDataset(points)
       ? [...(points.metricKeys ?? [])]
       : collectMetricKeys(normalizedPoints);
-    const lookup = createPointLookup(normalizedPoints);
 
-    this.byId = lookup.byId;
-    this.bySourceIndex = lookup.bySourceIndex;
-    this.index = isVizXyTypedDataset(points)
-      ? createWasmDensityIndexFromTyped(points, normalizedPoints, metricKeys)
-      : createWasmDensityIndex(normalizedPoints, metricKeys);
+    this.normalizedPoints = normalizedPoints;
+    this.index = createWasmDensityIndex(normalizedPoints, metricKeys);
   }
 
   getBackendCapabilities() {
@@ -231,7 +240,7 @@ export class RustWasmVizDensityIndex<
   }
 
   getPointById(pointId: string): VizIndexedSeriesPoint<TProperties> | null {
-    return this.byId.get(pointId) ?? null;
+    return this.getPointLookup().byId.get(pointId) ?? null;
   }
 
   getRollingSeries(query: VizRollingSeriesQuery): VizRollingSeries<TProperties> {
@@ -342,7 +351,18 @@ export class RustWasmVizDensityIndex<
   }
 
   private pointBySourceIndex(sourceIndex: number | null | undefined) {
-    return sourceIndex == null ? null : (this.bySourceIndex.get(sourceIndex) ?? null);
+    return sourceIndex == null
+      ? null
+      : (this.getPointLookup().bySourceIndex.get(sourceIndex) ?? null);
+  }
+
+  private getPointLookup() {
+    if (!this.pointLookup) {
+      this.normalizedPoints ??= normalizeSeriesInput<TProperties>(this.input);
+      this.pointLookup = createPointLookup(this.normalizedPoints);
+    }
+
+    return this.pointLookup;
   }
 }
 
@@ -350,21 +370,19 @@ function metricValues(metrics: VizMetricRecord | undefined, metricKeys: readonly
   return metricKeys.map((key) => metrics?.[key] ?? 0);
 }
 
-function createWasmDensityIndexFromTyped<TProperties>(
+function tryCreateWasmDensityIndexFromTyped(
   dataset: VizXyTypedDataset,
-  normalizedPoints: readonly NormalizedSeriesPoint<TProperties>[],
   metricKeys: readonly string[],
-) {
+): RustWasmDensityIndex | null {
   const constructor = VizEngineWasmDensityIndex as RustWasmDensityIndexConstructor;
   const pointCount = Math.min(dataset.x.length, dataset.y.length);
   const canUseTypedConstructor =
     !isBrowserRuntime() &&
     typeof constructor.fromArrays === "function" &&
-    dataset.ids?.length === pointCount &&
-    dataset.labels?.length === pointCount;
+    isSortedTypedX(dataset.x, dataset.sourceIndices, pointCount);
 
   if (!canUseTypedConstructor) {
-    return createWasmDensityIndex(normalizedPoints, metricKeys);
+    return null;
   }
 
   const metricCount = metricKeys.length;
@@ -383,6 +401,31 @@ function createWasmDensityIndexFromTyped<TProperties>(
     fillStringValues(dataset.ids, pointCount),
     fillStringValues(dataset.labels, pointCount),
   ) as RustWasmDensityIndex;
+}
+
+function isSortedTypedX(
+  x: Float64Array,
+  sourceIndices: Uint32Array | undefined,
+  pointCount: number,
+) {
+  let previousX = Number.NEGATIVE_INFINITY;
+  let previousSourceIndex = 0;
+
+  for (let index = 0; index < pointCount; index += 1) {
+    const nextX = x[index]!;
+    const nextSourceIndex = sourceIndices?.[index] ?? index;
+    if (
+      !Number.isFinite(nextX) ||
+      nextX < previousX ||
+      (nextX === previousX && index > 0 && nextSourceIndex < previousSourceIndex)
+    ) {
+      return false;
+    }
+    previousX = nextX;
+    previousSourceIndex = nextSourceIndex;
+  }
+
+  return true;
 }
 
 function createWasmDensityIndex<TProperties>(
@@ -483,6 +526,7 @@ function normalizeCompactHeatmap(
 ): VizCompactHeatmap {
   return {
     ...compact,
+    format: compact.format ?? (query.includeEmptyCells === false ? "sparse" : "dense"),
     metrics: normalizeCompactMetrics(compact.metrics),
     summary: {
       ...compact.summary,
@@ -587,6 +631,10 @@ function compactHeatmapFromHeatmap<TProperties>(
 
   return {
     ...output,
+    format:
+      heatmap.cells.length === heatmap.summary.xBinCount * heatmap.summary.yBinCount
+        ? "dense"
+        : "sparse",
     metrics,
     summary: {
       ...heatmap.summary,

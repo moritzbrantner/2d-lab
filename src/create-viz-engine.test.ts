@@ -157,6 +157,58 @@ describe("createVizEngine", () => {
     expect(afterChangeLayer).not.toBe(firstLayer);
   });
 
+  test("reports cache misses, hits, and evictions with versioned layer cache entries", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({ kind: "xy", points });
+    const layerId = engine.addLayer({
+      datasetId,
+      kind: "binned-series",
+      targetBinCount: 5,
+    });
+
+    const firstFrame = engine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+    const cachedFrame = engine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+
+    expect(firstFrame.stats).toMatchObject({ cacheHitCount: 0, cacheMissCount: 1 });
+    expect(cachedFrame.stats).toMatchObject({ cacheHitCount: 1, cacheMissCount: 0 });
+
+    for (let index = 0; index < 9; index += 1) {
+      engine.computeFrame({
+        viewport: { height: 320, width: 800, xDomain: [index, index + 40] },
+      });
+    }
+
+    const evictingFrame = engine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [100, 140] },
+    });
+    expect(evictingFrame.stats.cacheEvictionCount).toBeGreaterThan(0);
+
+    engine.updateLayer(layerId, {
+      datasetId,
+      kind: "binned-series",
+      targetBinCount: 5,
+    });
+    const afterLayerUpdate = engine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+
+    expect(afterLayerUpdate.stats).toMatchObject({ cacheHitCount: 0, cacheMissCount: 1 });
+
+    engine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+    engine.updateDataset(datasetId, { kind: "xy", points: points.slice(0, 2) });
+    const afterDatasetUpdate = engine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+
+    expect(afterDatasetUpdate.stats).toMatchObject({ cacheHitCount: 0, cacheMissCount: 1 });
+  });
+
   test("returns typed cartesian frames by default and hydrates object layers explicitly", () => {
     const engine = createVizEngine({ backend: "js" });
     const datasetId = engine.addDataset({ kind: "xy", points });

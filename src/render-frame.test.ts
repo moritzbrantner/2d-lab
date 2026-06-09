@@ -6,7 +6,14 @@ import { createVizEngine } from "./create-viz-engine";
 import { createVizEngineBackend } from "./js-backend";
 import { computeVizRenderFrame, createVizRenderRows } from "./render-frame";
 
-import type { VizDensitySeries, VizEngineDatasetRecord, VizLayer, VizSeriesPoint } from "./types";
+import type {
+  VizAnyRenderLayer,
+  VizDensitySeries,
+  VizEngineDatasetRecord,
+  VizLayer,
+  VizSeriesPoint,
+} from "./types";
+import type { VizRenderLayerCache, VizRenderLayerCacheQuery } from "./render-frame";
 
 const points: VizSeriesPoint[] = [
   { id: "a", x: 0, y: 2, metrics: { count: 1 } },
@@ -16,6 +23,41 @@ const points: VizSeriesPoint[] = [
   { id: "e", x: 40, y: 32, metrics: { count: 1 } },
 ];
 const originalPerformance = globalThis.performance;
+
+function createTestRenderLayerCache(): VizRenderLayerCache {
+  const cache = new Map<string, VizAnyRenderLayer>();
+
+  return {
+    clear() {
+      cache.clear();
+    },
+    deleteLayer(layerId) {
+      for (const key of cache.keys()) {
+        if (key.startsWith(`${layerId}\0`)) {
+          cache.delete(key);
+        }
+      }
+    },
+    get(query) {
+      return cache.get(testCacheKey(query));
+    },
+    set(query, layer) {
+      cache.set(testCacheKey(query), layer);
+      return 0;
+    },
+  };
+}
+
+function testCacheKey(query: VizRenderLayerCacheQuery) {
+  return [
+    query.layerId,
+    query.datasetVersion,
+    query.layerVersion,
+    query.frameFormat,
+    query.viewportSignature,
+    query.querySignature,
+  ].join("\0");
+}
 
 function createNumericTableDataset(rowCount: number) {
   return {
@@ -428,7 +470,7 @@ describe("computeVizRenderFrame", () => {
       option: { finance: "js", geo: "js", table: "js", xy: "js" } as const,
       resolveBackend: () => "js" as const,
     };
-    const cache = new Map();
+    const cache = createTestRenderLayerCache();
     const options = {
       frameFormat: "objects" as const,
       viewport: { height: 320, width: 800, xDomain: [0, 40] as [number, number] },

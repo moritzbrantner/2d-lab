@@ -47,33 +47,33 @@ function createDatasetIndex<TProperties>(
     case "geo-points":
       return {
         index:
-          config.geo === "js"
-            ? new JsVizGeoPointIndex(dataset.points)
-            : new WasmVizGeoPointIndex(dataset.points),
+          config.geo === "wasm"
+            ? new WasmVizGeoPointIndex(dataset.points)
+            : new JsVizGeoPointIndex(dataset.points),
         kind: "geo-points",
       };
     case "geojson":
       return {
         index:
-          config.geo === "js"
-            ? new JsVizGeoJsonIndex(dataset.featureCollection)
-            : new WasmVizGeoJsonIndex(dataset.featureCollection),
+          config.geo === "wasm"
+            ? new WasmVizGeoJsonIndex(dataset.featureCollection)
+            : new JsVizGeoJsonIndex(dataset.featureCollection),
         kind: "geojson",
       };
     case "geo-flows":
       return {
         index:
-          config.geo === "js"
-            ? new JsVizGeoFlowIndex(dataset.flows)
-            : new WasmVizGeoFlowIndex(dataset.flows),
+          config.geo === "wasm"
+            ? new WasmVizGeoFlowIndex(dataset.flows)
+            : new JsVizGeoFlowIndex(dataset.flows),
         kind: "geo-flows",
       };
     case "finance-ohlcv":
       return {
         index:
-          config.finance === "js"
-            ? new JsVizFinanceIndex(dataset)
-            : new WasmVizFinanceIndex(dataset),
+          config.finance === "wasm"
+            ? new WasmVizFinanceIndex(dataset)
+            : new JsVizFinanceIndex(dataset),
         kind: "finance-ohlcv",
       };
     case "xy":

@@ -1384,7 +1384,7 @@ function createFullCompactHeatmapOutput(
     );
   }
 
-  return { ...output, metrics: outputMetrics };
+  return { ...output, format: "dense" as const, metrics: outputMetrics };
 }
 
 function createSparseCompactHeatmapOutput(
@@ -1430,7 +1430,7 @@ function createSparseCompactHeatmapOutput(
     outputIndex += 1;
   }
 
-  return { ...output, metrics: outputMetrics };
+  return { ...output, format: "sparse" as const, metrics: outputMetrics };
 }
 
 function writeCompactHeatmapCell(

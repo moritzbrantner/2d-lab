@@ -39,6 +39,9 @@
       "peerDependencies": {
         "react": "^19.0.0",
       },
+      "optionalPeers": [
+        "react",
+      ],
     },
   },
   "packages": {

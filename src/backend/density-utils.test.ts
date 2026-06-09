@@ -240,6 +240,7 @@ describe("density utils", () => {
       xBinCount: 2,
       yBinCount: 2,
     });
+    expect(full.format).toBe("dense");
     expect([...full.pointCount]).toEqual([3, 0, 0, 1]);
     expect([...full.xIndex]).toEqual([0, 1, 0, 1]);
     expect([...full.yIndex]).toEqual([0, 0, 1, 1]);
@@ -256,6 +257,7 @@ describe("density utils", () => {
       yDomain: [0, 10],
     });
 
+    expect(sparse.format).toBe("sparse");
     expect([...sparse.pointCount]).toEqual([3, 1]);
     expect([...sparse.xIndex]).toEqual([0, 1]);
     expect([...sparse.yIndex]).toEqual([0, 1]);
@@ -263,6 +265,16 @@ describe("density utils", () => {
     expect([...sparse.lastPointIndex]).toEqual([2, 3]);
     expect([...sparse.sumValue]).toEqual([8, 10]);
     expect([...(sparse.metrics?.demand ?? [])]).toEqual([10, 7]);
+
+    const occupiedDenseIndexes = [...full.pointCount]
+      .map((pointCount, index) => ({ index, pointCount }))
+      .filter((entry) => entry.pointCount > 0)
+      .map((entry) => entry.index);
+
+    expect([...sparse.value]).toEqual(occupiedDenseIndexes.map((index) => full.value[index]));
+    expect([...sparse.averageValue]).toEqual(
+      occupiedDenseIndexes.map((index) => full.averageValue[index]),
+    );
   });
 
   test("matches compact rolling output to object rolling output", () => {

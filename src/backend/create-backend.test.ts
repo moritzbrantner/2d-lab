@@ -72,7 +72,7 @@ describe("createVizEngineBackend", () => {
       kind: "geo-points",
     });
     expect(createVizEngineBackend("auto").createIndex(dataset)).toMatchObject({
-      index: expect.any(WasmVizGeoPointIndex),
+      index: expect.any(JsVizGeoPointIndex),
       kind: "geo-points",
     });
   });
@@ -108,7 +108,7 @@ describe("createVizEngineBackend", () => {
       kind: "finance-ohlcv",
     });
     expect(createVizEngineBackend("auto").createIndex(dataset)).toMatchObject({
-      index: expect.any(WasmVizFinanceIndex),
+      index: expect.any(JsVizFinanceIndex),
       kind: "finance-ohlcv",
     });
   });

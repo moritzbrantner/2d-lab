@@ -38,6 +38,7 @@
     "bench": "bun run bench:node && bun run bench:browser",
     "bench:browser": "bun run bench/browser/run-browser.ts --quick",
     "bench:node": "bun run bench/run.ts --runtime bun",
+    "bench:gate": "bun run bench/gate.ts",
     "bench:quick": "bun run bench/run.ts --runtime bun --quick",
     "bench:report": "bun run bench/report.ts",
     "bench:table:supported": "bun run bench/run.ts --runtime bun --category table --workload table/query/numeric-filter --workload table/query/boolean-filter --workload table/query/numeric-sort --workload table/query/boolean-sort --workload table/query/combined-numeric",

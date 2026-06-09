@@ -210,6 +210,7 @@ export type VizHeatmap<TProperties = Record<string, unknown>> = {
 export type VizCompactHeatmap = {
   averageValue: Float64Array;
   firstPointIndex: Int32Array;
+  format?: "dense" | "sparse";
   lastPointIndex: Int32Array;
   metrics?: VizCompactMetricArrays;
   pointCount: Uint32Array;

@@ -25,7 +25,10 @@ jobs:
       cache_cargo: true
       cargo_cache_dependency_path: Cargo.lock
       build_command: bun run build
-      benchmark_command: bun run bench:quick
+      benchmark_command: |
+        bun run bench:quick
+        bun run bench:table:supported
+        bun run bench:gate
       pre_command: |
         rustup toolchain install stable --profile minimal
         rustup default stable
@@ -36,6 +39,7 @@ jobs:
         bench/results
       summary_paths: |
         bench/results/latest.md
+        bench/results/performance-gate.md
       upload_artifacts_on: always
       artifact_retention_days: 30
       timeout_minutes: 60

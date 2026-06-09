@@ -514,7 +514,9 @@ export type VizRenderFrame<TProperties = Record<string, unknown>> = {
     backend: VizResolvedBackend;
     backendImplementation?: VizBackendImplementation;
     computeMs: number;
+    cacheEvictionCount?: number;
     cacheHitCount?: number;
+    cacheMissCount?: number;
     datasetCount: number;
     diagnostics: VizFrameDiagnostic[];
     layerCount: number;
@@ -659,4 +661,10 @@ export type VizDatasetIndex<TProperties = Record<string, unknown>> =
 export type VizEngineDatasetRecord<TProperties = Record<string, unknown>> = {
   dataset: VizDataset<TProperties>;
   index: VizDatasetIndex<TProperties>;
+  version?: number;
+};
+
+export type VizEngineLayerRecord = {
+  layer: VizLayer;
+  version?: number;
 };

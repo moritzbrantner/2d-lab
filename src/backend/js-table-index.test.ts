@@ -227,12 +227,13 @@ describe("JsVizTableIndex", () => {
       rowOffset: 0,
       visibleRowCount: 2,
     });
-    expect(index.getTable({ rowLimit: Number.NaN, rowOffset: Number.POSITIVE_INFINITY }).summary)
-      .toMatchObject({
-        rowLimit: 100,
-        rowOffset: 0,
-        visibleRowCount: 2,
-      });
+    expect(
+      index.getTable({ rowLimit: Number.NaN, rowOffset: Number.POSITIVE_INFINITY }).summary,
+    ).toMatchObject({
+      rowLimit: 100,
+      rowOffset: 0,
+      visibleRowCount: 2,
+    });
   });
 
   test("returns explicit query column subsets in requested order", () => {
@@ -363,9 +364,7 @@ describe("JsVizTableIndex", () => {
       30,
     ]);
     expect(createdAt && "validity" in createdAt ? Array.from(createdAt.validity) : []).toEqual([
-      0,
-      1,
-      1,
+      0, 1, 1,
     ]);
     expect(active && "validity" in active ? Array.from(active.validity) : []).toEqual([1, 0, 1]);
     expect(active && "values" in active ? Array.from(active.values) : []).toEqual([1, 0, 0]);

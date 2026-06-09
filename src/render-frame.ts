@@ -15,6 +15,7 @@ import type {
   VizComputeFrameOptions,
   VizEngineBackend,
   VizEngineDatasetRecord,
+  VizEngineLayerRecord,
   VizFrameDiagnostic,
   VizLayer,
   VizLayerId,
@@ -24,43 +25,64 @@ import type {
   VizTypedRenderFrame,
 } from "./types";
 
+export type VizRenderLayerCache<TProperties = Record<string, unknown>> = {
+  clear(): void;
+  deleteLayer(layerId: VizLayerId): void;
+  get(query: VizRenderLayerCacheQuery): VizAnyRenderLayer<TProperties> | undefined;
+  set(query: VizRenderLayerCacheQuery, layer: VizAnyRenderLayer<TProperties>): number;
+};
+
+export type VizRenderLayerCacheQuery = {
+  datasetId: string;
+  datasetVersion: number;
+  frameFormat: "objects" | "typed";
+  layerId: VizLayerId;
+  layerVersion: number;
+  querySignature: string;
+  viewportSignature: string;
+};
+
+type LayerEntry = VizLayer | VizEngineLayerRecord;
+
 export function computeVizRenderFrame<TProperties>(
   datasets: Map<string, VizEngineDatasetRecord<TProperties>>,
-  layers: Map<VizLayerId, VizLayer>,
+  layers: Map<VizLayerId, LayerEntry>,
   backend: VizEngineBackend<TProperties>,
   options: VizObjectComputeFrameOptions,
-  layerCache?: Map<string, VizAnyRenderLayer<TProperties>>,
+  layerCache?: VizRenderLayerCache<TProperties>,
 ): VizRenderFrame<TProperties>;
 export function computeVizRenderFrame<TProperties>(
   datasets: Map<string, VizEngineDatasetRecord<TProperties>>,
-  layers: Map<VizLayerId, VizLayer>,
+  layers: Map<VizLayerId, LayerEntry>,
   backend: VizEngineBackend<TProperties>,
   options: VizCompactComputeFrameOptions,
-  layerCache?: Map<string, VizAnyRenderLayer<TProperties>>,
+  layerCache?: VizRenderLayerCache<TProperties>,
 ): VizCompactRenderFrame<TProperties>;
 export function computeVizRenderFrame<TProperties>(
   datasets: Map<string, VizEngineDatasetRecord<TProperties>>,
-  layers: Map<VizLayerId, VizLayer>,
+  layers: Map<VizLayerId, LayerEntry>,
   backend: VizEngineBackend<TProperties>,
   options: VizTypedComputeFrameOptions,
-  layerCache?: Map<string, VizAnyRenderLayer<TProperties>>,
+  layerCache?: VizRenderLayerCache<TProperties>,
 ): VizTypedRenderFrame<TProperties>;
 export function computeVizRenderFrame<TProperties>(
   datasets: Map<string, VizEngineDatasetRecord<TProperties>>,
-  layers: Map<VizLayerId, VizLayer>,
+  layers: Map<VizLayerId, LayerEntry>,
   backend: VizEngineBackend<TProperties>,
   options: VizComputeFrameOptions,
-  layerCache?: Map<string, VizAnyRenderLayer<TProperties>>,
+  layerCache?: VizRenderLayerCache<TProperties>,
 ): VizAnyRenderFrame<TProperties> {
   const startedAt = now();
   const renderLayers: Array<VizAnyRenderLayer<TProperties>> = [];
   const usedIndexes: Array<VizEngineDatasetRecord<TProperties>["index"]> = [];
   const diagnostics: VizFrameDiagnostic[] = [];
   let cacheHitCount = 0;
+  let cacheMissCount = 0;
+  let cacheEvictionCount = 0;
   const requestedLayerEntries = options.layerIds
     ? options.layerIds.flatMap((layerId) => {
-        const layer = layers.get(layerId);
-        if (!layer) {
+        const layerEntry = layers.get(layerId);
+        if (!layerEntry) {
           diagnostics.push({
             code: "missing-layer",
             layerId,
@@ -70,11 +92,14 @@ export function computeVizRenderFrame<TProperties>(
           return [];
         }
 
-        return [[layerId, layer] as const];
+        return [[layerId, normalizeLayerEntry(layerEntry)] as const];
       })
-    : [...layers];
+    : [...layers].map(
+        ([layerId, layerEntry]) => [layerId, normalizeLayerEntry(layerEntry)] as const,
+      );
 
-  for (const [layerId, layer] of requestedLayerEntries) {
+  for (const [layerId, layerRecord] of requestedLayerEntries) {
+    const layer = layerRecord.layer;
     const datasetRecord = datasets.get(layer.datasetId);
 
     if (!datasetRecord) {
@@ -88,19 +113,28 @@ export function computeVizRenderFrame<TProperties>(
     }
 
     usedIndexes.push(datasetRecord.index);
-    const cacheKey = getRenderLayerCacheKey(layerId, layer, options);
-    const cachedLayer = cacheKey ? layerCache?.get(cacheKey) : undefined;
+    const cacheQuery = getRenderLayerCacheQuery(
+      layerId,
+      layerRecord.version ?? 0,
+      datasetRecord.version ?? 0,
+      layer,
+      options,
+    );
+    const cachedLayer = cacheQuery ? layerCache?.get(cacheQuery) : undefined;
     if (cachedLayer) {
       cacheHitCount += 1;
       renderLayers.push(cachedLayer);
       continue;
     }
 
+    if (cacheQuery) {
+      cacheMissCount += 1;
+    }
     const renderLayer = computeVizRenderLayer(layerId, layer, datasetRecord, options, diagnostics);
 
     if (renderLayer) {
-      if (cacheKey) {
-        layerCache?.set(cacheKey, renderLayer);
+      if (cacheQuery) {
+        cacheEvictionCount += layerCache?.set(cacheQuery, renderLayer) ?? 0;
       }
       renderLayers.push(renderLayer);
     }
@@ -111,8 +145,10 @@ export function computeVizRenderFrame<TProperties>(
     stats: {
       backend: resolveFrameBackend(backend, usedIndexes),
       backendImplementation: resolveFrameBackendImplementation(usedIndexes),
+      cacheEvictionCount,
       computeMs: now() - startedAt,
       cacheHitCount,
+      cacheMissCount,
       datasetCount: datasets.size,
       diagnostics,
       layerCount: layers.size,
@@ -151,25 +187,43 @@ function computeVizRenderLayer<TProperties>(
   }
 }
 
-function getRenderLayerCacheKey(
+function normalizeLayerEntry(layerEntry: LayerEntry): Required<VizEngineLayerRecord> {
+  if ("layer" in layerEntry) {
+    return {
+      layer: layerEntry.layer,
+      version: layerEntry.version ?? 0,
+    };
+  }
+
+  return {
+    layer: layerEntry,
+    version: 0,
+  };
+}
+
+function getRenderLayerCacheQuery(
   layerId: VizLayerId,
+  layerVersion: number,
+  datasetVersion: number,
   layer: VizLayer,
   options: VizComputeFrameOptions,
-) {
+): VizRenderLayerCacheQuery | null {
   const base = {
     datasetId: layer.datasetId,
     frameFormat: resolveFrameFormat(options),
-    kind: layer.kind,
     layerId,
+    layerVersion,
+    datasetVersion,
   };
+  const viewportSignature = getViewportSignature(options);
 
   switch (layer.kind) {
     case "binned-series":
       if (options.viewport.kind === "geo" || options.viewport.kind === "table") {
         return null;
       }
-      return stableCacheKey({
-        ...base,
+      return createLayerCacheQuery(base, viewportSignature, {
+        kind: layer.kind,
         includeEmptyBins: layer.includeEmptyBins ?? true,
         targetBinCount: layer.targetBinCount,
         valueMode: layer.valueMode ?? "average",
@@ -179,8 +233,8 @@ function getRenderLayerCacheKey(
       if (options.viewport.kind === "geo" || options.viewport.kind === "table") {
         return null;
       }
-      return stableCacheKey({
-        ...base,
+      return createLayerCacheQuery(base, viewportSignature, {
+        kind: layer.kind,
         bucketCount: layer.bucketCount,
         includeEmptyBuckets: true,
         xDomain: layer.xDomain ?? options.viewport.xDomain,
@@ -189,8 +243,8 @@ function getRenderLayerCacheKey(
       if (options.viewport.kind === "geo" || options.viewport.kind === "table") {
         return null;
       }
-      return stableCacheKey({
-        ...base,
+      return createLayerCacheQuery(base, viewportSignature, {
+        kind: layer.kind,
         includeEmptyCells: true,
         xBinCount: layer.xBinCount,
         xDomain: layer.xDomain ?? options.viewport.xDomain,
@@ -201,8 +255,8 @@ function getRenderLayerCacheKey(
       if (options.viewport.kind === "geo" || options.viewport.kind === "table") {
         return null;
       }
-      return stableCacheKey({
-        ...base,
+      return createLayerCacheQuery(base, viewportSignature, {
+        kind: layer.kind,
         alpha: layer.alpha,
         minPeriods: layer.minPeriods,
         statistic: layer.statistic ?? "mean",
@@ -213,8 +267,8 @@ function getRenderLayerCacheKey(
       if (options.viewport.kind !== "geo") {
         return null;
       }
-      return stableCacheKey({
-        ...base,
+      return createLayerCacheQuery(base, viewportSignature, {
+        kind: layer.kind,
         bounds: options.viewport.bounds,
         maxZoom: layer.maxZoom,
         minZoom: layer.minZoom,
@@ -225,8 +279,8 @@ function getRenderLayerCacheKey(
       if (options.viewport.kind !== "geo") {
         return null;
       }
-      return stableCacheKey({
-        ...base,
+      return createLayerCacheQuery(base, viewportSignature, {
+        kind: layer.kind,
         bounds: options.viewport.bounds,
         zoom: options.viewport.zoom,
       });
@@ -234,8 +288,8 @@ function getRenderLayerCacheKey(
       if (options.viewport.kind !== "geo") {
         return null;
       }
-      return stableCacheKey({
-        ...base,
+      return createLayerCacheQuery(base, viewportSignature, {
+        kind: layer.kind,
         bounds: options.viewport.bounds,
         radiusMeters: layer.radiusMeters,
         weightMetric: layer.weightMetric,
@@ -245,8 +299,8 @@ function getRenderLayerCacheKey(
       if (options.viewport.kind !== "geo") {
         return null;
       }
-      return stableCacheKey({
-        ...base,
+      return createLayerCacheQuery(base, viewportSignature, {
+        kind: layer.kind,
         bounds: options.viewport.bounds,
         fieldCellSizeMeters: layer.fieldCellSizeMeters,
         fieldColumns: layer.fieldColumns,
@@ -263,8 +317,8 @@ function getRenderLayerCacheKey(
       if (options.viewport.kind !== "geo") {
         return null;
       }
-      return stableCacheKey({
-        ...base,
+      return createLayerCacheQuery(base, viewportSignature, {
+        kind: layer.kind,
         bounds: options.viewport.bounds,
         clipToViewport: layer.clipToViewport,
         simplifyTolerance: layer.simplifyTolerance,
@@ -274,8 +328,8 @@ function getRenderLayerCacheKey(
       if (options.viewport.kind !== "geo") {
         return null;
       }
-      return stableCacheKey({
-        ...base,
+      return createLayerCacheQuery(base, viewportSignature, {
+        kind: layer.kind,
         aggregate: layer.aggregate,
         bounds: options.viewport.bounds,
         minWeight: layer.minWeight,
@@ -286,8 +340,8 @@ function getRenderLayerCacheKey(
       if (options.viewport.kind === "geo" || options.viewport.kind === "table") {
         return null;
       }
-      return stableCacheKey({
-        ...base,
+      return createLayerCacheQuery(base, viewportSignature, {
+        kind: layer.kind,
         priceMode: layer.priceMode ?? "raw",
         targetBarCount: layer.targetBarCount ?? 120,
         xDomain: layer.xDomain,
@@ -296,8 +350,8 @@ function getRenderLayerCacheKey(
       if (options.viewport.kind === "geo" || options.viewport.kind === "table") {
         return null;
       }
-      return stableCacheKey({
-        ...base,
+      return createLayerCacheQuery(base, viewportSignature, {
+        kind: layer.kind,
         targetPointCount: layer.targetPointCount,
         value: layer.value ?? "close",
         xDomain: layer.xDomain,
@@ -306,8 +360,8 @@ function getRenderLayerCacheKey(
       if (options.viewport.kind === "geo" || options.viewport.kind === "table") {
         return null;
       }
-      return stableCacheKey({
-        ...base,
+      return createLayerCacheQuery(base, viewportSignature, {
+        kind: layer.kind,
         method: layer.method ?? "simple",
         priceMode: layer.priceMode ?? "raw",
         targetPointCount: layer.targetPointCount,
@@ -317,13 +371,66 @@ function getRenderLayerCacheKey(
       if (options.viewport.kind !== "table") {
         return null;
       }
-      return stableCacheKey({
-        ...base,
+      return createLayerCacheQuery(base, viewportSignature, {
+        kind: layer.kind,
         query: resolveTableQuery(layer.query, options.viewport),
       });
   }
 }
 
-function stableCacheKey(value: unknown) {
-  return JSON.stringify(value);
+function createLayerCacheQuery(
+  base: Omit<VizRenderLayerCacheQuery, "querySignature" | "viewportSignature">,
+  viewportSignature: string,
+  query: unknown,
+): VizRenderLayerCacheQuery {
+  return {
+    ...base,
+    querySignature: stableSignature(query),
+    viewportSignature,
+  };
+}
+
+function getViewportSignature(options: VizComputeFrameOptions) {
+  const viewport = options.viewport;
+  switch (viewport.kind) {
+    case "geo":
+      return stableSignature({
+        bounds: viewport.bounds,
+        display: viewport.display,
+        height: viewport.height,
+        kind: viewport.kind,
+        width: viewport.width,
+        zoom: viewport.zoom,
+      });
+    case "table":
+      return stableSignature(viewport);
+    default:
+      return stableSignature({
+        height: viewport.height,
+        kind: viewport.kind ?? "cartesian",
+        width: viewport.width,
+        xDomain: viewport.xDomain,
+      });
+  }
+}
+
+function stableSignature(value: unknown): string {
+  if (value == null || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (typeof value === "string") {
+    return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableSignature(entry)).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    return `{${Object.entries(value)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${key}:${stableSignature(entry)}`)
+      .join(",")}}`;
+  }
+
+  return String(value);
 }
