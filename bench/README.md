@@ -79,12 +79,12 @@ Relative values use `viz-engine js` as the baseline when it exists for a workloa
 
 ## Table WASM Adoption Gates
 
-Table WASM remains experimental until the measured benchmark thresholds are met:
+Table WASM adoption is gated by measured benchmark thresholds:
 
 - At `10_000` rows, every experimental WASM table workload must be no worse than `1.10x` JS mean latency.
 - At `100_000` or more rows, at least one of `table/query/numeric-filter`, `table/query/numeric-sort`, or `table/query/combined-numeric` must be `0.87x` JS mean latency or better.
 
-Current decision: table WASM remains experimental. The broad quick run from `2026-06-09T19:18:28.459Z` completed and passed the `10_000`-row small gate for all experimental table workloads. The targeted full supported table run from `2026-06-09T19:13:03.681Z` included `10_000`, `100_000`, and `1_000_000` rows for the numeric/boolean/date adoption workloads and reported `adoption-ready: yes` in `bench:table:summary`; for example, `table/query/numeric-sort` measured `0.061x`, `0.015x`, and `0.013x` relative WASM latency across those sizes. Backend selection is still not wired in this optimization step; make that change separately so adoption remains an explicit follow-up.
+Current decision: table WASM is adopted only for supported columnar datasets selected by `backend: "wasm"` or by `backend: "auto"` at `>= 100_000` rows. The broad quick run from `2026-06-09T19:18:28.459Z` completed and passed the `10_000`-row small gate for all experimental table workloads. The targeted full supported table run from `2026-06-09T19:13:03.681Z` included `10_000`, `100_000`, and `1_000_000` rows for the numeric/boolean/date adoption workloads and reported `adoption-ready: yes` in `bench:table:summary`; for example, `table/query/numeric-sort` measured `0.061x`, `0.015x`, and `0.013x` relative WASM latency across those sizes. The targeted supported table workloads passed adoption on `2026-06-09T19:13:03.681Z`.
 
 Full all-table benchmarks can still be blocked by JS-owned workloads. Use `bench:table:supported` to measure the numeric/boolean/date workloads that gate backend adoption before attempting the full table suite.
 

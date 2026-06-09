@@ -24,10 +24,7 @@ type WasmTableQueryResult = {
   sourceIndex: Uint32Array;
 };
 
-/**
- * Experimental internal table wrapper. It is intentionally not wired into
- * createVizEngine backend selection until parity and benchmark adoption gates pass.
- */
+/** Experimental table wrapper for supported columnar datasets with JS fallback paths. */
 export class RustWasmVizTableIndex<TRow = Record<string, unknown>> implements VizTableIndex {
   private readonly jsIndex: JsVizTableIndex<TRow>;
   private readonly wasmColumnsById: Map<string, WasmTableColumnRef>;

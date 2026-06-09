@@ -217,6 +217,72 @@ describe("RustWasmVizTableIndex", () => {
     ).toBe(false);
   });
 
+  test("reports WASM capabilities for string-only ASCII columnar datasets", () => {
+    const wasm = new RustWasmVizTableIndex({
+      columns: [{ id: "name", type: "string" as const, values: ["core", "edge"] }],
+      kind: "table",
+      rowIds: ["core", "edge"],
+    });
+
+    expect(wasm.getBackendCapabilities()).toMatchObject({
+      backend: "wasm",
+      implementation: "rust-viz-engine-wasm",
+      usesWasm: true,
+    });
+  });
+
+  test("reports WASM capabilities when another supported column exists beside non-ASCII strings", () => {
+    const wasm = new RustWasmVizTableIndex({
+      columns: [
+        { id: "score", type: "number" as const, values: new Float64Array([1, 2]) },
+        { id: "name", type: "string" as const, values: ["café", "core"] },
+      ],
+      kind: "table",
+      rowIds: ["accent", "plain"],
+    });
+
+    expect(wasm.getBackendCapabilities()).toMatchObject({
+      backend: "wasm",
+      implementation: "rust-viz-engine-wasm",
+      usesWasm: true,
+    });
+    expect(
+      wasm.canUseWasmForQuery({
+        filters: [{ columnId: "name", operator: "contains", value: "é" }],
+      }),
+    ).toBe(false);
+  });
+
+  test("falls back to JS capabilities for JSON and unknown-only columnar datasets", () => {
+    const wasm = new RustWasmVizTableIndex({
+      columns: [
+        { id: "metadata", type: "json" as const, values: [{ enabled: true }] },
+        { id: "raw", type: "unknown" as const, values: [Symbol.for("raw")] },
+      ],
+      kind: "table",
+    });
+
+    expect(wasm.getBackendCapabilities()).toMatchObject({
+      backend: "js",
+      implementation: "js",
+      usesWasm: false,
+    });
+  });
+
+  test("falls back to JS capabilities for empty columnar datasets", () => {
+    const wasm = new RustWasmVizTableIndex({
+      columns: [],
+      kind: "table",
+      rowIds: [],
+    });
+
+    expect(wasm.getBackendCapabilities()).toMatchObject({
+      backend: "js",
+      implementation: "js",
+      usesWasm: false,
+    });
+  });
+
   test("object dataset constructor falls back to JS", () => {
     const wasm = new RustWasmVizTableIndex(fixture.objectDataset);
 

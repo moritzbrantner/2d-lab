@@ -10,14 +10,39 @@ import { JsVizFinanceIndex } from "./js-finance-index";
 import { JsVizGeoFlowIndex } from "./js-geo-flow-index";
 import { JsVizGeoPointIndex } from "./js-geo-index";
 import { JsVizGeoJsonIndex } from "./js-geojson-index";
+import { JsVizTableIndex } from "./js-table-index";
 import { ProgressiveVizDensityIndex } from "./progressive-density-index";
 import { RustWasmVizDensityIndex } from "./rust-wasm-density-index";
+import { RustWasmVizTableIndex } from "./rust-wasm-table-index";
 import { WasmVizFinanceIndex } from "./wasm-finance-index";
 import { WasmVizGeoPointIndex } from "./wasm-geo-index";
 
 import type { VizDatasetIndex } from "../types";
 
 describe("createVizEngineBackend", () => {
+  const objectTableDataset = {
+    columns: [{ id: "score", type: "number" as const }],
+    kind: "table" as const,
+    rows: [{ id: "a", score: 1 }],
+  };
+
+  const numericColumnarTableDataset = (rowCount: number) => ({
+    columns: [{ id: "score", type: "number" as const, values: new Float64Array(rowCount) }],
+    kind: "table" as const,
+    rowIds: Array.from({ length: rowCount }, (_, index) => String(index)),
+  });
+
+  const stringColumnarTableDataset = (rowCount: number) => ({
+    columns: [
+      {
+        id: "name",
+        type: "string" as const,
+        values: Array.from({ length: rowCount }, () => "core"),
+      },
+    ],
+    kind: "table" as const,
+  });
+
   test("creates density indexes for each backend option", () => {
     const dataset = { kind: "xy" as const, points: [{ x: 0, y: 1 }] };
 
@@ -85,6 +110,95 @@ describe("createVizEngineBackend", () => {
     expect(createVizEngineBackend("auto").createIndex(dataset)).toMatchObject({
       index: expect.any(WasmVizFinanceIndex),
       kind: "finance-ohlcv",
+    });
+  });
+
+  test("creates JS table index when JS is requested for object rows", () => {
+    expect(createVizEngineBackend("js").createIndex(objectTableDataset)).toMatchObject({
+      index: expect.any(JsVizTableIndex),
+      kind: "table",
+    });
+  });
+
+  test("falls back to JS for object-row tables when WASM is requested", () => {
+    expect(createVizEngineBackend("wasm").createIndex(objectTableDataset)).toMatchObject({
+      index: expect.any(JsVizTableIndex),
+      kind: "table",
+    });
+  });
+
+  test("falls back to JS for empty columnar tables when WASM is requested", () => {
+    expect(
+      createVizEngineBackend("wasm").createIndex({
+        columns: [],
+        kind: "table",
+        rowIds: [],
+      }),
+    ).toMatchObject({
+      index: expect.any(JsVizTableIndex),
+      kind: "table",
+    });
+  });
+
+  test("creates WASM table index for string-only columnar tables when WASM is requested", () => {
+    expect(createVizEngineBackend("wasm").createIndex(stringColumnarTableDataset(1))).toMatchObject(
+      {
+        index: expect.any(RustWasmVizTableIndex),
+        kind: "table",
+      },
+    );
+  });
+
+  test("creates WASM table index for numeric columnar tables when WASM is requested", () => {
+    expect(
+      createVizEngineBackend("wasm").createIndex(numericColumnarTableDataset(1)),
+    ).toMatchObject({
+      index: expect.any(RustWasmVizTableIndex),
+      kind: "table",
+    });
+  });
+
+  test("uses JS table index for auto numeric columnar tables below threshold", () => {
+    expect(
+      createVizEngineBackend("auto").createIndex(numericColumnarTableDataset(99_999)),
+    ).toMatchObject({
+      index: expect.any(JsVizTableIndex),
+      kind: "table",
+    });
+  });
+
+  test("uses WASM table index for auto numeric columnar tables at threshold", () => {
+    expect(
+      createVizEngineBackend("auto").createIndex(numericColumnarTableDataset(100_000)),
+    ).toMatchObject({
+      index: expect.any(RustWasmVizTableIndex),
+      kind: "table",
+    });
+  });
+
+  test("scoped table WASM option affects table indexes only", () => {
+    const backend = createVizEngineBackend({ table: "wasm", xy: "js" });
+
+    expect(backend.createIndex(numericColumnarTableDataset(1))).toMatchObject({
+      index: expect.any(RustWasmVizTableIndex),
+      kind: "table",
+    });
+    expect(backend.createIndex({ kind: "xy", points: [{ x: 0, y: 1 }] })).toMatchObject({
+      index: expect.any(JsVizDensityIndex),
+      kind: "xy",
+    });
+  });
+
+  test("scoped table JS option keeps table JS while XY uses WASM", () => {
+    const backend = createVizEngineBackend({ table: "js", xy: "wasm" });
+
+    expect(backend.createIndex(numericColumnarTableDataset(1))).toMatchObject({
+      index: expect.any(JsVizTableIndex),
+      kind: "table",
+    });
+    expect(backend.createIndex({ kind: "xy", points: [{ x: 0, y: 1 }] })).toMatchObject({
+      index: expect.any(RustWasmVizDensityIndex),
+      kind: "xy",
     });
   });
 

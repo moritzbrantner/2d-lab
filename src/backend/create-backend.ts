@@ -6,6 +6,7 @@ import { JsVizGeoJsonIndex } from "./js-geojson-index";
 import { JsVizTableIndex } from "./js-table-index";
 import { ProgressiveVizDensityIndex } from "./progressive-density-index";
 import { RustWasmVizDensityIndex } from "./rust-wasm-density-index";
+import { RustWasmVizTableIndex } from "./rust-wasm-table-index";
 import { WasmVizFinanceIndex } from "./wasm-finance-index";
 import { WasmVizGeoFlowIndex } from "./wasm-geo-flow-index";
 import { WasmVizGeoPointIndex } from "./wasm-geo-index";
@@ -17,6 +18,9 @@ import type {
   VizDataset,
   VizDatasetIndex,
   VizEngineBackend,
+  VizTableColumnarDataset,
+  VizTableDataset,
+  VizTableIndex,
 } from "../types";
 
 export function createVizEngineBackend<TProperties = Record<string, unknown>>(
@@ -84,10 +88,60 @@ function createDatasetIndex<TProperties>(
       };
     case "table":
       return {
-        index: new JsVizTableIndex(dataset),
+        index: createTableIndex(dataset, config.table),
         kind: "table",
       };
   }
+}
+
+function createTableIndex<TRow>(
+  dataset: VizTableDataset<TRow>,
+  option: VizBackendOption,
+): VizTableIndex {
+  if (option === "js") {
+    return new JsVizTableIndex(dataset);
+  }
+
+  if (!isColumnarTableDataset(dataset) || !hasSupportedWasmColumn(dataset)) {
+    return new JsVizTableIndex(dataset);
+  }
+
+  if (option === "wasm") {
+    return new RustWasmVizTableIndex(dataset);
+  }
+
+  if (option === "auto" && getTableRowCount(dataset) >= 100_000) {
+    return new RustWasmVizTableIndex(dataset);
+  }
+
+  return new JsVizTableIndex(dataset);
+}
+
+function isColumnarTableDataset<TRow>(
+  dataset: VizTableDataset<TRow>,
+): dataset is VizTableColumnarDataset {
+  return !("rows" in dataset);
+}
+
+function getTableRowCount<TRow>(dataset: VizTableDataset<TRow>) {
+  if ("rows" in dataset) {
+    return dataset.rows.length;
+  }
+
+  return Math.max(
+    dataset.rowIds?.length ?? 0,
+    ...dataset.columns.map((column) => column.values.length),
+  );
+}
+
+function hasSupportedWasmColumn(dataset: VizTableColumnarDataset) {
+  return dataset.columns.some(
+    (column) =>
+      column.type === "number" ||
+      column.type === "date" ||
+      column.type === "boolean" ||
+      column.type === "string",
+  );
 }
 
 function normalizeBackendConfig(

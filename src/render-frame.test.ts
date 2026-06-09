@@ -17,6 +17,30 @@ const points: VizSeriesPoint[] = [
 ];
 const originalPerformance = globalThis.performance;
 
+function createNumericTableDataset(rowCount: number) {
+  return {
+    columns: [
+      {
+        id: "score",
+        type: "number" as const,
+        values: Float64Array.from({ length: rowCount }, (_, index) => index),
+      },
+      {
+        id: "active",
+        type: "boolean" as const,
+        values: Uint8Array.from({ length: rowCount }, (_, index) => (index % 2 === 0 ? 1 : 0)),
+      },
+      {
+        id: "name",
+        type: "string" as const,
+        values: Array.from({ length: rowCount }, (_, index) => `core-${index}`),
+      },
+    ],
+    kind: "table" as const,
+    rowIds: Array.from({ length: rowCount }, (_, index) => `row-${index}`),
+  };
+}
+
 afterEach(() => {
   Object.defineProperty(globalThis, "performance", {
     configurable: true,
@@ -742,6 +766,208 @@ describe("computeVizRenderFrame", () => {
     ).toBe(1);
   });
 
+  test("reports WASM stats for explicit WASM columnar numeric table frames", () => {
+    const engine = createVizEngine({ backend: "wasm" });
+    const datasetId = engine.addDataset(createNumericTableDataset(4));
+    engine.addLayer({
+      datasetId,
+      kind: "table",
+      query: { sort: [{ columnId: "score", direction: "desc" }] },
+    });
+
+    const frame = engine.computeFrame({
+      frameFormat: "typed",
+      viewport: { kind: "table", rowLimit: 2 },
+    });
+
+    expect(frame.stats).toMatchObject({
+      backend: "wasm",
+      backendImplementation: "rust-viz-engine-wasm",
+    });
+  });
+
+  test("reports JS stats for explicit WASM object table frames", () => {
+    const engine = createVizEngine({ backend: "wasm" });
+    const datasetId = engine.addDataset({
+      kind: "table",
+      rows: [
+        { id: "a", score: 1 },
+        { id: "b", score: 2 },
+      ],
+      rowIdKey: "id",
+    });
+    engine.addLayer({ datasetId, kind: "table" });
+
+    const frame = engine.computeFrame({
+      frameFormat: "objects",
+      viewport: { kind: "table" },
+    });
+
+    expect(frame.stats).toMatchObject({
+      backend: "js",
+      backendImplementation: "js",
+    });
+  });
+
+  test("reports JS stats for auto table backend below threshold", () => {
+    const engine = createVizEngine({ backend: "auto" });
+    const datasetId = engine.addDataset(createNumericTableDataset(99_999));
+    engine.addLayer({ datasetId, kind: "table" });
+
+    const frame = engine.computeFrame({
+      frameFormat: "typed",
+      viewport: { kind: "table", rowLimit: 1 },
+    });
+
+    expect(frame.stats).toMatchObject({
+      backend: "js",
+      backendImplementation: "js",
+    });
+  });
+
+  test("reports WASM stats for auto table backend at threshold", () => {
+    const engine = createVizEngine({ backend: "auto" });
+    const datasetId = engine.addDataset(createNumericTableDataset(100_000));
+    engine.addLayer({ datasetId, kind: "table" });
+
+    const frame = engine.computeFrame({
+      frameFormat: "typed",
+      viewport: { kind: "table", rowLimit: 1 },
+    });
+
+    expect(frame.stats).toMatchObject({
+      backend: "wasm",
+      backendImplementation: "rust-viz-engine-wasm",
+    });
+  });
+
+  test("falls back for string sort on WASM-backed table without changing stats", () => {
+    const engine = createVizEngine({ backend: "wasm" });
+    const datasetId = engine.addDataset(createNumericTableDataset(3));
+    engine.addLayer({
+      datasetId,
+      kind: "table",
+      query: { sort: [{ columnId: "name", direction: "desc" }] },
+    });
+
+    const frame = engine.computeFrame({
+      frameFormat: "typed",
+      viewport: { kind: "table" },
+    });
+
+    expect(frame.stats).toMatchObject({
+      backend: "wasm",
+      backendImplementation: "rust-viz-engine-wasm",
+    });
+    expect(
+      frame.layers[0]?.kind === "table" && "typedTable" in frame.layers[0]
+        ? frame.layers[0].typedTable.rowIds
+        : [],
+    ).toEqual(["row-2", "row-1", "row-0"]);
+  });
+
+  test("matches JS row IDs for numeric filter and sort on WASM-backed table", () => {
+    const dataset = createNumericTableDataset(256);
+    const layer = {
+      datasetId: "dataset",
+      kind: "table" as const,
+      query: {
+        filters: [{ columnId: "score", operator: "gte" as const, value: 128 }],
+        sort: [{ columnId: "score", direction: "desc" as const }],
+      },
+    };
+    const jsEngine = createVizEngine({ backend: "js" });
+    const wasmEngine = createVizEngine({ backend: "wasm" });
+    const jsDatasetId = jsEngine.addDataset(dataset);
+    const wasmDatasetId = wasmEngine.addDataset(dataset);
+    jsEngine.addLayer({ ...layer, datasetId: jsDatasetId });
+    wasmEngine.addLayer({ ...layer, datasetId: wasmDatasetId });
+
+    const options = {
+      frameFormat: "typed" as const,
+      viewport: { kind: "table" as const, rowLimit: 16 },
+    };
+    const jsFrame = jsEngine.computeFrame(options);
+    const wasmFrame = wasmEngine.computeFrame(options);
+
+    expect(
+      wasmFrame.layers[0]?.kind === "table" && "typedTable" in wasmFrame.layers[0]
+        ? Array.from(wasmFrame.layers[0].typedTable.sourceIndex)
+        : [],
+    ).toEqual(
+      jsFrame.layers[0]?.kind === "table" && "typedTable" in jsFrame.layers[0]
+        ? Array.from(jsFrame.layers[0].typedTable.sourceIndex)
+        : [],
+    );
+  });
+
+  test("matches JS row IDs for ASCII string search on WASM-backed table", () => {
+    const dataset = createNumericTableDataset(64);
+    const jsEngine = createVizEngine({ backend: "js" });
+    const wasmEngine = createVizEngine({ backend: "wasm" });
+    const jsDatasetId = jsEngine.addDataset(dataset);
+    const wasmDatasetId = wasmEngine.addDataset(dataset);
+    const query = { search: { columnIds: ["name"], query: "core-1" } };
+    jsEngine.addLayer({ datasetId: jsDatasetId, kind: "table", query });
+    wasmEngine.addLayer({ datasetId: wasmDatasetId, kind: "table", query });
+
+    const options = {
+      frameFormat: "typed" as const,
+      viewport: { kind: "table" as const, rowLimit: 16 },
+    };
+    const jsFrame = jsEngine.computeFrame(options);
+    const wasmFrame = wasmEngine.computeFrame(options);
+
+    expect(
+      wasmFrame.layers[0]?.kind === "table" && "typedTable" in wasmFrame.layers[0]
+        ? wasmFrame.layers[0].typedTable.rowIds
+        : [],
+    ).toEqual(
+      jsFrame.layers[0]?.kind === "table" && "typedTable" in jsFrame.layers[0]
+        ? jsFrame.layers[0].typedTable.rowIds
+        : [],
+    );
+  });
+
+  test("falls back internally for non-ASCII string search on WASM-backed table", () => {
+    const dataset = {
+      columns: [
+        { id: "score", type: "number" as const, values: new Float64Array([1, 2, 3]) },
+        { id: "name", type: "string" as const, values: ["café", "core", "caff"] },
+      ],
+      kind: "table" as const,
+      rowIds: ["accent", "plain", "ascii"],
+    };
+    const jsEngine = createVizEngine({ backend: "js" });
+    const wasmEngine = createVizEngine({ backend: "wasm" });
+    const jsDatasetId = jsEngine.addDataset(dataset);
+    const wasmDatasetId = wasmEngine.addDataset(dataset);
+    const query = { search: { columnIds: ["name"], query: "é" } };
+    jsEngine.addLayer({ datasetId: jsDatasetId, kind: "table", query });
+    wasmEngine.addLayer({ datasetId: wasmDatasetId, kind: "table", query });
+
+    const options = {
+      frameFormat: "typed" as const,
+      viewport: { kind: "table" as const },
+    };
+    const jsFrame = jsEngine.computeFrame(options);
+    const wasmFrame = wasmEngine.computeFrame(options);
+
+    expect(wasmFrame.stats).toMatchObject({
+      backend: "wasm",
+      backendImplementation: "rust-viz-engine-wasm",
+    });
+    expect(
+      wasmFrame.layers[0]?.kind === "table" && "typedTable" in wasmFrame.layers[0]
+        ? wasmFrame.layers[0].typedTable.rowIds
+        : [],
+    ).toEqual(
+      jsFrame.layers[0]?.kind === "table" && "typedTable" in jsFrame.layers[0]
+        ? jsFrame.layers[0].typedTable.rowIds
+        : [],
+    );
+  });
+
   test("computes typed table frames with combined query filters, search, sort, and window", () => {
     const engine = createVizEngine({ backend: "js" });
     const datasetId = engine.addDataset({
@@ -809,8 +1035,9 @@ describe("computeVizRenderFrame", () => {
 
     expect(layer?.kind === "table" ? layer.table.rows.map((row) => row.rowId) : []).toEqual(["a"]);
     expect(layer?.kind === "table" ? layer.table.summary.filteredRowCount : 0).toBe(1);
-    expect(layer?.kind === "table" ? layer.table.rows[0]?.cells.map((cell) => cell.value) : [])
-      .toEqual(["a", "Ada", 10]);
+    expect(
+      layer?.kind === "table" ? layer.table.rows[0]?.cells.map((cell) => cell.value) : [],
+    ).toEqual(["a", "Ada", 10]);
   });
 
   test("reuses same-window table frames and misses cache for shifting windows", () => {

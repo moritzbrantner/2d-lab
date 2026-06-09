@@ -38,9 +38,45 @@ createVizEngine({
 
 Explicit per-domain settings win over the global backend option.
 
-Table indexes are JavaScript-only in the first table support release. Passing
-`backend: "wasm"` still creates a JS table index, and mixed frames report
-`backend: "mixed"` when table layers are computed beside WASM-backed layers.
+## Table Backend
+
+Table JS remains the default and fallback.
+
+`backend: "wasm"` uses `RustWasmVizTableIndex` only for columnar table datasets
+that declare at least one supported column type:
+
+- `number`
+- `date`
+- `boolean`
+- `string`
+
+Object-row datasets remain JS even when WASM is requested.
+
+`backend: "auto"` uses the WASM table wrapper only for supported columnar table
+datasets with `>= 100_000` rows.
+
+The WASM table wrapper accelerates row-index selection. Typed table
+materialization and object row hydration still reuse the JavaScript table index.
+
+These paths remain JS-owned or JS-fallback:
+
+- object-row normalization
+- object table frame hydration
+- string sort
+- non-ASCII string search/filter
+- locale-sensitive string behavior
+- JSON/unknown columns
+- unsupported mixed queries
+- multi-sort
+
+Frame stats report the selected dataset-level table backend:
+
+- Object table + `backend: "wasm"` reports `backend: "js"` and
+  `backendImplementation: "js"`.
+- Supported columnar table + `backend: "wasm"` reports `backend: "wasm"` and
+  `backendImplementation: "rust-viz-engine-wasm"`.
+- Supported columnar table + `backend: "auto"` below `100_000` rows reports JS.
+- Supported columnar table + `backend: "auto"` at `100_000` rows reports WASM.
 
 ## Current Bundle Shape
 
