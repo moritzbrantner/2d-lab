@@ -89,21 +89,37 @@ export class JsVizTableIndex<TRow = Record<string, unknown>> implements VizTable
 
   getTypedTable(query: VizTableQuery = {}): VizTypedTable {
     const result = this.resolveQuery(query);
-    const sourceIndex = Uint32Array.from(result.rowIndices);
-    const typedColumns = result.columnIds.map((columnId) =>
-      this.createTypedColumn(this.columnsById.get(columnId)!, result.rowIndices),
+
+    return this.getTypedTableForSourceIndices(
+      query,
+      result.rowIndices,
+      this.getFilteredRowCount(query),
+    );
+  }
+
+  /** @internal Used by experimental WASM table wrappers after Rust returns source row indices. */
+  getTypedTableForSourceIndices(
+    query: VizTableQuery,
+    rowIndices: readonly number[] | Uint32Array,
+    filteredRowCount: number,
+  ): VizTypedTable {
+    const normalizedRowIndices = Array.from(rowIndices);
+    const columnIds = resolveColumnIds(this.columns, query.columnIds);
+    const sourceIndex = Uint32Array.from(normalizedRowIndices);
+    const typedColumns = columnIds.map((columnId) =>
+      this.createTypedColumn(this.columnsById.get(columnId)!, normalizedRowIndices),
     );
 
     return {
-      columns: result.columnIds.map((columnId) => this.columnsById.get(columnId)!.summary),
-      rowIds: result.rowIndices.map((index) => this.rowIds[index] ?? String(index)),
+      columns: columnIds.map((columnId) => this.columnsById.get(columnId)!.summary),
+      rowIds: normalizedRowIndices.map((index) => this.rowIds[index] ?? String(index)),
       sourceIndex,
       summary: {
-        filteredRowCount: this.getFilteredRowCount(query),
+        filteredRowCount,
         rowCount: this.rowCount,
-        rowLimit: result.rowLimit,
-        rowOffset: result.rowOffset,
-        visibleRowCount: result.rowIndices.length,
+        rowLimit: normalizeRowLimit(query.rowLimit),
+        rowOffset: normalizeRowOffset(query.rowOffset),
+        visibleRowCount: normalizedRowIndices.length,
       },
       typedColumns,
     };

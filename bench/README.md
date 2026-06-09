@@ -36,6 +36,26 @@ Run the full Bun benchmark:
 bun run bench:node
 ```
 
+Run only table benchmarks:
+
+```sh
+bun run bench/run.ts --runtime bun --category table
+bun run bench/run.ts --runtime bun --quick --category table
+```
+
+Run only supported table adoption workloads:
+
+```sh
+bun run bench:table:supported
+bun run bench/run.ts --runtime bun --quick --category table --workload table/query/numeric-filter --workload table/query/boolean-filter --workload table/query/numeric-sort --workload table/query/boolean-sort --workload table/query/combined-numeric
+```
+
+Summarize the latest Bun table benchmark result:
+
+```sh
+bun run bench:table:summary
+```
+
 Run the browser benchmark in Chromium through Playwright:
 
 ```sh
@@ -57,13 +77,24 @@ Lower latency is better. Each result records mean, p50, p75, p95, p99, ops/sec, 
 
 Relative values use `viz-engine js` as the baseline when it exists for a workload. If there is no `viz-engine js` row, the report uses the fastest external implementation, then the fastest implementation in the group.
 
+## Table WASM Adoption Gates
+
+Table WASM remains experimental until the measured benchmark thresholds are met:
+
+- At `10_000` rows, every experimental WASM table workload must be no worse than `1.10x` JS mean latency.
+- At `100_000` or more rows, at least one of `table/query/numeric-filter`, `table/query/numeric-sort`, or `table/query/combined-numeric` must be `0.87x` JS mean latency or better.
+
+Current decision: table WASM remains experimental. The broad quick run from `2026-06-09T19:18:28.459Z` completed and passed the `10_000`-row small gate for all experimental table workloads. The targeted full supported table run from `2026-06-09T19:13:03.681Z` included `10_000`, `100_000`, and `1_000_000` rows for the numeric/boolean/date adoption workloads and reported `adoption-ready: yes` in `bench:table:summary`; for example, `table/query/numeric-sort` measured `0.061x`, `0.015x`, and `0.013x` relative WASM latency across those sizes. Backend selection is still not wired in this optimization step; make that change separately so adoption remains an explicit follow-up.
+
+Full all-table benchmarks can still be blocked by JS-owned workloads. Use `bench:table:supported` to measure the numeric/boolean/date workloads that gate backend adoption before attempting the full table suite.
+
 ## Semantic Caveats
 
 - `d3-array` is used as an XY aggregation baseline. The adapters normalize output shape, but D3 binning semantics are not identical to `viz-engine` for every edge case.
 - `supercluster` is a geospatial clustering baseline. It uses a different KD-tree/tile clustering strategy than the current `viz-engine` grid clustering.
 - `downsample` is a visual close-price downsampler. It does not preserve OHLC semantics, so the suite also includes a local OHLC aggregation baseline.
 - Geo and finance WASM cases use `@mb-rust/geo-viz-wasm` and `@mb-rust/finance-data-wasm`; JS rows remain as fallback and parity baselines.
-- Table benchmarks initially compare JS table paths only. WASM table rows will appear only after Rust kernels land, and partial numeric/boolean coverage should be called out in implementation names and notes.
+- Table benchmarks include JS rows for all table workloads and experimental WASM rows for numeric/boolean/date query workloads. They also include experimental ASCII-only Rust string filter/search rows. Non-ASCII strings, locale-sensitive string behavior, string sort, JSON/unknown columns, and object row hydration remain JS-owned.
 - Build the finance and geo WASM npm packages sequentially before browser benchmarking. Running two `wasm-pack` builds at once can race in `wasm-opt` output files.
 - WASM startup cases run in one process, so module import is not isolated for every iteration. The suite separates construction, first-query, and warm-query costs.
 - Typed frame cases measure the typed-array render path. They are the preferred signal for high-frequency WASM-backed cartesian rendering because they avoid object hydration.

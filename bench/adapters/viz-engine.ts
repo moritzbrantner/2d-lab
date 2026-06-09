@@ -4,6 +4,7 @@ import { JsVizFinanceIndex } from "../../src/backend/js-finance-index";
 import { JsVizGeoPointIndex } from "../../src/backend/js-geo-index";
 import { JsVizTableIndex } from "../../src/backend/js-table-index";
 import { RustWasmVizDensityIndex } from "../../src/backend/rust-wasm-density-index";
+import { RustWasmVizTableIndex } from "../../src/backend/rust-wasm-table-index";
 import { WasmVizFinanceIndex } from "../../src/backend/wasm-finance-index";
 import { WasmVizGeoPointIndex } from "../../src/backend/wasm-geo-index";
 
@@ -25,6 +26,7 @@ export {
   JsVizGeoPointIndex,
   JsVizTableIndex,
   RustWasmVizDensityIndex,
+  RustWasmVizTableIndex,
   WasmVizFinanceIndex,
   WasmVizGeoPointIndex,
 };
@@ -50,12 +52,10 @@ export function createFinanceIndex(implementation: "js" | "wasm", dataset: VizFi
     : new WasmVizFinanceIndex(dataset);
 }
 
-export function createTableIndex(implementation: "js", dataset: VizTableDataset) {
-  if (implementation !== "js") {
-    throw new Error(`Unsupported table benchmark implementation: ${implementation}`);
-  }
-
-  return new JsVizTableIndex(dataset);
+export function createTableIndex(implementation: "js" | "wasm", dataset: VizTableDataset) {
+  return implementation === "js"
+    ? new JsVizTableIndex(dataset)
+    : new RustWasmVizTableIndex(dataset);
 }
 
 export function createPreparedFrame(options: {

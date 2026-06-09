@@ -1,101 +1,97 @@
-use js_sys::{Float64Array, Object, Reflect, Uint32Array, Uint8Array};
-use serde::Deserialize;
+use js_sys::{Object, Reflect, Uint32Array, Uint8Array};
 use viz_engine_core::table::{
-    filter_boolean_rows, filter_numeric_rows, query_numeric_table, sort_boolean_rows,
-    sort_numeric_rows, VizTableBooleanColumn, VizTableColumnType, VizTableIndexResult,
-    VizTableNulls, VizTableNumericColumn, VizTableNumericFilter, VizTableNumericFilterOperator,
-    VizTableQuery, VizTableSort, VizTableSortDirection,
+    query_ascii_string_filter_window, query_ascii_string_search, query_boolean_filter_window,
+    query_numeric_table, sort_boolean_rows_window, sort_numeric_rows_window, VizTableBooleanColumn,
+    VizTableColumnType, VizTableIndexResult, VizTableNulls, VizTableNumericColumn,
+    VizTableNumericFilterOperator, VizTableQuery, VizTableSort, VizTableSortDirection,
+    VizTableStringColumn, VizTableStringFilter, VizTableStringFilterOperator,
+    VizTableStringSearchQuery,
 };
 use wasm_bindgen::prelude::*;
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct WasmTableIndexInit {
-    #[serde(default)]
-    numeric_columns: Vec<WasmNumericColumn>,
-    #[serde(default)]
-    boolean_columns: Vec<WasmBooleanColumn>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct WasmNumericColumn {
-    #[serde(default = "default_numeric_column_type")]
-    column_type: VizTableColumnType,
-    values: Vec<f64>,
-    #[serde(default)]
-    validity: Option<Vec<u8>>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct WasmBooleanColumn {
-    values: Vec<u8>,
-    #[serde(default)]
-    validity: Option<Vec<u8>>,
-}
 
 #[wasm_bindgen]
 pub struct VizEngineWasmTableIndex {
     boolean_columns: Vec<VizTableBooleanColumn>,
     numeric_columns: Vec<VizTableNumericColumn>,
+    string_columns: Vec<VizTableStringColumn>,
 }
 
 #[wasm_bindgen]
 impl VizEngineWasmTableIndex {
     #[wasm_bindgen(constructor)]
-    pub fn new(input: JsValue) -> Result<VizEngineWasmTableIndex, JsValue> {
-        let input: WasmTableIndexInit =
-            serde_wasm_bindgen::from_value(input).map_err(into_js_error)?;
-        Ok(Self {
-            boolean_columns: input
-                .boolean_columns
-                .into_iter()
-                .map(|column| VizTableBooleanColumn {
-                    values: column.values,
-                    validity: column.validity,
-                })
-                .collect(),
-            numeric_columns: input
-                .numeric_columns
-                .into_iter()
-                .map(|column| VizTableNumericColumn {
-                    column_type: column.column_type,
-                    values: column.values,
-                    validity: column.validity,
-                })
-                .collect(),
-        })
+    pub fn new() -> VizEngineWasmTableIndex {
+        Self {
+            boolean_columns: Vec::new(),
+            numeric_columns: Vec::new(),
+            string_columns: Vec::new(),
+        }
     }
 
-    #[wasm_bindgen(js_name = filterNumeric)]
-    pub fn filter_numeric(
-        &self,
-        column_index: usize,
-        operator: String,
-        value: f64,
-        max_value: f64,
-    ) -> Result<JsValue, JsValue> {
-        let column = self
-            .numeric_columns
-            .get(column_index)
-            .ok_or_else(|| js_error(format!("unknown numeric table column {column_index}")))?;
-        let filter = VizTableNumericFilter {
-            column_index,
-            operator: parse_filter_operator(&operator)?,
-            value: value.is_finite().then_some(value),
-            max_value: max_value.is_finite().then_some(max_value),
-        };
-        let row_indices = filter_numeric_rows(column, &filter);
+    #[wasm_bindgen(js_name = addNumericColumn)]
+    pub fn add_numeric_column(
+        &mut self,
+        column_type: String,
+        values: js_sys::Float64Array,
+        validity: Option<Uint8Array>,
+    ) -> Result<usize, JsValue> {
+        let column_index = self.numeric_columns.len();
+        self.numeric_columns.push(VizTableNumericColumn {
+            column_type: parse_column_type(&column_type)?,
+            values: values.to_vec(),
+            validity: validity.map(|values| values.to_vec()),
+        });
 
-        result_object(
-            VizTableIndexResult {
-                filtered_row_count: row_indices.len(),
-                row_indices,
-            },
-            Some(column),
-            None,
-        )
+        Ok(column_index)
+    }
+
+    #[wasm_bindgen(js_name = addBooleanColumn)]
+    pub fn add_boolean_column(
+        &mut self,
+        values: Uint8Array,
+        validity: Option<Uint8Array>,
+    ) -> usize {
+        let column_index = self.boolean_columns.len();
+        self.boolean_columns.push(VizTableBooleanColumn {
+            values: values.to_vec(),
+            validity: validity.map(|values| values.to_vec()),
+        });
+
+        column_index
+    }
+
+    #[wasm_bindgen(js_name = addAsciiStringColumn)]
+    pub fn add_ascii_string_column(
+        &mut self,
+        values: JsValue,
+        validity: Option<Uint8Array>,
+    ) -> Result<usize, JsValue> {
+        let values: Vec<Option<String>> =
+            serde_wasm_bindgen::from_value(values).map_err(into_js_error)?;
+        let mut resolved_validity = validity
+            .map(|values| values.to_vec())
+            .unwrap_or_else(|| vec![1; values.len()]);
+        if resolved_validity.len() < values.len() {
+            resolved_validity.resize(values.len(), 1);
+        }
+
+        let values = values
+            .into_iter()
+            .enumerate()
+            .map(|(index, value)| match value {
+                Some(value) => value,
+                None => {
+                    resolved_validity[index] = 0;
+                    String::new()
+                }
+            })
+            .collect();
+        let column_index = self.string_columns.len();
+        self.string_columns.push(VizTableStringColumn::from_values(
+            values,
+            Some(resolved_validity),
+        ));
+
+        Ok(column_index)
     }
 
     #[wasm_bindgen(js_name = queryBoolean)]
@@ -111,34 +107,69 @@ impl VizEngineWasmTableIndex {
             .boolean_columns
             .get(column_index)
             .ok_or_else(|| js_error(format!("unknown boolean table column {column_index}")))?;
-        let filtered = filter_boolean_rows(column, parse_filter_operator(&operator)?, value);
-        let windowed = viz_engine_core::table::window_rows(&filtered, row_offset, row_limit);
-
-        result_object(
-            VizTableIndexResult {
-                filtered_row_count: filtered.len(),
-                row_indices: windowed,
-            },
-            None,
-            Some(column),
-        )
+        row_index_result_object(query_boolean_filter_window(
+            column,
+            parse_filter_operator(&operator)?,
+            value,
+            row_offset,
+            row_limit,
+        ))
     }
 
     #[wasm_bindgen(js_name = queryNumeric)]
     pub fn query_numeric(&self, query: JsValue) -> Result<JsValue, JsValue> {
         let query: VizTableQuery = serde_wasm_bindgen::from_value(query).map_err(into_js_error)?;
-        let result = query_numeric_table(&self.numeric_columns, &query);
-        let projected_column = query
-            .sort
-            .and_then(|sort| self.numeric_columns.get(sort.column_index))
-            .or_else(|| {
-                query
-                    .filters
-                    .first()
-                    .and_then(|filter| self.numeric_columns.get(filter.column_index))
-            });
+        row_index_result_object(query_numeric_table(&self.numeric_columns, &query))
+    }
 
-        result_object(result, projected_column, None)
+    #[wasm_bindgen(js_name = queryStringFilter)]
+    pub fn query_string_filter(
+        &self,
+        column_index: usize,
+        operator: String,
+        value: Option<String>,
+        case_sensitive: bool,
+        row_offset: usize,
+        row_limit: Option<usize>,
+    ) -> Result<JsValue, JsValue> {
+        let column = self
+            .string_columns
+            .get(column_index)
+            .ok_or_else(|| js_error(format!("unknown string table column {column_index}")))?;
+        row_index_result_object(query_ascii_string_filter_window(
+            column,
+            &VizTableStringFilter {
+                column_index,
+                operator: parse_string_filter_operator(&operator)?,
+                value,
+                case_sensitive,
+            },
+            row_offset,
+            row_limit,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = queryStringSearch)]
+    pub fn query_string_search(
+        &self,
+        column_indices: JsValue,
+        query: String,
+        case_sensitive: bool,
+        row_offset: usize,
+        row_limit: Option<usize>,
+    ) -> Result<JsValue, JsValue> {
+        let column_indices: Vec<usize> =
+            serde_wasm_bindgen::from_value(column_indices).map_err(into_js_error)?;
+        row_index_result_object(query_ascii_string_search(
+            &self.string_columns,
+            &VizTableStringSearchQuery {
+                column_indices,
+                query,
+                case_sensitive,
+                row_limit,
+                row_offset,
+            },
+        ))
     }
 
     #[wasm_bindgen(js_name = sortNumeric)]
@@ -157,7 +188,7 @@ impl VizEngineWasmTableIndex {
         let rows = (0..column.values.len())
             .map(|index| index as u32)
             .collect::<Vec<_>>();
-        let sorted = sort_numeric_rows(
+        let row_indices = sort_numeric_rows_window(
             column,
             &rows,
             VizTableSort {
@@ -165,17 +196,14 @@ impl VizEngineWasmTableIndex {
                 direction: parse_sort_direction(&direction)?,
                 nulls: parse_nulls(&nulls)?,
             },
+            row_offset,
+            row_limit,
         );
-        let row_indices = viz_engine_core::table::window_rows(&sorted, row_offset, row_limit);
 
-        result_object(
-            VizTableIndexResult {
-                filtered_row_count: sorted.len(),
-                row_indices,
-            },
-            Some(column),
-            None,
-        )
+        row_index_result_object(VizTableIndexResult {
+            filtered_row_count: rows.len(),
+            row_indices,
+        })
     }
 
     #[wasm_bindgen(js_name = sortBoolean)]
@@ -194,7 +222,7 @@ impl VizEngineWasmTableIndex {
         let rows = (0..column.values.len())
             .map(|index| index as u32)
             .collect::<Vec<_>>();
-        let sorted = sort_boolean_rows(
+        let row_indices = sort_boolean_rows_window(
             column,
             &rows,
             VizTableSort {
@@ -202,25 +230,18 @@ impl VizEngineWasmTableIndex {
                 direction: parse_sort_direction(&direction)?,
                 nulls: parse_nulls(&nulls)?,
             },
+            row_offset,
+            row_limit,
         );
-        let row_indices = viz_engine_core::table::window_rows(&sorted, row_offset, row_limit);
 
-        result_object(
-            VizTableIndexResult {
-                filtered_row_count: sorted.len(),
-                row_indices,
-            },
-            None,
-            Some(column),
-        )
+        row_index_result_object(VizTableIndexResult {
+            filtered_row_count: rows.len(),
+            row_indices,
+        })
     }
 }
 
-fn result_object(
-    result: VizTableIndexResult,
-    numeric_column: Option<&VizTableNumericColumn>,
-    boolean_column: Option<&VizTableBooleanColumn>,
-) -> Result<JsValue, JsValue> {
+fn row_index_result_object(result: VizTableIndexResult) -> Result<JsValue, JsValue> {
     let object = Object::new();
     let source_index = Uint32Array::from(result.row_indices.as_slice());
     Reflect::set(&object, &"sourceIndex".into(), &source_index.into())?;
@@ -230,66 +251,17 @@ fn result_object(
         &JsValue::from_f64(result.filtered_row_count as f64),
     )?;
 
-    if let Some(column) = numeric_column {
-        let values = result
-            .row_indices
-            .iter()
-            .map(|index| {
-                column
-                    .values
-                    .get(*index as usize)
-                    .copied()
-                    .unwrap_or(f64::NAN)
-            })
-            .collect::<Vec<_>>();
-        let validity = result
-            .row_indices
-            .iter()
-            .map(|index| validity_at(column.validity.as_deref(), *index as usize))
-            .collect::<Vec<_>>();
-        Reflect::set(
-            &object,
-            &"values".into(),
-            &Float64Array::from(values.as_slice()).into(),
-        )?;
-        Reflect::set(
-            &object,
-            &"validity".into(),
-            &Uint8Array::from(validity.as_slice()).into(),
-        )?;
-    }
-
-    if let Some(column) = boolean_column {
-        let values = result
-            .row_indices
-            .iter()
-            .map(|index| column.values.get(*index as usize).copied().unwrap_or(0))
-            .collect::<Vec<_>>();
-        let validity = result
-            .row_indices
-            .iter()
-            .map(|index| validity_at(column.validity.as_deref(), *index as usize))
-            .collect::<Vec<_>>();
-        Reflect::set(
-            &object,
-            &"values".into(),
-            &Uint8Array::from(values.as_slice()).into(),
-        )?;
-        Reflect::set(
-            &object,
-            &"validity".into(),
-            &Uint8Array::from(validity.as_slice()).into(),
-        )?;
-    }
-
     Ok(object.into())
 }
 
-fn validity_at(validity: Option<&[u8]>, row_index: usize) -> u8 {
-    validity
-        .and_then(|values| values.get(row_index))
-        .copied()
-        .unwrap_or(1)
+fn parse_column_type(value: &str) -> Result<VizTableColumnType, JsValue> {
+    match value {
+        "date" => Ok(VizTableColumnType::Date),
+        "number" | "" => Ok(VizTableColumnType::Number),
+        column_type => Err(js_error(format!(
+            "unsupported numeric table column type `{column_type}`"
+        ))),
+    }
 }
 
 fn parse_filter_operator(value: &str) -> Result<VizTableNumericFilterOperator, JsValue> {
@@ -305,6 +277,21 @@ fn parse_filter_operator(value: &str) -> Result<VizTableNumericFilterOperator, J
         "isNotNull" => Ok(VizTableNumericFilterOperator::IsNotNull),
         operator => Err(js_error(format!(
             "unsupported table filter operator `{operator}`"
+        ))),
+    }
+}
+
+fn parse_string_filter_operator(value: &str) -> Result<VizTableStringFilterOperator, JsValue> {
+    match value {
+        "contains" => Ok(VizTableStringFilterOperator::Contains),
+        "endsWith" => Ok(VizTableStringFilterOperator::EndsWith),
+        "equals" => Ok(VizTableStringFilterOperator::Equals),
+        "isNull" => Ok(VizTableStringFilterOperator::IsNull),
+        "isNotNull" => Ok(VizTableStringFilterOperator::IsNotNull),
+        "notEquals" => Ok(VizTableStringFilterOperator::NotEquals),
+        "startsWith" => Ok(VizTableStringFilterOperator::StartsWith),
+        operator => Err(js_error(format!(
+            "unsupported table string filter operator `{operator}`"
         ))),
     }
 }
@@ -325,10 +312,6 @@ fn parse_nulls(value: &str) -> Result<VizTableNulls, JsValue> {
         "last" | "" => Ok(VizTableNulls::Last),
         nulls => Err(js_error(format!("unsupported table null order `{nulls}`"))),
     }
-}
-
-fn default_numeric_column_type() -> VizTableColumnType {
-    VizTableColumnType::Number
 }
 
 fn into_js_error(error: impl std::fmt::Display) -> JsValue {

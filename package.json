@@ -40,6 +40,8 @@
     "bench:node": "bun run bench/run.ts --runtime bun",
     "bench:quick": "bun run bench/run.ts --runtime bun --quick",
     "bench:report": "bun run bench/report.ts",
+    "bench:table:supported": "bun run bench/run.ts --runtime bun --category table --workload table/query/numeric-filter --workload table/query/boolean-filter --workload table/query/numeric-sort --workload table/query/boolean-sort --workload table/query/combined-numeric",
+    "bench:table:summary": "bun bench/table-summary.ts",
     "bundle:size": "bun scripts/report-bundle-size.mjs",
     "check-types": "tsc --noEmit",
     "dev": "vite --host 0.0.0.0",

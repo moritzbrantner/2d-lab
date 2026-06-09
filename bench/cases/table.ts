@@ -21,6 +21,10 @@ const nullFilterQuery = {
   filters: [{ columnId: "nullableScore", operator: "isNull" }],
   rowLimit: 128,
 } satisfies VizTableQuery;
+const booleanFilterQuery = {
+  filters: [{ columnId: "active", operator: "equals", value: true }],
+  rowLimit: 128,
+} satisfies VizTableQuery;
 const searchQuery = {
   rowLimit: 128,
   search: { columnIds: ["name", "category", "region"], query: "ada" },
@@ -39,6 +43,16 @@ const multiSortQuery = {
     { columnId: "category", direction: "asc" },
     { columnId: "score", direction: "desc" },
   ],
+} satisfies VizTableQuery;
+const booleanSortQuery = {
+  rowLimit: 512,
+  sort: [{ columnId: "active", direction: "asc" }],
+} satisfies VizTableQuery;
+const combinedNumericQuery = {
+  filters: [{ columnId: "score", operator: "gte", value: 65 }],
+  rowLimit: 128,
+  rowOffset: 16,
+  sort: [{ columnId: "score", direction: "desc" }],
 } satisfies VizTableQuery;
 const combinedQuery = {
   filters: [{ columnId: "score", operator: "gte", value: 65 }],
@@ -101,10 +115,7 @@ export function createTableCases(config: BenchmarkConfig): BenchmarkCase[] {
       validate: () => {
         const index = new JsVizTableIndex(fixture.objectDataset);
         assert(index.getRowCount() === size, "object explicit table row count");
-        assert(
-          index.getSchema()[0]?.id === tableColumnDefinitions[0]!.id,
-          "explicit schema order",
-        );
+        assert(index.getSchema()[0]?.id === tableColumnDefinitions[0]!.id, "explicit schema order");
       },
       workload: "table/index/object-explicit",
     });
@@ -167,6 +178,16 @@ export function createTableCases(config: BenchmarkConfig): BenchmarkCase[] {
         workload: "table/query/null-filter",
       },
       {
+        query: booleanFilterQuery,
+        validate: (index) =>
+          validateFilteredCount(
+            index,
+            booleanFilterQuery,
+            fixture.rows.filter((row) => row.active).length,
+          ),
+        workload: "table/query/boolean-filter",
+      },
+      {
         query: searchQuery,
         validate: (index) => validateSearch(index, fixture.rows),
         workload: "table/query/global-search",
@@ -187,6 +208,17 @@ export function createTableCases(config: BenchmarkConfig): BenchmarkCase[] {
         workload: "table/query/multi-sort",
       },
       {
+        query: booleanSortQuery,
+        validate: (index) => validateBooleanSort(index),
+        workload: "table/query/boolean-sort",
+      },
+      {
+        query: combinedNumericQuery,
+        validate: (index) =>
+          validateCombinedNumeric(index, fixture.rows.filter((row) => row.score >= 65).length),
+        workload: "table/query/combined-numeric",
+      },
+      {
         query: combinedQuery,
         validate: (index) => validateCombined(index),
         workload: "table/query/combined",
@@ -203,6 +235,44 @@ export function createTableCases(config: BenchmarkConfig): BenchmarkCase[] {
         size: sizeLabel,
         sizeValue: size,
         validate: (prepared) => queryCase.validate(prepared as JsVizTableIndex),
+        workload: queryCase.workload,
+      });
+    }
+
+    for (const queryCase of [
+      { query: numericFilterQuery, workload: "table/query/numeric-filter" },
+      { query: booleanFilterQuery, workload: "table/query/boolean-filter" },
+      { query: stringFilterQuery, workload: "table/query/string-filter" },
+      { query: searchQuery, workload: "table/query/global-search" },
+      { query: numericSortQuery, workload: "table/query/numeric-sort" },
+      { query: booleanSortQuery, workload: "table/query/boolean-sort" },
+      { query: combinedNumericQuery, workload: "table/query/combined-numeric" },
+    ]) {
+      const usesStringWasm =
+        queryCase.workload === "table/query/string-filter" ||
+        queryCase.workload === "table/query/global-search";
+      cases.push({
+        category: "table",
+        id: createCaseId([...queryCase.workload.split("/"), sizeLabel, "wasm-experimental"]),
+        implementation: "viz-engine wasm experimental",
+        notes: usesStringWasm
+          ? [
+              "ASCII-only Rust string search/filter; non-ASCII and locale-sensitive behavior remain JS-owned.",
+            ]
+          : [
+              "Experimental table WASM row uses Rust numeric/boolean kernels and JS typed table materialization.",
+            ],
+        prepare: () => createTableIndex("wasm", fixture.columnarDataset),
+        run: (prepared) =>
+          (prepared as ReturnType<typeof createTableIndex>).getTypedTable(queryCase.query),
+        size: sizeLabel,
+        sizeValue: size,
+        validate: (prepared) =>
+          validateWasmParity(
+            new JsVizTableIndex(fixture.columnarDataset),
+            prepared as ReturnType<typeof createTableIndex>,
+            queryCase.query,
+          ),
         workload: queryCase.workload,
       });
     }
@@ -334,9 +404,7 @@ function validateFilteredCount(index: JsVizTableIndex, query: VizTableQuery, exp
 function validateSearch(index: JsVizTableIndex, rows: readonly TableFixtureRow[]) {
   const output = index.getTypedTable(searchQuery);
   const expected = rows.filter((row) =>
-    [row.name, row.category, row.region].some((value) =>
-      value.toLocaleLowerCase().includes("ada"),
-    ),
+    [row.name, row.category, row.region].some((value) => value.toLocaleLowerCase().includes("ada")),
   ).length;
   assert(output.summary.filteredRowCount === expected, "search filtered row count");
   assertPositive(output.summary.visibleRowCount, "search visible row count");
@@ -354,7 +422,10 @@ function validateStringSort(index: JsVizTableIndex) {
   const categories = output.rows.map((row) => String(row.cells[2]?.value ?? ""));
   assertAscending(categories, "category asc");
   assertStableWithinTies(
-    output.rows.map((row) => ({ key: String(row.cells[2]?.value ?? ""), sourceIndex: row.sourceIndex })),
+    output.rows.map((row) => ({
+      key: String(row.cells[2]?.value ?? ""),
+      sourceIndex: row.sourceIndex,
+    })),
     "category stable tie sort",
   );
 }
@@ -376,11 +447,54 @@ function validateMultiSort(index: JsVizTableIndex) {
   }
 }
 
+function validateBooleanSort(index: JsVizTableIndex) {
+  const output = index.getTypedTable(booleanSortQuery);
+  const activeColumn = output.typedColumns.find((column) => column.id === "active");
+  assert(activeColumn?.type === "boolean", "boolean sort active column");
+  const values = Array.from(activeColumn.values);
+  for (let index = 1; index < values.length; index++) {
+    assert(values[index - 1]! <= values[index]!, "active asc order");
+  }
+}
+
+function validateCombinedNumeric(index: JsVizTableIndex, expected: number) {
+  const output = index.getTypedTable(combinedNumericQuery);
+  const scoreColumn = output.typedColumns.find((column) => column.id === "score");
+  assert(output.summary.filteredRowCount === expected, "combined numeric filtered row count");
+  assert(
+    output.summary.visibleRowCount <= combinedNumericQuery.rowLimit,
+    "combined numeric row limit",
+  );
+  assert(scoreColumn?.type === "number", "combined numeric score column");
+  assertDescending(Array.from(scoreColumn.values), "combined numeric score desc");
+}
+
 function validateCombined(index: JsVizTableIndex) {
   const output = index.getTypedTable(combinedQuery);
   assertPositive(output.summary.filteredRowCount, "combined filtered row count");
   assert(output.summary.visibleRowCount <= combinedQuery.rowLimit, "combined row limit");
   validateTypedColumns(output);
+}
+
+function validateWasmParity(
+  jsIndex: JsVizTableIndex,
+  wasmIndex: ReturnType<typeof createTableIndex>,
+  query: VizTableQuery,
+) {
+  const expected = jsIndex.getTypedTable(query);
+  const actual = wasmIndex.getTypedTable(query);
+  assert(
+    JSON.stringify(typedTableSnapshot(actual)) === JSON.stringify(typedTableSnapshot(expected)),
+    "experimental wasm table parity",
+  );
+}
+
+function typedTableSnapshot(output: ReturnType<JsVizTableIndex["getTypedTable"]>) {
+  return {
+    rowIds: output.rowIds,
+    sourceIndex: Array.from(output.sourceIndex),
+    summary: output.summary,
+  };
 }
 
 function validateTypedColumns(output: ReturnType<JsVizTableIndex["getTypedTable"]>) {
