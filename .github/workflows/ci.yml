@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   fast-validation:
     name: Fast validation
@@ -20,7 +24,9 @@ jobs:
     uses: moritzbrantner/reusable-workflows/.github/workflows/fast-validation.yml@workflow-standard-v1.2
     with:
       bun_version: 1.3.14
+      bun_cache_dependency_path: bun.lock
       cache_cargo: true
+      cargo_cache_dependency_path: Cargo.lock
       format_command: bun run format:check
       typecheck_command: bun run check-types
       build_command: bun run build
@@ -34,8 +40,6 @@ jobs:
           cargo install wasm-pack --version 0.14.0 --locked
         fi
       timeout_minutes: 45
-    secrets:
-      GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
 
   package-validation:
     name: Package validation
@@ -45,7 +49,10 @@ jobs:
     uses: moritzbrantner/reusable-workflows/.github/workflows/integration-validation.yml@workflow-standard-v1.2
     with:
       bun_version: 1.3.14
+      bun_cache_dependency_path: bun.lock
       cache_cargo: true
+      cargo_cache_dependency_path: Cargo.lock
+      integration_command: bun run package:smoke
       package_check_command: bun pm pack --dry-run
       pre_command: |
         rustup toolchain install stable --profile minimal
@@ -54,8 +61,6 @@ jobs:
           cargo install wasm-pack --version 0.14.0 --locked
         fi
       timeout_minutes: 30
-    secrets:
-      GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
 
   charts-token:
     name: Detect charts token

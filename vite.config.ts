@@ -12,6 +12,14 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: "@moritzbrantner/viz-engine/core",
+        replacement: resolve(projectRoot, "src/core.ts"),
+      },
+      {
+        find: "@moritzbrantner/viz-engine/react",
+        replacement: resolve(projectRoot, "src/react.tsx"),
+      },
+      {
         find: "@moritzbrantner/viz-engine",
         replacement: resolve(projectRoot, "src/index.ts"),
       },

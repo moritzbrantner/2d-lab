@@ -76,7 +76,7 @@ import {
   type VizSeriesPoint,
   type VizValueMode,
   type VizViewport,
-} from "../../src";
+} from "@moritzbrantner/viz-engine/core";
 
 import "@moritzbrantner/ui/atlas/styles.css";
 import "@moritzbrantner/maps/styles.css";

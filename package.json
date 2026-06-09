@@ -8,6 +8,7 @@
   },
   "files": [
     "dist",
+    "docs",
     "README.md"
   ],
   "type": "module",
@@ -18,6 +19,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
     }
   },
   "publishConfig": {
@@ -31,16 +40,18 @@
     "bench:node": "bun run bench/run.ts --runtime bun",
     "bench:quick": "bun run bench/run.ts --runtime bun --quick",
     "bench:report": "bun run bench/report.ts",
+    "bundle:size": "bun scripts/report-bundle-size.mjs",
     "check-types": "tsc --noEmit",
     "dev": "vite --host 0.0.0.0",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
+    "package:smoke": "bun run build && bun scripts/package-smoke.mjs",
     "prepack": "bun run build",
-    "prepublishOnly": "bun run verify && bun pm pack --dry-run",
+    "prepublishOnly": "bun run verify",
     "test": "bun run build:wasm && vitest run",
     "test:rust": "cargo test --workspace",
     "test:wasm": "bun run test",
-    "verify": "bun run check-types && bun run test && bun run test:rust && bun run build"
+    "verify": "bun run check-types && bun run test && bun run test:rust && bun run package:smoke"
   },
   "dependencies": {
     "supercluster": "^8.0.1"
@@ -76,6 +87,11 @@
   },
   "peerDependencies": {
     "react": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   },
   "packageManager": "bun@1.3.14"
 }
