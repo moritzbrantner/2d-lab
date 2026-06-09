@@ -61,4 +61,28 @@ describe("getVizFrameTransferables", () => {
     expect(buffers.length).toBeGreaterThan(0);
     expect(new Set(buffers).size).toBe(buffers.length);
   });
+
+  test("returns typed table buffers without requiring string arrays to be transferable", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({
+      columns: [
+        { id: "name", values: ["Ada", "Ben"] },
+        { id: "score", type: "number", values: [10, 5] },
+        { id: "createdAt", type: "date", values: [1_704_067_200_000, null] },
+        { id: "active", type: "boolean", values: [true, false] },
+      ],
+      kind: "table",
+    });
+    engine.addLayer({ datasetId, kind: "table" });
+
+    const frame = engine.computeFrame({
+      frameFormat: "typed",
+      viewport: { kind: "table" },
+    });
+    const buffers = getVizFrameTransferables(frame);
+
+    expect(buffers.length).toBeGreaterThanOrEqual(7);
+    expect(new Set(buffers).size).toBe(buffers.length);
+    expect(buffers.every((buffer) => buffer instanceof ArrayBuffer)).toBe(true);
+  });
 });

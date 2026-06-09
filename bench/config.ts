@@ -32,6 +32,7 @@ export function createBenchmarkConfig(
     mode,
     runtime: options.runtime ?? "bun",
     settings: mode === "quick" ? quickBenchmarkSettings : defaultBenchmarkSettings,
+    tableSizes: mode === "quick" ? [1_000, 10_000] : [10_000, 100_000, 1_000_000],
     xySizes: mode === "quick" ? [1_000, 10_000] : [10_000, 100_000, 1_000_000],
   };
 }

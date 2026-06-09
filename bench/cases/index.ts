@@ -1,6 +1,7 @@
 import { createFinanceCases } from "./finance";
 import { createFrameCases } from "./frame";
 import { createGeoCases } from "./geo";
+import { createTableCases } from "./table";
 import { limitCasesForBrowser } from "./utils";
 import { createWasmStartupCases } from "./wasm-startup";
 import { createXyCases } from "./xy";
@@ -12,6 +13,7 @@ export function createBenchmarkCases(config: BenchmarkConfig): BenchmarkCase[] {
     ...createXyCases(config),
     ...createGeoCases(config),
     ...createFinanceCases(config),
+    ...createTableCases(config),
     ...createFrameCases(config),
     ...(config.runtime === "browser" ? [] : createWasmStartupCases(config)),
   ];

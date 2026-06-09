@@ -41,6 +41,9 @@ export function hitTestVizFrame<TProperties = Record<string, unknown>>(
   if (!frame || !options.viewport) {
     return null;
   }
+  if (options.viewport.kind === "table") {
+    return null;
+  }
 
   const layerIds = options.layerIds ? new Set(options.layerIds) : null;
   const layers = layerIds
@@ -499,7 +502,7 @@ function nearestRect<TProperties>(
   }
 
   const [minX, minY, maxX, maxY] = layer.bounds as VizRenderBounds;
-  if (!options.viewport || options.viewport.kind === "geo") {
+  if (!options.viewport || options.viewport.kind === "geo" || options.viewport.kind === "table") {
     return null;
   }
 

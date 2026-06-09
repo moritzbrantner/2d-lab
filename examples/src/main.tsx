@@ -86,7 +86,7 @@ type ExamplePointProperties = {
   cohort: "weekday" | "weekend";
 };
 
-type VisualizationSlug = "overview" | VizLayer["kind"];
+type VisualizationSlug = "overview" | Exclude<VizLayer["kind"], "table">;
 type PackageExampleSlug = "charts-package" | "maps-package";
 type ExampleSlug = VisualizationSlug | PackageExampleSlug;
 

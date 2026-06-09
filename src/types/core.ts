@@ -5,6 +5,7 @@ export type VizBackendOption = "auto" | "js" | "wasm";
 export type VizBackendConfig = {
   finance?: VizBackendOption;
   geo?: VizBackendOption;
+  table?: VizBackendOption;
   xy?: VizBackendOption;
 };
 export type VizResolvedBackend = "js" | "mixed" | "wasm";

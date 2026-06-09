@@ -2,6 +2,7 @@ import { createVizEngine } from "../../src/create-viz-engine";
 import { JsVizDensityIndex } from "../../src/backend/js-density-index";
 import { JsVizFinanceIndex } from "../../src/backend/js-finance-index";
 import { JsVizGeoPointIndex } from "../../src/backend/js-geo-index";
+import { JsVizTableIndex } from "../../src/backend/js-table-index";
 import { RustWasmVizDensityIndex } from "../../src/backend/rust-wasm-density-index";
 import { WasmVizFinanceIndex } from "../../src/backend/wasm-finance-index";
 import { WasmVizGeoPointIndex } from "../../src/backend/wasm-geo-index";
@@ -14,6 +15,7 @@ import type {
   VizGeoPoint,
   VizLayer,
   VizSeriesPoint,
+  VizTableDataset,
 } from "../../src/types";
 
 export {
@@ -21,6 +23,7 @@ export {
   JsVizDensityIndex,
   JsVizFinanceIndex,
   JsVizGeoPointIndex,
+  JsVizTableIndex,
   RustWasmVizDensityIndex,
   WasmVizFinanceIndex,
   WasmVizGeoPointIndex,
@@ -45,6 +48,14 @@ export function createFinanceIndex(implementation: "js" | "wasm", dataset: VizFi
   return implementation === "js"
     ? new JsVizFinanceIndex(dataset)
     : new WasmVizFinanceIndex(dataset);
+}
+
+export function createTableIndex(implementation: "js", dataset: VizTableDataset) {
+  if (implementation !== "js") {
+    throw new Error(`Unsupported table benchmark implementation: ${implementation}`);
+  }
+
+  return new JsVizTableIndex(dataset);
 }
 
 export function createPreparedFrame(options: {

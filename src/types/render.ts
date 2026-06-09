@@ -54,6 +54,14 @@ import type {
   VizTypedGeoPoints,
   VizTypedGeoScalarField,
 } from "./geo";
+import type {
+  VizTableDataset,
+  VizTableIndex,
+  VizTableQuery,
+  VizTableResult,
+  VizTableViewport,
+  VizTypedTable,
+} from "./table";
 
 export type VizDataset<TProperties = Record<string, unknown>> =
   | VizXyDataset<TProperties>
@@ -69,7 +77,8 @@ export type VizDataset<TProperties = Record<string, unknown>> =
       flows: readonly VizGeoFlow<TProperties>[];
       kind: "geo-flows";
     }
-  | VizFinanceDataset<TProperties>;
+  | VizFinanceDataset<TProperties>
+  | VizTableDataset<TProperties>;
 
 export type VizLayer =
   | {
@@ -167,6 +176,11 @@ export type VizLayer =
       priceMode?: "adjusted" | "raw";
       targetPointCount?: number;
       xDomain: [number, number];
+    }
+  | {
+      datasetId: VizDatasetId;
+      kind: "table";
+      query?: VizTableQuery;
     };
 
 export type VizCartesianViewport = {
@@ -186,7 +200,7 @@ export type VizGeoViewport = {
   zoom: number;
 };
 
-export type VizViewport = VizCartesianViewport | VizGeoViewport;
+export type VizViewport = VizCartesianViewport | VizGeoViewport | VizTableViewport;
 
 export type VizFrameFormat = "objects" | "typed";
 
@@ -345,6 +359,12 @@ export type VizRenderLayer<TProperties = Record<string, unknown>> =
       layerId: VizLayerId;
       /** @deprecated Use typedFinanceLine/typedReturns in typed frames, or hydrate only for debugging. */
       rows: Array<VizRenderDatum<TProperties>>;
+    }
+  | {
+      datasetId: VizDatasetId;
+      kind: "table";
+      layerId: VizLayerId;
+      table: VizTableResult;
     };
 
 export type VizTypedCartesianRenderLayer =
@@ -467,11 +487,19 @@ export type VizTypedGeoRenderLayer =
       typedGeoFlows: VizTypedGeoFlows;
     };
 
+export type VizTypedTableRenderLayer = {
+  datasetId: VizDatasetId;
+  kind: "table";
+  layerId: VizLayerId;
+  typedTable: VizTypedTable;
+};
+
 export type VizAnyRenderLayer<TProperties = Record<string, unknown>> =
   | VizRenderLayer<TProperties>
   | VizTypedCartesianRenderLayer
   | VizTypedFinanceRenderLayer
-  | VizTypedGeoRenderLayer;
+  | VizTypedGeoRenderLayer
+  | VizTypedTableRenderLayer;
 
 export type VizFrameDiagnostic = {
   code: string;
@@ -511,6 +539,7 @@ export type VizTypedRenderFrame<TProperties = Record<string, unknown>> = Omit<
     | VizTypedCartesianRenderLayer
     | VizTypedFinanceRenderLayer
     | VizTypedGeoRenderLayer
+    | VizTypedTableRenderLayer
   >;
 };
 
@@ -621,6 +650,10 @@ export type VizDatasetIndex<TProperties = Record<string, unknown>> =
   | {
       index: VizFinanceIndex<TProperties>;
       kind: "finance-ohlcv";
+    }
+  | {
+      index: VizTableIndex;
+      kind: "table";
     };
 
 export type VizEngineDatasetRecord<TProperties = Record<string, unknown>> = {

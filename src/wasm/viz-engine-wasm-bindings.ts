@@ -7,6 +7,7 @@ export {
   GeoPointIndex,
   ScalarFieldIndex,
   VizEngineWasmDensityIndex,
+  VizEngineWasmTableIndex,
   initVizEngineWasm,
   // @ts-ignore
 } from "./pkg/moritzbrantner_viz_engine_wasm_embedded";

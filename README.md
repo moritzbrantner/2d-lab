@@ -1,7 +1,7 @@
 # @moritzbrantner/viz-engine
 
 Experimental renderer-agnostic visualization engine backed by JavaScript
-fallbacks and Rust/WASM kernels for XY, geo, and finance data.
+fallbacks and Rust/WASM kernels for XY, geo, finance, and table data.
 
 `createVizEngine` lets multiple chart layers share datasets and indexes, then
 returns a render frame that SVG, Canvas, WebGL, React components, workers, or
@@ -46,6 +46,7 @@ const hydratedFrame = engine.hydrateFrame(typedFrame);
 
 - [Getting started](docs/getting-started.md)
 - [Frame formats](docs/frame-formats.md)
+- [Table data](docs/table-data.md)
 - [Backends and WASM](docs/backends.md)
 - [Focused examples](docs/examples.md)
 - [React bindings](docs/react.md)
@@ -70,7 +71,7 @@ moritzbrantner-viz-engine-wasm: local browser binding for XY computation
 finance-data: reusable Rust financial market-data core in rust-packages
 finance-statistics: reusable Rust return/risk/statistics crate in rust-packages
 @moritzbrantner/viz-engine: TypeScript runtime wrapper
-charts/maps/future packages: visuals
+charts/maps/tables/future packages: visuals
 ```
 
 The rule is:
@@ -78,7 +79,7 @@ The rule is:
 ```txt
 Rust crates own computation.
 TypeScript owns integration.
-charts/maps/future packages own visuals.
+charts/maps/tables/future packages own visuals.
 ```
 
 ## Development

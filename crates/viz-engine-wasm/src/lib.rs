@@ -3,6 +3,7 @@ use wasm_bindgen::prelude::*;
 
 mod finance;
 mod geo;
+mod table;
 
 use js_sys::{Array, Float64Array, Int32Array, Object, Reflect, Uint32Array};
 use viz_engine_core::{

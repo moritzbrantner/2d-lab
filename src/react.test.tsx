@@ -253,6 +253,18 @@ describe("React viz engine bindings", () => {
     expect(engine.computeFrame).toHaveBeenCalledWith({ frameFormat: "typed", viewport });
   });
 
+  test("computes typed frames with a table viewport", () => {
+    const engine = createFakeEngine();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <VizEngineProvider engine={engine}>{children}</VizEngineProvider>
+    );
+    const viewport = { kind: "table" as const, rowLimit: 25, rowOffset: 10 };
+
+    renderHook(() => useVizTypedFrame({ dependencies: ["dataset-1"], viewport }), { wrapper });
+
+    expect(engine.computeFrame).toHaveBeenCalledWith({ frameFormat: "typed", viewport });
+  });
+
   test("supports the thin lifecycle integration with a real engine", async () => {
     const wrapper = ({ children }: { children: ReactNode }) => (
       <VizEngineProvider backend="js">{children}</VizEngineProvider>

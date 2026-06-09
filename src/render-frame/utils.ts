@@ -15,6 +15,8 @@ import type {
   VizRenderBounds,
   VizRenderDatum,
   VizRollingSeries,
+  VizTableIndex,
+  VizTableViewport,
   VizValueMode,
 } from "../types";
 
@@ -196,12 +198,26 @@ export function getFinanceIndex<TProperties>(
   return null;
 }
 
+export function getTableIndex<TProperties>(
+  layerId: VizLayerId,
+  layerKind: VizLayer["kind"],
+  datasetRecord: VizEngineDatasetRecord<TProperties>,
+  diagnostics: VizFrameDiagnostic[],
+): VizTableIndex | null {
+  if (datasetRecord.index.kind === "table") {
+    return datasetRecord.index.index;
+  }
+
+  pushIncompatibleLayerDiagnostic(layerId, layerKind, datasetRecord.dataset.kind, diagnostics);
+  return null;
+}
+
 export function isCartesianViewport(
   viewport: VizComputeFrameOptions["viewport"],
   layerId: VizLayerId,
   diagnostics: VizFrameDiagnostic[],
 ): viewport is VizCartesianViewport {
-  if (viewport.kind === "geo") {
+  if (viewport.kind === "geo" || viewport.kind === "table") {
     diagnostics.push({
       code: "incompatible-viewport",
       layerId,
@@ -227,6 +243,24 @@ export function getGeoViewport(
     code: "incompatible-viewport",
     layerId,
     message: `Layer ${layerId} needs a geo viewport.`,
+    severity: "warning",
+  });
+  return null;
+}
+
+export function getTableViewport(
+  viewport: VizComputeFrameOptions["viewport"],
+  layerId: VizLayerId,
+  diagnostics: VizFrameDiagnostic[],
+): VizTableViewport | null {
+  if (viewport.kind === "table") {
+    return viewport;
+  }
+
+  diagnostics.push({
+    code: "incompatible-viewport",
+    layerId,
+    message: `Layer ${layerId} needs a table viewport.`,
     severity: "warning",
   });
   return null;

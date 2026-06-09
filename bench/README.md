@@ -11,6 +11,7 @@ It compares the engine against libraries that perform similar data work, not ful
 - Object and typed-array `computeFrame` frame formats
 - Geo viewport clustering and heat feature generation
 - Finance OHLCV downsampling and return series
+- Table index construction, filtering, searching, sorting, windowing, and table `computeFrame` materialization
 - Rust/WASM density index construction, first query, and warm query costs
 
 ## What Is Not Measured
@@ -62,6 +63,7 @@ Relative values use `viz-engine js` as the baseline when it exists for a workloa
 - `supercluster` is a geospatial clustering baseline. It uses a different KD-tree/tile clustering strategy than the current `viz-engine` grid clustering.
 - `downsample` is a visual close-price downsampler. It does not preserve OHLC semantics, so the suite also includes a local OHLC aggregation baseline.
 - Geo and finance WASM cases use `@mb-rust/geo-viz-wasm` and `@mb-rust/finance-data-wasm`; JS rows remain as fallback and parity baselines.
+- Table benchmarks initially compare JS table paths only. WASM table rows will appear only after Rust kernels land, and partial numeric/boolean coverage should be called out in implementation names and notes.
 - Build the finance and geo WASM npm packages sequentially before browser benchmarking. Running two `wasm-pack` builds at once can race in `wasm-opt` output files.
 - WASM startup cases run in one process, so module import is not isolated for every iteration. The suite separates construction, first-query, and warm-query costs.
 - Typed frame cases measure the typed-array render path. They are the preferred signal for high-frequency WASM-backed cartesian rendering because they avoid object hydration.
@@ -74,5 +76,6 @@ Fixtures are synthetic and deterministic:
 - XY data combines trend, seasonality, noise, spikes, metrics, and controlled x-disorder.
 - Geo data mixes clustered city points, outliers, metrics, and antimeridian viewport coverage.
 - Finance data is a valid OHLCV random walk with adjusted close values and market-regime properties.
+- Table data includes stable row IDs, skewed categories and regions, repeated strings, nullable numeric values, booleans, JSON metadata, and mixed numeric distributions.
 
 The seed is defined in `bench/config.ts`.

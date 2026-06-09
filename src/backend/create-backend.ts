@@ -3,6 +3,7 @@ import { JsVizFinanceIndex } from "./js-finance-index";
 import { JsVizGeoFlowIndex } from "./js-geo-flow-index";
 import { JsVizGeoPointIndex } from "./js-geo-index";
 import { JsVizGeoJsonIndex } from "./js-geojson-index";
+import { JsVizTableIndex } from "./js-table-index";
 import { ProgressiveVizDensityIndex } from "./progressive-density-index";
 import { RustWasmVizDensityIndex } from "./rust-wasm-density-index";
 import { WasmVizFinanceIndex } from "./wasm-finance-index";
@@ -81,6 +82,11 @@ function createDatasetIndex<TProperties>(
               : new ProgressiveVizDensityIndex(dataset),
         kind: "xy",
       };
+    case "table":
+      return {
+        index: new JsVizTableIndex(dataset),
+        kind: "table",
+      };
   }
 }
 
@@ -91,6 +97,7 @@ function normalizeBackendConfig(
     return {
       finance: option,
       geo: option,
+      table: option,
       xy: option,
     };
   }
@@ -98,6 +105,7 @@ function normalizeBackendConfig(
   return {
     finance: option.finance ?? option.xy ?? "auto",
     geo: option.geo ?? option.xy ?? "auto",
+    table: option.table ?? option.xy ?? "auto",
     xy: option.xy ?? "auto",
   };
 }

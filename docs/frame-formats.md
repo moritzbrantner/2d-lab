@@ -32,6 +32,10 @@ Finance typed layers expose:
 - `typedFinanceLine`
 - `typedReturns`
 
+Table typed layers expose:
+
+- `typedTable`
+
 GeoJSON remains object-shaped because arbitrary geometry and properties are
 best consumed as GeoJSON.
 

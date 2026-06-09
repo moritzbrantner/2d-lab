@@ -2,6 +2,7 @@ import { resolveFrameBackend, resolveFrameBackendImplementation } from "./js-bac
 import { computeCartesianRenderLayer } from "./render-frame/cartesian";
 import { computeFinanceRenderLayer } from "./render-frame/finance";
 import { computeGeoRenderLayer } from "./render-frame/geo";
+import { computeTableRenderLayer, resolveTableQuery } from "./render-frame/table";
 import { now, resolveFrameFormat } from "./render-frame/utils";
 
 export { createVizRenderRows } from "./render-frame/utils";
@@ -145,6 +146,8 @@ function computeVizRenderLayer<TProperties>(
     case "finance-line":
     case "finance-returns":
       return computeFinanceRenderLayer(layerId, layer, datasetRecord, options, diagnostics);
+    case "table":
+      return computeTableRenderLayer(layerId, layer, datasetRecord, options, diagnostics);
   }
 }
 
@@ -162,7 +165,7 @@ function getRenderLayerCacheKey(
 
   switch (layer.kind) {
     case "binned-series":
-      if (options.viewport.kind === "geo") {
+      if (options.viewport.kind === "geo" || options.viewport.kind === "table") {
         return null;
       }
       return stableCacheKey({
@@ -173,7 +176,7 @@ function getRenderLayerCacheKey(
         xDomain: layer.xDomain ?? options.viewport.xDomain,
       });
     case "histogram":
-      if (options.viewport.kind === "geo") {
+      if (options.viewport.kind === "geo" || options.viewport.kind === "table") {
         return null;
       }
       return stableCacheKey({
@@ -183,7 +186,7 @@ function getRenderLayerCacheKey(
         xDomain: layer.xDomain ?? options.viewport.xDomain,
       });
     case "heatmap":
-      if (options.viewport.kind === "geo") {
+      if (options.viewport.kind === "geo" || options.viewport.kind === "table") {
         return null;
       }
       return stableCacheKey({
@@ -195,7 +198,7 @@ function getRenderLayerCacheKey(
         yDomain: layer.yDomain,
       });
     case "rolling-series":
-      if (options.viewport.kind === "geo") {
+      if (options.viewport.kind === "geo" || options.viewport.kind === "table") {
         return null;
       }
       return stableCacheKey({
@@ -280,7 +283,7 @@ function getRenderLayerCacheKey(
         zoom: options.viewport.zoom,
       });
     case "finance-candles":
-      if (options.viewport.kind === "geo") {
+      if (options.viewport.kind === "geo" || options.viewport.kind === "table") {
         return null;
       }
       return stableCacheKey({
@@ -290,7 +293,7 @@ function getRenderLayerCacheKey(
         xDomain: layer.xDomain,
       });
     case "finance-line":
-      if (options.viewport.kind === "geo") {
+      if (options.viewport.kind === "geo" || options.viewport.kind === "table") {
         return null;
       }
       return stableCacheKey({
@@ -300,7 +303,7 @@ function getRenderLayerCacheKey(
         xDomain: layer.xDomain,
       });
     case "finance-returns":
-      if (options.viewport.kind === "geo") {
+      if (options.viewport.kind === "geo" || options.viewport.kind === "table") {
         return null;
       }
       return stableCacheKey({
@@ -309,6 +312,14 @@ function getRenderLayerCacheKey(
         priceMode: layer.priceMode ?? "raw",
         targetPointCount: layer.targetPointCount,
         xDomain: layer.xDomain,
+      });
+    case "table":
+      if (options.viewport.kind !== "table") {
+        return null;
+      }
+      return stableCacheKey({
+        ...base,
+        query: resolveTableQuery(layer.query, options.viewport),
       });
   }
 }

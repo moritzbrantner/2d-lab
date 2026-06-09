@@ -45,6 +45,36 @@ const frame = engine.computeFrame({
 The returned frame is renderer-facing data. The engine does not draw SVG,
 Canvas, WebGL, or DOM nodes for you.
 
+## Compute A Table Frame
+
+Tables use the same dataset/layer/frame flow, but with a table viewport. The
+engine prepares renderer-neutral rows and columns; a tables package owns DOM
+rendering and virtualization.
+
+```ts
+const datasetId = engine.addDataset({
+  kind: "table",
+  rows: [
+    { id: "a", name: "Ada", score: 10 },
+    { id: "b", name: "Ben", score: 5 },
+  ],
+  rowIdKey: "id",
+});
+
+engine.addLayer({
+  datasetId,
+  kind: "table",
+  query: {
+    rowLimit: 50,
+    sort: [{ columnId: "score", direction: "desc" }],
+  },
+});
+
+const frame = engine.computeFrame({
+  viewport: { kind: "table", rowOffset: 0, rowLimit: 50 },
+});
+```
+
 ## Update Existing State
 
 Use stable ids when the renderer lifecycle should keep the same dataset or
@@ -73,5 +103,6 @@ console.log(frame.stats.renderedLayerCount, frame.stats.cacheHitCount);
 ## Next Steps
 
 - Use [frame formats](frame-formats.md) to choose typed or object frames.
+- Use [table data](table-data.md) for table datasets, filters, sorting, and row windows.
 - Use [backends](backends.md) to understand JS, WASM, and auto selection.
 - Use [worker handoff](worker-handoff.md) for off-main-thread frame computation.

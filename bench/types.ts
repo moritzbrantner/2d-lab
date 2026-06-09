@@ -1,4 +1,4 @@
-export type BenchmarkCategory = "finance" | "frame" | "geo" | "startup" | "xy";
+export type BenchmarkCategory = "finance" | "frame" | "geo" | "startup" | "table" | "xy";
 
 export type BenchmarkRuntime = "browser" | "bun";
 
@@ -32,6 +32,7 @@ export type BenchmarkConfig = {
   mode: BenchmarkMode;
   runtime: BenchmarkRuntime;
   settings: BenchmarkSettings;
+  tableSizes: number[];
   xySizes: number[];
 };
 

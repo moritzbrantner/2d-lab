@@ -22,11 +22,14 @@ import type {
   VizRenderDatum,
   VizRenderFrame,
   VizRenderLayer,
+  VizTableCellValue,
+  VizTableResult,
   VizTypedGeoClusters,
   VizTypedGeoFlows,
   VizTypedGeoHeat,
   VizTypedGeoPoints,
   VizTypedGeoScalarField,
+  VizTypedTable,
 } from "./types";
 
 export function hydrateVizRenderFrame<TProperties = Record<string, unknown>>(
@@ -44,6 +47,7 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
   layer: VizAnyRenderLayer<TProperties>,
 ): VizRenderLayer<TProperties> | null {
   const record = layer as Record<string, unknown>;
+  const bounds = "bounds" in layer ? layer.bounds : null;
 
   if ("typedSeries" in record || "compactSeries" in record) {
     const typedLayer = layer as {
@@ -55,7 +59,7 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
       typedLayer.typedSeries ?? typedLayer.compactSeries,
     );
     return {
-      bounds: layer.bounds,
+      bounds,
       datasetId: layer.datasetId,
       kind: "binned-series",
       layerId: layer.layerId,
@@ -73,7 +77,7 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
       typedLayer.typedHistogram ?? typedLayer.compactHistogram,
     );
     return {
-      bounds: layer.bounds,
+      bounds,
       buckets: histogram.buckets,
       datasetId: layer.datasetId,
       kind: "histogram",
@@ -90,7 +94,7 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
       typedLayer.typedHeatmap ?? typedLayer.compactHeatmap,
     );
     return {
-      bounds: layer.bounds,
+      bounds,
       cells: heatmap.cells,
       datasetId: layer.datasetId,
       kind: "heatmap",
@@ -108,7 +112,7 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
       typedLayer.typedRollingSeries ?? typedLayer.compactRollingSeries,
     );
     return {
-      bounds: layer.bounds,
+      bounds,
       datasetId: layer.datasetId,
       kind: "rolling-series",
       layerId: layer.layerId,
@@ -128,7 +132,7 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
     };
     return {
       bars: ohlcvBarsFromTyped<TProperties>(typedLayer.typedCandles),
-      bounds: layer.bounds,
+      bounds,
       datasetId: layer.datasetId,
       instrument: typedLayer.instrument,
       kind: "finance-candles",
@@ -139,7 +143,7 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
   if ("typedFinanceLine" in record) {
     const typedLayer = layer as Extract<VizAnyRenderLayer<TProperties>, { kind: "finance-line" }>;
     return {
-      bounds: layer.bounds,
+      bounds,
       datasetId: layer.datasetId,
       kind: "finance-line",
       layerId: layer.layerId,
@@ -153,7 +157,7 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
       { kind: "finance-returns" }
     >;
     return {
-      bounds: layer.bounds,
+      bounds,
       datasetId: layer.datasetId,
       kind: "finance-returns",
       layerId: layer.layerId,
@@ -167,7 +171,7 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
 
     return {
       aggregation,
-      bounds: layer.bounds,
+      bounds,
       datasetId: layer.datasetId,
       features: aggregation.features,
       kind: "geo-clusters",
@@ -179,7 +183,7 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
     const typedLayer = layer as { typedGeoPoints: VizTypedGeoPoints };
 
     return {
-      bounds: layer.bounds,
+      bounds,
       datasetId: layer.datasetId,
       features: geoPointsFromTyped<TProperties>(typedLayer.typedGeoPoints),
       kind: "geo-points",
@@ -191,7 +195,7 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
     const typedLayer = layer as { maxWeight: number; typedGeoHeat: VizTypedGeoHeat };
 
     return {
-      bounds: layer.bounds,
+      bounds,
       datasetId: layer.datasetId,
       features: geoHeatFromTyped<TProperties>(typedLayer.typedGeoHeat),
       kind: "geo-heat",
@@ -204,7 +208,7 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
     const typedLayer = layer as { typedGeoScalarField: VizTypedGeoScalarField };
 
     return {
-      bounds: layer.bounds,
+      bounds,
       datasetId: layer.datasetId,
       grid: geoScalarFieldFromTyped(typedLayer.typedGeoScalarField),
       kind: "geo-scalar-field",
@@ -218,7 +222,7 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
 
     return {
       aggregation,
-      bounds: layer.bounds,
+      bounds,
       datasetId: layer.datasetId,
       features: aggregation.features,
       kind: "geo-flows",
@@ -226,7 +230,75 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
     };
   }
 
+  if ("typedTable" in record) {
+    const typedLayer = layer as { typedTable: VizTypedTable };
+
+    return {
+      datasetId: layer.datasetId,
+      kind: "table",
+      layerId: layer.layerId,
+      table: tableFromTyped(typedLayer.typedTable),
+    };
+  }
+
   return layer as VizRenderLayer<TProperties>;
+}
+
+function tableFromTyped(table: VizTypedTable): VizTableResult {
+  return {
+    columns: table.columns,
+    rows: Array.from({ length: table.sourceIndex.length }, (_, rowIndex) => ({
+      cells: table.typedColumns.map((column) => ({
+        columnId: column.id,
+        value: column.validity[rowIndex] === 0 ? null : tableCellValueAt(column, rowIndex),
+      })),
+      rowId: table.rowIds[rowIndex] ?? String(table.sourceIndex[rowIndex] ?? rowIndex),
+      sourceIndex: table.sourceIndex[rowIndex] ?? rowIndex,
+    })),
+    summary: table.summary,
+  };
+}
+
+function tableCellValueAt(
+  column: VizTypedTable["typedColumns"][number],
+  rowIndex: number,
+): VizTableCellValue | null {
+  switch (column.type) {
+    case "boolean":
+      return column.values[rowIndex] === 1;
+    case "date":
+    case "number":
+      return finiteOrNull(column.values[rowIndex]);
+    case "json":
+    case "string":
+    case "unknown":
+      return hydrateTableCellValue(column.values[rowIndex]);
+  }
+}
+
+function hydrateTableCellValue(value: unknown): VizTableCellValue | null {
+  if (value == null) {
+    return null;
+  }
+
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    Array.isArray(value)
+  ) {
+    return value;
+  }
+
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+
+  if (typeof value === "object") {
+    return value as Record<string, unknown>;
+  }
+
+  return String(value);
 }
 
 function densitySeriesFromTyped<TProperties>(series: VizCompactDensitySeries): {

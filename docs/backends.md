@@ -25,6 +25,7 @@ createVizEngine({
     xy: "auto",
     geo: "wasm",
     finance: "wasm",
+    table: "js",
   },
 });
 ```
@@ -36,6 +37,10 @@ createVizEngine({
 - `auto` keeps JavaScript available while using WASM where the package can.
 
 Explicit per-domain settings win over the global backend option.
+
+Table indexes are JavaScript-only in the first table support release. Passing
+`backend: "wasm"` still creates a JS table index, and mixed frames report
+`backend: "mixed"` when table layers are computed beside WASM-backed layers.
 
 ## Current Bundle Shape
 

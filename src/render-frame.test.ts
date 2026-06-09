@@ -147,8 +147,8 @@ describe("computeVizRenderFrame", () => {
       diagnostics: [],
       layerCount: 4,
     });
-    expect(compactFrame.layers.map((layer) => layer.bounds)).toEqual(
-      objectFrame.layers.map((layer) => layer.bounds),
+    expect(compactFrame.layers.map((layer) => ("bounds" in layer ? layer.bounds : null))).toEqual(
+      objectFrame.layers.map((layer) => ("bounds" in layer ? layer.bounds : null)),
     );
     expect(compactFrame.layers[0]).toMatchObject({
       kind: "binned-series",
@@ -401,7 +401,7 @@ describe("computeVizRenderFrame", () => {
       createIndex: () => {
         throw new Error("not used");
       },
-      option: { finance: "js", geo: "js", xy: "js" } as const,
+      option: { finance: "js", geo: "js", table: "js", xy: "js" } as const,
       resolveBackend: () => "js" as const,
     };
     const cache = new Map();
@@ -593,7 +593,9 @@ describe("computeVizRenderFrame", () => {
     expect(frame.layers[5]?.kind === "geo-flows" ? frame.layers[5].features : []).toMatchObject([
       { flow: { id: "flow-a" }, rawWeight: 2, value: 1 },
     ]);
-    expect(frame.layers[5]?.bounds).toEqual([13, 52, 14, 53]);
+    expect(frame.layers[5] && "bounds" in frame.layers[5] ? frame.layers[5].bounds : null).toEqual([
+      13, 52, 14, 53,
+    ]);
   });
 
   test("hydrates typed geo frame payloads back to object layers", () => {
@@ -700,5 +702,307 @@ describe("computeVizRenderFrame", () => {
       layerCount: 2,
     });
     expect(frame.stats.diagnostics[0]).toMatchObject({ code: "incompatible-viewport" });
+  });
+
+  test("computes typed table frames by default", () => {
+    const engine = createVizEngine({ backend: "wasm" });
+    const datasetId = engine.addDataset({
+      kind: "table",
+      rows: [
+        { id: "a", name: "Ada", score: 10 },
+        { id: "b", name: "Ben", score: 5 },
+      ],
+      rowIdKey: "id",
+    });
+
+    engine.addLayer({
+      datasetId,
+      kind: "table",
+      query: { sort: [{ columnId: "score", direction: "desc" }] },
+    });
+
+    const frame = engine.computeFrame({
+      viewport: { kind: "table", rowLimit: 1, rowOffset: 0 },
+    });
+    const layer = frame.layers[0];
+
+    expect(frame.stats).toMatchObject({
+      backend: "js",
+      backendImplementation: "js",
+      diagnostics: [],
+    });
+    expect(layer?.kind).toBe("table");
+    expect(layer?.kind === "table" && "typedTable" in layer ? layer.typedTable.rowIds : []).toEqual(
+      ["a"],
+    );
+    expect(
+      layer?.kind === "table" && "typedTable" in layer
+        ? layer.typedTable.summary.visibleRowCount
+        : 0,
+    ).toBe(1);
+  });
+
+  test("computes typed table frames with combined query filters, search, sort, and window", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({
+      kind: "table",
+      rows: [
+        { id: "a", name: "Ada", role: "analyst", score: 10 },
+        { id: "b", name: "Ben", role: "analyst", score: 5 },
+        { id: "c", name: "Cam", role: "engineer", score: 8 },
+        { id: "d", name: "Dee", role: "analyst", score: 7 },
+      ],
+      rowIdKey: "id",
+    });
+
+    engine.addLayer({
+      datasetId,
+      kind: "table",
+      query: {
+        filters: [{ columnId: "score", operator: "gte", value: 6 }],
+        search: { columnIds: ["role"], query: "analyst" },
+        sort: [{ columnId: "score", direction: "desc" }],
+      },
+    });
+
+    const frame = engine.computeFrame({
+      frameFormat: "typed",
+      viewport: { kind: "table", rowLimit: 2, rowOffset: 0 },
+    });
+    const layer = frame.layers[0];
+
+    expect(frame.stats.diagnostics).toEqual([]);
+    expect(layer?.kind === "table" && "typedTable" in layer ? layer.typedTable.rowIds : []).toEqual(
+      ["a", "d"],
+    );
+    expect(
+      layer?.kind === "table" && "typedTable" in layer
+        ? layer.typedTable.typedColumns.find((column) => column.id === "score")?.type
+        : null,
+    ).toBe("number");
+  });
+
+  test("computes object table frames", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({
+      kind: "table",
+      rows: [
+        { id: "a", name: "Ada", score: 10 },
+        { id: "b", name: "Ben", score: 5 },
+      ],
+      rowIdKey: "id",
+    });
+    engine.addLayer({
+      datasetId,
+      kind: "table",
+      query: {
+        filters: [{ columnId: "score", operator: "gte", value: 6 }],
+        rowLimit: 10,
+      },
+    });
+
+    const frame = engine.computeFrame({
+      frameFormat: "objects",
+      viewport: { kind: "table", rowLimit: 1, rowOffset: 0 },
+    });
+    const layer = frame.layers[0];
+
+    expect(layer?.kind === "table" ? layer.table.rows.map((row) => row.rowId) : []).toEqual(["a"]);
+    expect(layer?.kind === "table" ? layer.table.summary.filteredRowCount : 0).toBe(1);
+    expect(layer?.kind === "table" ? layer.table.rows[0]?.cells.map((cell) => cell.value) : [])
+      .toEqual(["a", "Ada", 10]);
+  });
+
+  test("reuses same-window table frames and misses cache for shifting windows", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({
+      kind: "table",
+      rows: [
+        { id: "a", score: 30 },
+        { id: "b", score: 20 },
+        { id: "c", score: 10 },
+      ],
+      rowIdKey: "id",
+    });
+    engine.addLayer({
+      datasetId,
+      kind: "table",
+      query: { sort: [{ columnId: "score", direction: "desc" }] },
+    });
+
+    const first = engine.computeFrame({ viewport: { kind: "table", rowLimit: 1, rowOffset: 0 } });
+    const sameWindow = engine.computeFrame({
+      viewport: { kind: "table", rowLimit: 1, rowOffset: 0 },
+    });
+    const shiftingWindow = engine.computeFrame({
+      viewport: { kind: "table", rowLimit: 1, rowOffset: 1 },
+    });
+
+    expect(sameWindow.stats.cacheHitCount).toBe(1);
+    expect(sameWindow.layers[0]).toBe(first.layers[0]);
+    expect(shiftingWindow.stats.cacheHitCount).toBe(0);
+    expect(
+      shiftingWindow.layers[0]?.kind === "table" && "typedTable" in shiftingWindow.layers[0]
+        ? shiftingWindow.layers[0].typedTable.rowIds
+        : [],
+    ).toEqual(["b"]);
+  });
+
+  test("reports table layer diagnostics for incompatible datasets, viewports, and filters", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const xyDatasetId = engine.addDataset({ kind: "xy", points });
+    const tableDatasetId = engine.addDataset({
+      kind: "table",
+      rows: [{ name: "Ada", score: 10 }],
+    });
+
+    engine.addLayer({ datasetId: xyDatasetId, kind: "table" });
+    engine.addLayer({ datasetId: tableDatasetId, kind: "table" });
+    engine.addLayer({
+      datasetId: tableDatasetId,
+      kind: "table",
+      query: { filters: [{ columnId: "name", operator: "gt", value: 1 }] },
+    });
+
+    const cartesianFrame = engine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [0, 40] },
+    });
+    expect(cartesianFrame.stats.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
+      "incompatible-viewport",
+    );
+
+    const tableFrame = engine.computeFrame({
+      frameFormat: "objects",
+      viewport: { kind: "table" },
+    });
+    expect(tableFrame.stats.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
+      "incompatible-layer-dataset",
+      "incompatible-table-filter",
+    ]);
+    expect(tableFrame.layers[1]?.kind === "table" ? tableFrame.layers[1].table.rows : []).toEqual(
+      [],
+    );
+  });
+
+  test("keeps invalid table filter diagnostics stable", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({
+      kind: "table",
+      rows: [{ name: "Ada", score: 10 }],
+    });
+    engine.addLayer({
+      datasetId,
+      kind: "table",
+      query: {
+        filters: [
+          { columnId: "missing", operator: "equals", value: 1 },
+          { columnId: "score", operator: "between", value: [1] },
+          { columnId: "score", operator: "in", value: 1 },
+        ],
+      },
+    });
+
+    const frame = engine.computeFrame({
+      frameFormat: "objects",
+      viewport: { kind: "table" },
+    });
+
+    expect(frame.stats.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
+      "unknown-table-column",
+      "invalid-table-filter",
+      "invalid-table-filter",
+    ]);
+    expect(frame.layers[0]?.kind === "table" ? frame.layers[0].table.rows : []).toEqual([]);
+  });
+
+  test("caches table layers and invalidates on dataset and layer updates", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({
+      kind: "table",
+      rows: [
+        { id: "a", score: 10 },
+        { id: "b", score: 5 },
+      ],
+      rowIdKey: "id",
+    });
+    const layerId = engine.addLayer({
+      datasetId,
+      kind: "table",
+      query: { rowLimit: 1, sort: [{ columnId: "score", direction: "desc" }] },
+    });
+    const options = { viewport: { kind: "table" as const, rowLimit: 1 } };
+
+    engine.computeFrame(options);
+    const cachedFrame = engine.computeFrame(options);
+    expect(cachedFrame.stats.cacheHitCount).toBe(1);
+
+    engine.updateDataset(datasetId, {
+      kind: "table",
+      rows: [
+        { id: "a", score: 10 },
+        { id: "b", score: 50 },
+      ],
+      rowIdKey: "id",
+    });
+    const updatedDatasetFrame = engine.computeFrame(options);
+    expect(updatedDatasetFrame.stats.cacheHitCount).toBe(0);
+    expect(
+      updatedDatasetFrame.layers[0]?.kind === "table" &&
+        "typedTable" in updatedDatasetFrame.layers[0]
+        ? updatedDatasetFrame.layers[0].typedTable.rowIds
+        : [],
+    ).toEqual(["b"]);
+
+    engine.updateLayer(layerId, {
+      datasetId,
+      kind: "table",
+      query: { rowLimit: 1, sort: [{ columnId: "score", direction: "asc" }] },
+    });
+    const updatedLayerFrame = engine.computeFrame(options);
+    expect(updatedLayerFrame.stats.cacheHitCount).toBe(0);
+    expect(
+      updatedLayerFrame.layers[0]?.kind === "table" && "typedTable" in updatedLayerFrame.layers[0]
+        ? updatedLayerFrame.layers[0].typedTable.rowIds
+        : [],
+    ).toEqual(["a"]);
+  });
+
+  test("hydrates typed table frames into object table rows", () => {
+    const engine = createVizEngine({ backend: "js" });
+    const datasetId = engine.addDataset({
+      columns: [
+        { id: "name", values: ["Ada", "Ben"] },
+        { id: "score", type: "number", values: [10, null] },
+        { id: "active", type: "boolean", values: [true, false] },
+      ],
+      kind: "table",
+      rowIds: ["row-a", "row-b"],
+    });
+    engine.addLayer({
+      datasetId,
+      kind: "table",
+      query: { columnIds: ["score", "name", "active"], rowOffset: 1, rowLimit: 1 },
+    });
+
+    const typedFrame = engine.computeFrame({
+      frameFormat: "typed",
+      viewport: { kind: "table" },
+    });
+    const hydrated = engine.hydrateFrame(typedFrame);
+    const layer = hydrated.layers[0];
+
+    expect(layer?.kind).toBe("table");
+    expect(layer?.kind === "table" ? layer.table.columns.map((column) => column.id) : []).toEqual([
+      "score",
+      "name",
+      "active",
+    ]);
+    expect(layer?.kind === "table" ? layer.table.rows[0] : null).toMatchObject({
+      rowId: "row-b",
+      sourceIndex: 1,
+    });
+    expect(
+      layer?.kind === "table" ? layer.table.rows[0]?.cells.map((cell) => cell.value) : [],
+    ).toEqual([null, "Ben", false]);
   });
 });
