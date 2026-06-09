@@ -165,12 +165,16 @@ export class JsVizGeoPointIndex<
   ): VizGeoAggregation<TProperties> {
     const cacheEntry = this.getClusterIndex(options);
     this.latestClusterIndexKey = cacheEntry.key;
-    if (options.fast === true) {
+    if (options.fast === true || !needsRichClusterMetadata(options)) {
       return this.getFastViewportAggregation(cacheEntry.index, query);
     }
 
     const features = getClusterFeatures(cacheEntry.index, query.bounds, query.zoom).map((feature) =>
-      this.mapClusterFeature(feature, true),
+      this.mapClusterFeature(
+        feature,
+        options.includeExpansionZoom === true,
+        options.includeClusterMetrics === true,
+      ),
     );
 
     return {
@@ -247,7 +251,8 @@ export class JsVizGeoPointIndex<
 
   private mapClusterFeature(
     feature: GeoClusterFeature | GeoPointFeature,
-    includeExpansionZoom = true,
+    includeExpansionZoom: boolean,
+    includeClusterMetrics: boolean,
   ): VizGeoAggregation<TProperties>["features"][number] {
     const [longitude, latitude] = feature.geometry.coordinates as [number, number];
     const properties = feature.properties as GeoPointFeatureProperties &
@@ -266,7 +271,9 @@ export class JsVizGeoPointIndex<
         coordinates: [longitude, latitude],
         expansionZoom: includeExpansionZoom ? this.getClusterExpansionZoom(clusterId) : 0,
         kind: "cluster",
-        metrics: pickMetrics(properties, this.metricKeys),
+        metrics: includeClusterMetrics
+          ? pickMetrics(properties, this.metricKeys)
+          : EMPTY_GEO_METRICS,
         pointCount: properties.point_count ?? 0,
         pointCountAbbreviated: String(
           properties.point_count_abbreviated ?? properties.point_count ?? 0,
@@ -503,6 +510,10 @@ function normalizeClusterOptions(options: VizGeoAggregationOptions): ClusterOpti
 
 function clusterOptionsKey(options: ClusterOptions) {
   return `${options.radius}|${options.minZoom}|${options.maxZoom}|${options.extent}`;
+}
+
+function needsRichClusterMetadata(options: VizGeoAggregationOptions) {
+  return options.includeExpansionZoom === true || options.includeClusterMetrics === true;
 }
 
 function getClusterFeatures(index: GeoSupercluster, bounds: VizGeoBounds, zoom: number) {

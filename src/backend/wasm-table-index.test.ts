@@ -310,6 +310,23 @@ describe("RustWasmVizTableIndex", () => {
     expect(wasm.getTable(query)).toEqual(js.getTable(query));
   });
 
+  test("uses wasm row indices for supported object table queries", () => {
+    const query = {
+      filters: [{ columnId: "score", operator: "gte", value: 70 }],
+      rowLimit: 16,
+      sort: [{ columnId: "score", direction: "desc" }],
+    } satisfies VizTableQuery;
+    const wasm = new RustWasmVizTableIndex(fixture.columnarDataset);
+    const spy = vi.spyOn(JsVizTableIndex.prototype, "getTable");
+
+    const output = wasm.getTable(query);
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(output.summary.visibleRowCount).toBeLessThanOrEqual(16);
+    expect(output.rows[0]?.cells.some((cell) => cell.columnId === "score")).toBe(true);
+    spy.mockRestore();
+  });
+
   function expectParity(query: VizTableQuery) {
     const js = new JsVizTableIndex(fixture.columnarDataset);
     const wasm = new RustWasmVizTableIndex(fixture.columnarDataset);

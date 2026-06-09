@@ -21,6 +21,8 @@ const xyRollingCompactGates = [
   "rolling-compact/stdDev-128",
   "rolling-compact/zScore-128",
 ] as const;
+const xySparseHeatmapGates = ["heatmap-sparse/full-128x64"] as const;
+const geoDefaultFastGates = ["world", "city", "dense"] as const;
 const tableWasmWorkloads = [
   "table/query/numeric-filter",
   "table/query/boolean-filter",
@@ -106,6 +108,8 @@ function evaluatePerformanceGates(run: BenchmarkRunResult): GateReport {
   const results = run.results;
   const checks: GateCheck[] = [
     ...evaluateXyCompactGates(results),
+    ...evaluateXySparseHeatmapGates(results),
+    ...evaluateGeoDefaultFastGates(results),
     ...evaluateTableWasmGates(results),
   ];
 
@@ -138,25 +142,67 @@ function evaluateXyCompactGates(results: BenchmarkResult[]): GateCheck[] {
   }
 
   for (const workload of xyRollingCompactGates) {
+    const objectWorkload = workload.replace("rolling-compact", "rolling");
     const ratio = ratioFor(results, {
       category: "xy",
-      denominatorImplementation: "viz-engine js compact",
-      numeratorImplementation: "viz-engine wasm compact",
+      denominatorImplementation: "viz-engine js",
+      denominatorWorkload: objectWorkload,
+      numeratorImplementation: "viz-engine js compact",
       size: "10_000",
       workload,
     });
 
     checks.push(
       createRatioCheck({
-        name: `xy ${workload} wasm compact no worse than 1.20x js compact at 10_000`,
+        name: `xy ${workload} js compact no worse than object output at 10_000`,
         ratio,
-        threshold: 1.2,
-        thresholdText: "<= 1.200x",
+        threshold: 1.05,
+        thresholdText: "<= 1.050x",
       }),
     );
   }
 
   return checks;
+}
+
+function evaluateXySparseHeatmapGates(results: BenchmarkResult[]): GateCheck[] {
+  return xySparseHeatmapGates.map((workload) => {
+    const ratio = ratioFor(results, {
+      category: "xy",
+      denominatorImplementation: "viz-engine js sparse-populated-cells",
+      denominatorWorkload: "heatmap-variant/full-128x64",
+      numeratorImplementation: "viz-engine js sparse",
+      size: "10_000",
+      workload,
+    });
+
+    return createRatioCheck({
+      name: `xy ${workload} production sparse no worse than 1.25x variant at 10_000`,
+      ratio,
+      threshold: 1.25,
+      thresholdText: "<= 1.250x",
+    });
+  });
+}
+
+function evaluateGeoDefaultFastGates(results: BenchmarkResult[]): GateCheck[] {
+  return geoDefaultFastGates.map((viewport) => {
+    const ratio = ratioFor(results, {
+      category: "geo",
+      denominatorImplementation: "viz-engine js fast",
+      denominatorWorkload: `clusters-fast/${viewport}`,
+      numeratorImplementation: "viz-engine js",
+      size: "10_000",
+      workload: `clusters/${viewport}`,
+    });
+
+    return createRatioCheck({
+      name: `geo clusters/${viewport} default no worse than 1.50x explicit fast at 10_000`,
+      ratio,
+      threshold: 1.5,
+      thresholdText: "<= 1.500x",
+    });
+  });
 }
 
 function evaluateTableWasmGates(results: BenchmarkResult[]): GateCheck[] {
@@ -234,6 +280,7 @@ function ratioFor(
   options: {
     category: BenchmarkResult["category"];
     denominatorImplementation: string;
+    denominatorWorkload?: string;
     numeratorImplementation: string;
     size: string;
     workload: string;
@@ -249,7 +296,7 @@ function ratioFor(
     category: options.category,
     implementation: options.denominatorImplementation,
     size: options.size,
-    workload: options.workload,
+    workload: options.denominatorWorkload ?? options.workload,
   });
 
   if (!numerator || !denominator || denominator.metric.meanMs <= 0) {

@@ -333,6 +333,32 @@ export function createXyCases(config: BenchmarkConfig): BenchmarkCase[] {
       if (query.name === "full-128x64") {
         cases.push({
           category: "xy",
+          id: createCaseId(["xy", "heatmap-sparse", query.name, sizeLabel, "js"]),
+          implementation: "viz-engine js sparse",
+          notes: ["Production heatmap object output with empty cells filtered."],
+          prepare: () => new JsVizDensityIndex(fixture.points),
+          run: (prepared) =>
+            (prepared as JsVizDensityIndex).getHeatmap({
+              ...query,
+              includeEmptyCells: false,
+            }),
+          size: sizeLabel,
+          sizeValue: size,
+          validate: (prepared) => {
+            const output = (prepared as JsVizDensityIndex).getHeatmap({
+              ...query,
+              includeEmptyCells: false,
+            });
+            assertPositive(output.cells.length, "sparse heatmap cell count");
+            assertPositive(output.summary.pointCount, "sparse heatmap point count");
+          },
+          workload: `heatmap-sparse/${query.name}`,
+        });
+      }
+
+      if (query.name === "full-128x64") {
+        cases.push({
+          category: "xy",
           id: createCaseId(["xy", "heatmap-variant", query.name, sizeLabel, "typed-full-shape"]),
           implementation: "viz-engine js typed-full-shape",
           notes: ["Production typed-accumulator heatmap with full cell shape."],

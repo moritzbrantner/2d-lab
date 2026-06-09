@@ -110,7 +110,7 @@ function createTableIndex<TRow>(
     return new RustWasmVizTableIndex(dataset);
   }
 
-  if (option === "auto" && getTableRowCount(dataset) >= 100_000) {
+  if (option === "auto" && getTableRowCount(dataset) >= 10_000 && hasAutoWasmTableColumn(dataset)) {
     return new RustWasmVizTableIndex(dataset);
   }
 
@@ -141,6 +141,12 @@ function hasSupportedWasmColumn(dataset: VizTableColumnarDataset) {
       column.type === "date" ||
       column.type === "boolean" ||
       column.type === "string",
+  );
+}
+
+function hasAutoWasmTableColumn(dataset: VizTableColumnarDataset) {
+  return dataset.columns.some(
+    (column) => column.type === "number" || column.type === "date" || column.type === "boolean",
   );
 }
 

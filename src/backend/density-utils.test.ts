@@ -324,7 +324,10 @@ function expectCompactRollingParity(
   for (const [index, point] of objectSeries.points.entries()) {
     expect(compactSeries.x[index]).toBe(point.x);
     expectCompactNumber(compactSeries.y[index], point.y);
+    expectCompactNumber(compactSeries.ema[index], point.ema);
+    expectCompactNumber(compactSeries.max[index], point.max);
     expectCompactNumber(compactSeries.mean[index], point.mean);
+    expectCompactNumber(compactSeries.min[index], point.min);
     expectCompactNumber(compactSeries.stdDev[index], point.stdDev);
     expectCompactNumber(compactSeries.zScore[index], point.zScore);
     expectCompactNumber(compactSeries.sum[index], point.sum);

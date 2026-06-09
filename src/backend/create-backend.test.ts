@@ -160,7 +160,7 @@ describe("createVizEngineBackend", () => {
 
   test("uses JS table index for auto numeric columnar tables below threshold", () => {
     expect(
-      createVizEngineBackend("auto").createIndex(numericColumnarTableDataset(99_999)),
+      createVizEngineBackend("auto").createIndex(numericColumnarTableDataset(9_999)),
     ).toMatchObject({
       index: expect.any(JsVizTableIndex),
       kind: "table",
@@ -169,9 +169,18 @@ describe("createVizEngineBackend", () => {
 
   test("uses WASM table index for auto numeric columnar tables at threshold", () => {
     expect(
-      createVizEngineBackend("auto").createIndex(numericColumnarTableDataset(100_000)),
+      createVizEngineBackend("auto").createIndex(numericColumnarTableDataset(10_000)),
     ).toMatchObject({
       index: expect.any(RustWasmVizTableIndex),
+      kind: "table",
+    });
+  });
+
+  test("keeps string-only columnar tables JS-owned for auto backend", () => {
+    expect(
+      createVizEngineBackend("auto").createIndex(stringColumnarTableDataset(10_000)),
+    ).toMatchObject({
+      index: expect.any(JsVizTableIndex),
       kind: "table",
     });
   });

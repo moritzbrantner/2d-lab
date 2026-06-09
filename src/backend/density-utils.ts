@@ -486,6 +486,7 @@ export function createHeatmap<TProperties>(
   lastPointIndexes.fill(-1);
 
   let maxCellCount = 0;
+  const populatedCellIndexes: number[] = [];
   let summaryPointCount = 0;
   const summaryMetrics = zeroMetrics(metricKeys);
 
@@ -500,7 +501,11 @@ export function createHeatmap<TProperties>(
     const xIndex = bucketIndex(point.x, xDomain, xBinCount);
     const yIndex = bucketIndex(value, yDomain, yBinCount);
     const cellIndex = yIndex * xBinCount + xIndex;
-    const nextCount = counts[cellIndex]! + 1;
+    const previousCount = counts[cellIndex]!;
+    if (previousCount === 0) {
+      populatedCellIndexes.push(cellIndex);
+    }
+    const nextCount = previousCount + 1;
     counts[cellIndex] = nextCount;
     sums[cellIndex] += value;
     if (firstPointIndexes[cellIndex] === -1) {
@@ -518,12 +523,11 @@ export function createHeatmap<TProperties>(
   }
 
   const cells: Array<VizHeatmapCell<TProperties>> = [];
+  const cellIndexes = query.includeEmptyCells === false ? populatedCellIndexes : null;
+  const outputCellCount = cellIndexes?.length ?? cellCount;
 
-  for (let index = 0; index < cellCount; index++) {
-    const pointCount = counts[index]!;
-    if (query.includeEmptyCells === false && pointCount === 0) {
-      continue;
-    }
+  for (let outputIndex = 0; outputIndex < outputCellCount; outputIndex++) {
+    const index = cellIndexes?.[outputIndex] ?? outputIndex;
 
     cells.push(
       createHeatmapCellFromAccumulators(
@@ -757,10 +761,14 @@ export function createCompactRollingSeries<TProperties>(
   const end = upperBoundX(points, xDomain[1]);
   const length = end - start;
   const output = createCompactRollingArrays(length);
-  const minQueue: Array<{ index: number; value: number }> = [];
-  const maxQueue: Array<{ index: number; value: number }> = [];
+  const minQueueIndexes = new Int32Array(length);
+  const minQueueValues = new Float64Array(length);
+  const maxQueueIndexes = new Int32Array(length);
+  const maxQueueValues = new Float64Array(length);
   let minHead = 0;
+  let minTail = 0;
   let maxHead = 0;
+  let maxTail = 0;
   let sampleCount = 0;
   let sum = 0;
   let sumSquares = 0;
@@ -773,15 +781,19 @@ export function createCompactRollingSeries<TProperties>(
     sum += value;
     sumSquares += value * value;
 
-    while (minQueue.length > minHead && minQueue[minQueue.length - 1]!.value >= value) {
-      minQueue.pop();
+    while (minTail > minHead && minQueueValues[minTail - 1]! >= value) {
+      minTail -= 1;
     }
-    minQueue.push({ index: outputIndex, value });
+    minQueueIndexes[minTail] = outputIndex;
+    minQueueValues[minTail] = value;
+    minTail += 1;
 
-    while (maxQueue.length > maxHead && maxQueue[maxQueue.length - 1]!.value <= value) {
-      maxQueue.pop();
+    while (maxTail > maxHead && maxQueueValues[maxTail - 1]! <= value) {
+      maxTail -= 1;
     }
-    maxQueue.push({ index: outputIndex, value });
+    maxQueueIndexes[maxTail] = outputIndex;
+    maxQueueValues[maxTail] = value;
+    maxTail += 1;
 
     if (outputIndex >= windowSize) {
       const expiredIndex = outputIndex - windowSize;
@@ -789,10 +801,10 @@ export function createCompactRollingSeries<TProperties>(
       sum -= expired;
       sumSquares -= expired * expired;
 
-      while (minQueue[minHead] && minQueue[minHead]!.index <= expiredIndex) {
+      while (minHead < minTail && minQueueIndexes[minHead]! <= expiredIndex) {
         minHead += 1;
       }
-      while (maxQueue[maxHead] && maxQueue[maxHead]!.index <= expiredIndex) {
+      while (maxHead < maxTail && maxQueueIndexes[maxHead]! <= expiredIndex) {
         maxHead += 1;
       }
     }
@@ -800,8 +812,8 @@ export function createCompactRollingSeries<TProperties>(
     const pointCount = Math.min(outputIndex + 1, windowSize);
     const hasEnoughPoints = pointCount >= minPeriods;
     const mean = hasEnoughPoints ? sum / pointCount : null;
-    const min = hasEnoughPoints ? (minQueue[minHead]?.value ?? null) : null;
-    const max = hasEnoughPoints ? (maxQueue[maxHead]?.value ?? null) : null;
+    const min = hasEnoughPoints ? minQueueValues[minHead]! : null;
+    const max = hasEnoughPoints ? maxQueueValues[maxHead]! : null;
     const stdDev = hasEnoughPoints ? sampleStdDev(sum, sumSquares, pointCount) : null;
     const zScore =
       mean !== null && stdDev !== null && stdDev > Number.EPSILON
@@ -1465,17 +1477,17 @@ function writeCompactHeatmapCell(
 
 function createCompactRollingArrays(length: number) {
   return {
-    ema: filledFloat64Array(length, Number.NaN),
-    max: filledFloat64Array(length, Number.NaN),
-    mean: filledFloat64Array(length, Number.NaN),
-    min: filledFloat64Array(length, Number.NaN),
+    ema: new Float64Array(length),
+    max: new Float64Array(length),
+    mean: new Float64Array(length),
+    min: new Float64Array(length),
     pointCount: new Uint32Array(length),
-    sourcePointIndex: filledInt32Array(length, -1),
-    stdDev: filledFloat64Array(length, Number.NaN),
-    sum: filledFloat64Array(length, Number.NaN),
+    sourcePointIndex: new Int32Array(length),
+    stdDev: new Float64Array(length),
+    sum: new Float64Array(length),
     x: new Float64Array(length),
-    y: filledFloat64Array(length, Number.NaN),
-    zScore: filledFloat64Array(length, Number.NaN),
+    y: new Float64Array(length),
+    zScore: new Float64Array(length),
   };
 }
 

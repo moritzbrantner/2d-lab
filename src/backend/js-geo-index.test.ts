@@ -81,7 +81,10 @@ describe("JsVizGeoPointIndex", () => {
     const index = new JsVizGeoPointIndex(points);
 
     expect(
-      index.getViewportAggregation({ bounds: [12.9, 51.9, 13.1, 52.1], zoom: 12 }).summary,
+      index.getViewportAggregation(
+        { bounds: [12.9, 51.9, 13.1, 52.1], zoom: 12 },
+        { includeClusterMetrics: true },
+      ).summary,
     ).toMatchObject({ metrics: { demand: 5 }, visiblePointCount: 2 });
     expect(
       index
@@ -96,7 +99,7 @@ describe("JsVizGeoPointIndex", () => {
     const index = new JsVizGeoPointIndex(points);
     const aggregation = index.getViewportAggregation(
       { bounds: [12.9, 51.9, 13.1, 52.1], zoom: 1 },
-      { radius: 80 },
+      { includeClusterMetrics: true, includeExpansionZoom: true, radius: 80 },
     );
     const cluster = aggregation.features[0];
 
@@ -126,12 +129,18 @@ describe("JsVizGeoPointIndex", () => {
     expect(index.getClusterLeaves(999)).toEqual([]);
   });
 
-  test("fast cluster mode preserves counts and skips expansion zoom work", () => {
+  test("default and fast cluster modes preserve counts and skip rich cluster metadata", () => {
     const index = new JsVizGeoPointIndex(points);
     const query: VizGeoViewportQuery = { bounds: [12.9, 51.9, 13.1, 52.1], zoom: 1 };
-    const full = index.getViewportAggregation(query, { radius: 80 });
+    const full = index.getViewportAggregation(query, {
+      includeClusterMetrics: true,
+      includeExpansionZoom: true,
+      radius: 80,
+    });
+    const defaultAggregation = index.getViewportAggregation(query, { radius: 80 });
     const fast = index.getViewportAggregation(query, { fast: true, radius: 80 });
 
+    expect(defaultAggregation).toEqual(fast);
     expect(fast.summary).toMatchObject({
       bounds: full.summary.bounds,
       metrics: {},

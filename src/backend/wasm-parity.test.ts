@@ -65,8 +65,14 @@ describe("JS/WASM backend parity", () => {
     const wasm = new WasmVizGeoPointIndex(geoPoints);
 
     expect(wasm.getBounds()).toEqual(js.getBounds());
-    expect(pointAggregationSnapshot(wasm.getViewportAggregation(query, { radius: 1 }))).toEqual(
-      pointAggregationSnapshot(js.getViewportAggregation(query, { radius: 1 })),
+    expect(
+      pointAggregationSnapshot(
+        wasm.getViewportAggregation(query, { includeClusterMetrics: true, radius: 1 }),
+      ),
+    ).toEqual(
+      pointAggregationSnapshot(
+        js.getViewportAggregation(query, { includeClusterMetrics: true, radius: 1 }),
+      ),
     );
   });
 

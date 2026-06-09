@@ -21,6 +21,7 @@ type NormalizedColumn = {
 
 type QueryResult = {
   columnIds: string[];
+  filteredRowCount: number;
   rowIndices: number[];
   rowLimit: number;
   rowOffset: number;
@@ -74,11 +75,33 @@ export class JsVizTableIndex<TRow = Record<string, unknown>> implements VizTable
   getTable(query: VizTableQuery = {}): VizTableResult {
     const result = this.resolveQuery(query);
 
+    return this.getTableForResolvedQuery(result);
+  }
+
+  /** @internal Used by WASM table wrappers after Rust returns source row indices. */
+  getTableForSourceIndices(
+    query: VizTableQuery,
+    rowIndices: readonly number[] | Uint32Array,
+    filteredRowCount: number,
+  ): VizTableResult {
+    const columnIds = resolveColumnIds(this.columns, query.columnIds);
+    const normalizedRowIndices = Array.from(rowIndices);
+
+    return this.getTableForResolvedQuery({
+      columnIds,
+      filteredRowCount,
+      rowIndices: normalizedRowIndices,
+      rowLimit: normalizeRowLimit(query.rowLimit),
+      rowOffset: normalizeRowOffset(query.rowOffset),
+    });
+  }
+
+  private getTableForResolvedQuery(result: QueryResult): VizTableResult {
     return {
       columns: result.columnIds.map((columnId) => this.columnsById.get(columnId)!.summary),
       rows: result.rowIndices.map((sourceIndex) => this.createRow(sourceIndex, result.columnIds)),
       summary: {
-        filteredRowCount: this.getFilteredRowCount(query),
+        filteredRowCount: result.filteredRowCount,
         rowCount: this.rowCount,
         rowLimit: result.rowLimit,
         rowOffset: result.rowOffset,
@@ -90,11 +113,7 @@ export class JsVizTableIndex<TRow = Record<string, unknown>> implements VizTable
   getTypedTable(query: VizTableQuery = {}): VizTypedTable {
     const result = this.resolveQuery(query);
 
-    return this.getTypedTableForSourceIndices(
-      query,
-      result.rowIndices,
-      this.getFilteredRowCount(query),
-    );
+    return this.getTypedTableForSourceIndices(query, result.rowIndices, result.filteredRowCount);
   }
 
   /** @internal Used by experimental WASM table wrappers after Rust returns source row indices. */
@@ -128,6 +147,7 @@ export class JsVizTableIndex<TRow = Record<string, unknown>> implements VizTable
   private resolveQuery(query: VizTableQuery): QueryResult {
     const columnIds = resolveColumnIds(this.columns, query.columnIds);
     const filtered = this.getFilteredIndices(query);
+    const filteredRowCount = filtered.length;
     const sorted = sortRows(filtered, query.sort, this.columnsById);
     const rowOffset = normalizeRowOffset(query.rowOffset);
     const rowLimit = normalizeRowLimit(query.rowLimit);
@@ -135,14 +155,11 @@ export class JsVizTableIndex<TRow = Record<string, unknown>> implements VizTable
 
     return {
       columnIds,
+      filteredRowCount,
       rowIndices,
       rowLimit,
       rowOffset,
     };
-  }
-
-  private getFilteredRowCount(query: VizTableQuery) {
-    return this.getFilteredIndices(query).length;
   }
 
   private getFilteredIndices(query: VizTableQuery) {

@@ -853,7 +853,7 @@ describe("computeVizRenderFrame", () => {
 
   test("reports JS stats for auto table backend below threshold", () => {
     const engine = createVizEngine({ backend: "auto" });
-    const datasetId = engine.addDataset(createNumericTableDataset(99_999));
+    const datasetId = engine.addDataset(createNumericTableDataset(9_999));
     engine.addLayer({ datasetId, kind: "table" });
 
     const frame = engine.computeFrame({
@@ -869,7 +869,7 @@ describe("computeVizRenderFrame", () => {
 
   test("reports WASM stats for auto table backend at threshold", () => {
     const engine = createVizEngine({ backend: "auto" });
-    const datasetId = engine.addDataset(createNumericTableDataset(100_000));
+    const datasetId = engine.addDataset(createNumericTableDataset(10_000));
     engine.addLayer({ datasetId, kind: "table" });
 
     const frame = engine.computeFrame({

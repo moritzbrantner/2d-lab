@@ -21,7 +21,10 @@ import type {
 } from "../types";
 
 type GeoVizPoint<TProperties = Record<string, unknown>> = VizGeoPoint<TProperties>;
-type GeoVizAggregationOptions = Omit<VizGeoAggregationOptions, "fast">;
+type GeoVizAggregationOptions = Omit<
+  VizGeoAggregationOptions,
+  "fast" | "includeClusterMetrics" | "includeExpansionZoom"
+>;
 type GeoVizHeatAggregation<TProperties = Record<string, unknown>> =
   VizGeoHeatAggregation<TProperties>;
 type GeoVizScalarFieldOptions = VizGeoScalarFieldOptions & {

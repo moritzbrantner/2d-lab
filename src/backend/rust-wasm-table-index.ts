@@ -58,6 +58,15 @@ export class RustWasmVizTableIndex<TRow = Record<string, unknown>> implements Vi
   }
 
   getTable(query: VizTableQuery = {}): VizTableResult {
+    const wasmResult = this.tryWasmQuery(query);
+    if (wasmResult) {
+      return this.jsIndex.getTableForSourceIndices(
+        query,
+        wasmResult.sourceIndex,
+        wasmResult.filteredRowCount,
+      );
+    }
+
     return this.jsIndex.getTable(query);
   }
 

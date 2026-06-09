@@ -14,6 +14,10 @@ import type {
 } from "../types";
 
 export type NormalizedOhlcvBar<TProperties = Record<string, unknown>> = VizOhlcvBar<TProperties>;
+export type CompactOhlcvColumns = Pick<
+  VizCompactOhlcvBars,
+  "adjustedClose" | "close" | "high" | "low" | "open" | "timestamp" | "volume"
+>;
 
 export function normalizeFinanceInstrument(
   instrument: VizFinancialInstrument,
@@ -185,6 +189,12 @@ export function compactOhlcvBars<TProperties>(
   bars: readonly VizOhlcvBar<TProperties>[],
   xDomain: [number, number],
 ): VizCompactOhlcvBars {
+  return sliceCompactOhlcvColumns(createCompactOhlcvColumns(bars), xDomain, 0, bars.length);
+}
+
+export function createCompactOhlcvColumns<TProperties>(
+  bars: readonly VizOhlcvBar<TProperties>[],
+): CompactOhlcvColumns {
   const adjustedClose = filledFloat64Array(bars.length, Number.NaN);
   const close = new Float64Array(bars.length);
   const high = new Float64Array(bars.length);
@@ -211,8 +221,28 @@ export function compactOhlcvBars<TProperties>(
     open,
     timestamp,
     volume,
+  };
+}
+
+export function sliceCompactOhlcvColumns(
+  columns: CompactOhlcvColumns,
+  xDomain: [number, number],
+  start: number,
+  end: number,
+): VizCompactOhlcvBars {
+  const normalizedStart = Math.max(0, Math.min(columns.timestamp.length, start));
+  const normalizedEnd = Math.max(normalizedStart, Math.min(columns.timestamp.length, end));
+
+  return {
+    adjustedClose: columns.adjustedClose.subarray(normalizedStart, normalizedEnd),
+    close: columns.close.subarray(normalizedStart, normalizedEnd),
+    high: columns.high.subarray(normalizedStart, normalizedEnd),
+    low: columns.low.subarray(normalizedStart, normalizedEnd),
+    open: columns.open.subarray(normalizedStart, normalizedEnd),
+    timestamp: columns.timestamp.subarray(normalizedStart, normalizedEnd),
+    volume: columns.volume.subarray(normalizedStart, normalizedEnd),
     summary: {
-      barCount: bars.length,
+      barCount: normalizedEnd - normalizedStart,
       xDomain,
     },
   };
@@ -377,6 +407,58 @@ export function createCompactFinanceReturnSeries<TProperties>(
     }
 
     x[bucketIndex] = bars[start + returnIndex + 1]?.timestamp ?? returnIndex + 1;
+    pointCount[bucketIndex] += 1;
+    sums[bucketIndex] += value;
+  }
+
+  for (let index = 0; index < bucketCount; index++) {
+    if (pointCount[index]! > 0) {
+      y[index] = sums[index]! / pointCount[index]!;
+    }
+  }
+
+  return {
+    pointCount,
+    x,
+    y,
+    summary: {
+      pointCount: returnCount,
+      sampleCount: bucketCount,
+      xDomain: query.xDomain,
+    },
+  };
+}
+
+export function createCompactFinanceReturnSeriesFromColumns(
+  columns: CompactOhlcvColumns,
+  query: VizFinanceReturnsQuery,
+  range: { end: number; start: number },
+): VizCompactFinanceReturns {
+  const method = query.method ?? "simple";
+  const priceMode = query.priceMode ?? "raw";
+  const start = Math.max(0, Math.min(columns.close.length, range.start));
+  const end = Math.max(start, Math.min(columns.close.length, range.end));
+  const returnCount = Math.max(0, end - start - 1);
+  const targetPointCount = Math.max(1, query.targetPointCount ?? (returnCount || 1));
+  const bucketCount = returnCount > targetPointCount ? targetPointCount : returnCount;
+  const x = new Float64Array(bucketCount);
+  const y = filledFloat64Array(bucketCount, Number.NaN);
+  const pointCount = new Uint32Array(bucketCount);
+  const sums = new Float64Array(bucketCount);
+  let bucketIndex = 0;
+  let bucketEnd = returnBucketEnd(bucketIndex, returnCount, bucketCount);
+
+  for (let returnIndex = 0; returnIndex < returnCount; returnIndex++) {
+    const previous = compactFinanceReturnPrice(columns, start + returnIndex, priceMode);
+    const current = compactFinanceReturnPrice(columns, start + returnIndex + 1, priceMode);
+    const value = method === "log" ? Math.log(current / previous) : current / previous - 1;
+
+    while (returnIndex >= bucketEnd && bucketIndex < bucketCount - 1) {
+      bucketIndex += 1;
+      bucketEnd = returnBucketEnd(bucketIndex, returnCount, bucketCount);
+    }
+
+    x[bucketIndex] = columns.timestamp[start + returnIndex + 1] ?? returnIndex + 1;
     pointCount[bucketIndex] += 1;
     sums[bucketIndex] += value;
   }
@@ -751,6 +833,19 @@ function financeReturnPrice<TProperties>(
   priceMode: "adjusted" | "raw",
 ) {
   return priceMode === "adjusted" ? (bar.adjustedClose ?? bar.close) : bar.close;
+}
+
+function compactFinanceReturnPrice(
+  columns: CompactOhlcvColumns,
+  index: number,
+  priceMode: "adjusted" | "raw",
+) {
+  if (priceMode === "raw") {
+    return columns.close[index]!;
+  }
+
+  const adjustedClose = columns.adjustedClose[index]!;
+  return Number.isNaN(adjustedClose) ? columns.close[index]! : adjustedClose;
 }
 
 function simpleReturns(prices: readonly number[]) {

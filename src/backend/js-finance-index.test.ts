@@ -84,6 +84,51 @@ describe("JsVizFinanceIndex", () => {
     expect([...compactReturns.y]).toEqual(objectReturns.samples.map((sample) => sample.y));
   });
 
+  test("matches compact bars to object bars for full, viewport, and no-downsample ranges", () => {
+    const index = new JsVizFinanceIndex(dataset);
+
+    expectCompactBarsMatchObjects(
+      index.getCompactBars({ xDomain: [1, 4] }),
+      index.getBars({
+        xDomain: [1, 4],
+      }),
+    );
+    expectCompactBarsMatchObjects(
+      index.getCompactBars({ xDomain: [2, 3] }),
+      index.getBars({
+        xDomain: [2, 3],
+      }),
+    );
+    expectCompactBarsMatchObjects(
+      index.getCompactDownsampledBars({ targetBarCount: 10, xDomain: [3, 4] }),
+      index.getDownsampledBars({ targetBarCount: 10, xDomain: [3, 4] }),
+    );
+  });
+
+  test("matches compact returns to object returns for full, viewport, and last-window ranges", () => {
+    const index = new JsVizFinanceIndex(dataset);
+
+    const domains: Array<[number, number]> = [
+      [1, 4],
+      [2, 4],
+      [3, 4],
+    ];
+
+    for (const xDomain of domains) {
+      const compact = index.getCompactReturns({ method: "simple", xDomain });
+      const object = index.getReturns({ method: "simple", xDomain });
+
+      expect([...compact.pointCount]).toEqual(object.samples.map((sample) => sample.pointCount));
+      expect([...compact.x]).toEqual(object.samples.map((sample) => sample.x));
+      expect([...compact.y]).toEqual(object.samples.map((sample) => sample.y));
+      expect(compact.summary).toMatchObject({
+        pointCount: object.summary.pointCount,
+        sampleCount: object.summary.sampleCount,
+        xDomain,
+      });
+    }
+  });
+
   test("computes adjusted log returns over partial domains with downsampling", () => {
     const index = new JsVizFinanceIndex(dataset);
     const returns = index.getReturns({
@@ -124,3 +169,19 @@ describe("JsVizFinanceIndex", () => {
     ).toThrow(/high/);
   });
 });
+
+function expectCompactBarsMatchObjects(
+  compact: ReturnType<JsVizFinanceIndex["getCompactBars"]>,
+  objectBars: ReturnType<JsVizFinanceIndex["getBars"]>,
+) {
+  expect([...compact.adjustedClose]).toEqual(
+    objectBars.map((bar) => bar.adjustedClose ?? Number.NaN),
+  );
+  expect([...compact.close]).toEqual(objectBars.map((bar) => bar.close));
+  expect([...compact.high]).toEqual(objectBars.map((bar) => bar.high));
+  expect([...compact.low]).toEqual(objectBars.map((bar) => bar.low));
+  expect([...compact.open]).toEqual(objectBars.map((bar) => bar.open));
+  expect([...compact.timestamp]).toEqual(objectBars.map((bar) => bar.timestamp));
+  expect([...compact.volume]).toEqual(objectBars.map((bar) => bar.volume ?? Number.NaN));
+  expect(compact.summary.barCount).toBe(objectBars.length);
+}
