@@ -34,7 +34,7 @@
   },
   "scripts": {
     "build": "bun run build:wasm && tsup",
-    "build:wasm": "bun ./scripts/check-wasm-output-writable.mjs && wasm-pack build crates/viz-engine-wasm --target bundler --out-dir ../../src/wasm/pkg && bun ./scripts/embed-wasm.mjs",
+    "build:wasm": "bun ./scripts/build-wasm.mjs",
     "bench": "bun run bench:node && bun run bench:browser",
     "bench:browser": "bun run bench/browser/run-browser.ts --quick",
     "bench:node": "bun run bench/run.ts --runtime bun",

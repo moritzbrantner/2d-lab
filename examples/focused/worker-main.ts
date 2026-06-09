@@ -1,3 +1,5 @@
+// Demonstrates main-thread worker handoff using @moritzbrantner/viz-engine/core.
+// Mount from a local app; the paired worker module computes and transfers frames.
 import {
   getVizFrameTransferables,
   type VizTypedRenderFrame,

@@ -1,3 +1,5 @@
+// Demonstrates React lifecycle bindings using @moritzbrantner/viz-engine/react.
+// Mount from a local app or copy the renderer pattern into a consumer project.
 import {
   VizEngineProvider,
   useVizDataset,

@@ -1,3 +1,5 @@
+// Demonstrates geo viewport clustering using @moritzbrantner/viz-engine/core.
+// Mount from a local app or copy the renderer pattern into a consumer project.
 import { createVizEngine, type VizGeoPoint } from "@moritzbrantner/viz-engine/core";
 
 export function mountGeoViewportExample(root: HTMLElement) {

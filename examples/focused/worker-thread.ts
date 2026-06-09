@@ -1,3 +1,5 @@
+// Demonstrates worker-side frame computation using @moritzbrantner/viz-engine/core.
+// Pair with worker-main.ts or copy both modules into a consumer app.
 import {
   createVizEngine,
   getVizFrameTransferables,

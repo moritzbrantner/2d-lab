@@ -1,3 +1,5 @@
+// Demonstrates a vanilla Canvas renderer using @moritzbrantner/viz-engine/core.
+// Mount from a local app or copy the renderer pattern into a consumer project.
 import { createVizEngine, type VizSeriesPoint } from "@moritzbrantner/viz-engine/core";
 
 export function mountVanillaCanvasExample(root: HTMLElement) {

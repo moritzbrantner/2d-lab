@@ -47,6 +47,7 @@ const hydratedFrame = engine.hydrateFrame(typedFrame);
 - [Getting started](docs/getting-started.md)
 - [Frame formats](docs/frame-formats.md)
 - [Backends and WASM](docs/backends.md)
+- [Focused examples](docs/examples.md)
 - [React bindings](docs/react.md)
 - [Worker handoff](docs/worker-handoff.md)
 - [Typed frame migration](docs/migration-typed-frames.md)
