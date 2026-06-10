@@ -1,21 +1,33 @@
 import { defineConfig } from "tsup";
 
-export default defineConfig({
-  clean: true,
+const external = [
+  "@mb-rust/finance-data-wasm",
+  "@mb-rust/geo-viz-wasm",
+  "react",
+  "react/jsx-runtime",
+];
+
+const sharedConfig = {
   dts: true,
-  entry: [
-    "src/index.ts",
-    "src/core.ts",
-    "src/core-embedded.ts",
-    "src/core-lazy.ts",
-    "src/react.tsx",
-    "src/worker.ts",
-  ],
   esbuildOptions(options) {
     options.external = [...(options.external ?? []), "*.wasm"];
   },
-  external: ["@mb-rust/finance-data-wasm", "@mb-rust/geo-viz-wasm", "react", "react/jsx-runtime"],
+  external,
   format: ["esm"],
   outDir: "dist",
-  splitting: false,
-});
+} satisfies Parameters<typeof defineConfig>[0];
+
+export default defineConfig([
+  {
+    ...sharedConfig,
+    clean: true,
+    entry: ["src/index.ts", "src/core.ts", "src/core-embedded.ts", "src/react.tsx"],
+    splitting: true,
+  },
+  {
+    ...sharedConfig,
+    clean: false,
+    entry: ["src/core-lazy.ts", "src/worker.ts"],
+    splitting: false,
+  },
+]);

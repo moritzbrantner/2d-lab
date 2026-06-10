@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const rootDir = path.resolve(import.meta.dirname, "..");
 const consumerSmokeEnabled = process.env.VIZ_ENGINE_PACKAGE_SMOKE_CONSUMER === "1";
+const embeddedWasmMarker = "moritzbrantner_viz_engine_wasm_embedded";
 const requiredFiles = [
   "dist/index.js",
   "dist/index.d.ts",
@@ -32,9 +33,14 @@ const requiredFiles = [
   "docs/why-this-exists.md",
   "README.md",
 ];
+const distChunkFiles = getDistChunks();
 
 for (const file of requiredFiles) {
   assert(existsSync(path.join(rootDir, file)), `Missing package artifact: ${file}`);
+}
+assert(distChunkFiles.length > 0, "Expected shared dist/chunk-*.js artifacts.");
+for (const file of distChunkFiles) {
+  assert(existsSync(path.join(rootDir, file)), `Missing package chunk artifact: ${file}`);
 }
 
 const packageJson = JSON.parse(readFileSync(path.join(rootDir, "package.json"), "utf8"));
@@ -59,9 +65,11 @@ assert(!importsReact(coreSource), "dist/core.js must not import React.");
 const lazyCoreSource = readFileSync(path.join(rootDir, "dist/core-lazy.js"), "utf8");
 assert(!importsReact(lazyCoreSource), "dist/core-lazy.js must not import React.");
 assert(
-  !lazyCoreSource.includes("moritzbrantner_viz_engine_wasm_embedded"),
+  !lazyCoreSource.includes(embeddedWasmMarker),
   "dist/core-lazy.js must not include the embedded WASM module.",
 );
+assertNoEmbeddedWasmReachable("dist/core-lazy.js");
+assertNoEmbeddedWasmReachable("dist/worker.js");
 
 const core = await import(pathToFileURL(path.join(rootDir, "dist/core.js")).href);
 assert(typeof core.createVizEngine === "function", "core export missing createVizEngine.");
@@ -112,6 +120,9 @@ const packOutput = execFileSync("bun", ["pm", "pack", "--dry-run", "--ignore-scr
 for (const file of requiredFiles) {
   assert(packOutput.includes(file), `Package dry-run did not include ${file}.`);
 }
+for (const file of distChunkFiles) {
+  assert(packOutput.includes(file), `Package dry-run did not include shared chunk ${file}.`);
+}
 
 if (consumerSmokeEnabled) {
   runConsumerSmoke();
@@ -127,6 +138,64 @@ function assert(condition, message) {
 
 function importsReact(source) {
   return /(?:import|from)\s*["']react(?:\/jsx-runtime)?["']/.test(source);
+}
+
+function assertNoEmbeddedWasmReachable(entryFile) {
+  for (const file of getReachableRelativeChunks(entryFile)) {
+    const source = readFileSync(path.join(rootDir, file), "utf8");
+    assert(
+      !source.includes(embeddedWasmMarker),
+      `${entryFile} imports embedded WASM through ${file}.`,
+    );
+  }
+}
+
+function getDistChunks() {
+  const distDir = path.join(rootDir, "dist");
+  if (!existsSync(distDir)) {
+    return [];
+  }
+
+  return readdirSync(distDir)
+    .filter((file) => /^chunk-.+\.js$/.test(file))
+    .sort()
+    .map((file) => `dist/${file}`);
+}
+
+function getReachableRelativeChunks(entryFile) {
+  const pending = [entryFile];
+  const visited = new Set();
+  const chunks = new Set();
+
+  while (pending.length) {
+    const file = pending.pop();
+    if (!file || visited.has(file)) {
+      continue;
+    }
+    visited.add(file);
+
+    const source = readFileSync(path.join(rootDir, file), "utf8");
+    for (const importPath of getRelativeChunkImports(file, source)) {
+      chunks.add(importPath);
+      pending.push(importPath);
+    }
+  }
+
+  return chunks;
+}
+
+function getRelativeChunkImports(file, source) {
+  const imports = new Set();
+  const importPattern = /(?:import|export)\s+(?:[^"']+\s+from\s+)?["'](\.\/chunk-[^"']+\.js)["']/g;
+  const dynamicImportPattern = /import\(["'](\.\/chunk-[^"']+\.js)["']\)/g;
+
+  for (const pattern of [importPattern, dynamicImportPattern]) {
+    for (const match of source.matchAll(pattern)) {
+      imports.add(path.posix.join(path.posix.dirname(file), match[1]));
+    }
+  }
+
+  return imports;
 }
 
 function runConsumerSmoke() {

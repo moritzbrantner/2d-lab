@@ -1,7 +1,8 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 const rootDir = path.resolve(import.meta.dirname, "..");
+const embeddedWasmMarker = "moritzbrantner_viz_engine_wasm_embedded";
 const files = [
   "dist/index.js",
   "dist/core.js",
@@ -9,6 +10,8 @@ const files = [
   "dist/core-lazy.js",
   "dist/react.js",
   "dist/worker.js",
+  ...getDistChunks(),
+  "dist/pkg/moritzbrantner_viz_engine_wasm_bg.wasm",
   "src/wasm/pkg/moritzbrantner_viz_engine_wasm_embedded.js",
   "src/wasm/pkg/moritzbrantner_viz_engine_wasm_bg.wasm",
 ];
@@ -45,12 +48,44 @@ console.log(
 
 const lazyCorePath = path.join(rootDir, "dist/core-lazy.js");
 if (existsSync(lazyCorePath)) {
-  const lazyCoreSource = await import("node:fs").then(({ readFileSync }) =>
-    readFileSync(lazyCorePath, "utf8"),
-  );
-  if (lazyCoreSource.includes("moritzbrantner_viz_engine_wasm_embedded")) {
+  const lazyCoreSource = readFileSync(lazyCorePath, "utf8");
+  if (lazyCoreSource.includes(embeddedWasmMarker)) {
     throw new Error("dist/core-lazy.js includes the embedded WASM payload.");
   }
+
+  for (const importedFile of getRelativeChunkImports("dist/core-lazy.js")) {
+    const importedSource = readFileSync(path.join(rootDir, importedFile), "utf8");
+    if (importedSource.includes(embeddedWasmMarker)) {
+      throw new Error(`dist/core-lazy.js imports embedded WASM through ${importedFile}.`);
+    }
+  }
+}
+
+function getDistChunks() {
+  const distDir = path.join(rootDir, "dist");
+  if (!existsSync(distDir)) {
+    return [];
+  }
+
+  return readdirSync(distDir)
+    .filter((file) => /^chunk-.+\.js$/.test(file))
+    .sort()
+    .map((file) => `dist/${file}`);
+}
+
+function getRelativeChunkImports(file) {
+  const source = readFileSync(path.join(rootDir, file), "utf8");
+  const imports = new Set();
+  const importPattern = /(?:import|export)\s+(?:[^"']+\s+from\s+)?["'](\.\/chunk-[^"']+\.js)["']/g;
+  const dynamicImportPattern = /import\(["'](\.\/chunk-[^"']+\.js)["']\)/g;
+
+  for (const pattern of [importPattern, dynamicImportPattern]) {
+    for (const match of source.matchAll(pattern)) {
+      imports.add(path.posix.join(path.posix.dirname(file), match[1]));
+    }
+  }
+
+  return imports;
 }
 
 function formatSize(bytes) {
