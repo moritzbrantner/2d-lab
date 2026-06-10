@@ -1,10 +1,5 @@
 import type {
-  VizTableCellValue,
-  VizTableColumnDefinition,
-  VizTableColumnSummary,
-  VizTableColumnType,
   VizTableDataset,
-  VizTableFilter,
   VizTableIndex,
   VizTableQuery,
   VizTableResult,
@@ -12,20 +7,20 @@ import type {
   VizTypedTable,
   VizTypedTableColumn,
 } from "../types";
+import { normalizeTableDataset } from "./table-index/normalize";
+import {
+  isFilterCompatible,
+  normalizeRowLimit,
+  normalizeRowOffset,
+  resolveColumnIds,
+  resolveSearchColumns,
+  rowMatchesFilter,
+  sortRows,
+} from "./table-index/query";
+import type { NormalizedColumn, QueryResult } from "./table-index/types";
+import { normalizeText, numberValue, valueToSearchText } from "./table-index/values";
 
-type NormalizedColumn = {
-  definition: VizTableColumnDefinition;
-  summary: VizTableColumnSummary;
-  values: Array<VizTableCellValue | null>;
-};
-
-type QueryResult = {
-  columnIds: string[];
-  filteredRowCount: number;
-  rowIndices: number[];
-  rowLimit: number;
-  rowOffset: number;
-};
+export { isFilterCompatible, normalizeRowLimit, normalizeRowOffset };
 
 export class JsVizTableIndex<TRow = Record<string, unknown>> implements VizTableIndex {
   private readonly columns: NormalizedColumn[];
@@ -35,8 +30,7 @@ export class JsVizTableIndex<TRow = Record<string, unknown>> implements VizTable
   private readonly rowCount: number;
 
   constructor(dataset: VizTableDataset<TRow>) {
-    const normalized =
-      "rows" in dataset ? normalizeObjectDataset(dataset) : normalizeColumnarDataset(dataset);
+    const normalized = normalizeTableDataset(dataset);
     this.columns = normalized.columns;
     this.columnsById = new Map(this.columns.map((column) => [column.summary.id, column]));
     this.rowIds = normalized.rowIds;
@@ -73,9 +67,7 @@ export class JsVizTableIndex<TRow = Record<string, unknown>> implements VizTable
   }
 
   getTable(query: VizTableQuery = {}): VizTableResult {
-    const result = this.resolveQuery(query);
-
-    return this.getTableForResolvedQuery(result);
+    return this.getTableForResolvedQuery(this.resolveQuery(query));
   }
 
   /** @internal Used by WASM table wrappers after Rust returns source row indices. */
@@ -84,30 +76,13 @@ export class JsVizTableIndex<TRow = Record<string, unknown>> implements VizTable
     rowIndices: readonly number[] | Uint32Array,
     filteredRowCount: number,
   ): VizTableResult {
-    const columnIds = resolveColumnIds(this.columns, query.columnIds);
-    const normalizedRowIndices = Array.from(rowIndices);
-
     return this.getTableForResolvedQuery({
-      columnIds,
+      columnIds: resolveColumnIds(this.columns, query.columnIds),
       filteredRowCount,
-      rowIndices: normalizedRowIndices,
+      rowIndices: Array.from(rowIndices),
       rowLimit: normalizeRowLimit(query.rowLimit),
       rowOffset: normalizeRowOffset(query.rowOffset),
     });
-  }
-
-  private getTableForResolvedQuery(result: QueryResult): VizTableResult {
-    return {
-      columns: result.columnIds.map((columnId) => this.columnsById.get(columnId)!.summary),
-      rows: result.rowIndices.map((sourceIndex) => this.createRow(sourceIndex, result.columnIds)),
-      summary: {
-        filteredRowCount: result.filteredRowCount,
-        rowCount: this.rowCount,
-        rowLimit: result.rowLimit,
-        rowOffset: result.rowOffset,
-        visibleRowCount: result.rowIndices.length,
-      },
-    };
   }
 
   getTypedTable(query: VizTableQuery = {}): VizTypedTable {
@@ -124,7 +99,6 @@ export class JsVizTableIndex<TRow = Record<string, unknown>> implements VizTable
   ): VizTypedTable {
     const normalizedRowIndices = Array.from(rowIndices);
     const columnIds = resolveColumnIds(this.columns, query.columnIds);
-    const sourceIndex = Uint32Array.from(normalizedRowIndices);
     const typedColumns = columnIds.map((columnId) =>
       this.createTypedColumn(this.columnsById.get(columnId)!, normalizedRowIndices),
     );
@@ -132,7 +106,7 @@ export class JsVizTableIndex<TRow = Record<string, unknown>> implements VizTable
     return {
       columns: columnIds.map((columnId) => this.columnsById.get(columnId)!.summary),
       rowIds: normalizedRowIndices.map((index) => this.rowIds[index] ?? String(index)),
-      sourceIndex,
+      sourceIndex: Uint32Array.from(normalizedRowIndices),
       summary: {
         filteredRowCount,
         rowCount: this.rowCount,
@@ -144,6 +118,20 @@ export class JsVizTableIndex<TRow = Record<string, unknown>> implements VizTable
     };
   }
 
+  private getTableForResolvedQuery(result: QueryResult): VizTableResult {
+    return {
+      columns: result.columnIds.map((columnId) => this.columnsById.get(columnId)!.summary),
+      rows: result.rowIndices.map((sourceIndex) => this.createRow(sourceIndex, result.columnIds)),
+      summary: {
+        filteredRowCount: result.filteredRowCount,
+        rowCount: this.rowCount,
+        rowLimit: result.rowLimit,
+        rowOffset: result.rowOffset,
+        visibleRowCount: result.rowIndices.length,
+      },
+    };
+  }
+
   private resolveQuery(query: VizTableQuery): QueryResult {
     const columnIds = resolveColumnIds(this.columns, query.columnIds);
     const filtered = this.getFilteredIndices(query);
@@ -151,12 +139,11 @@ export class JsVizTableIndex<TRow = Record<string, unknown>> implements VizTable
     const sorted = sortRows(filtered, query.sort, this.columnsById);
     const rowOffset = normalizeRowOffset(query.rowOffset);
     const rowLimit = normalizeRowLimit(query.rowLimit);
-    const rowIndices = sorted.slice(rowOffset, rowOffset + rowLimit);
 
     return {
       columnIds,
       filteredRowCount,
-      rowIndices,
+      rowIndices: sorted.slice(rowOffset, rowOffset + rowLimit),
       rowLimit,
       rowOffset,
     };
@@ -238,472 +225,4 @@ export class JsVizTableIndex<TRow = Record<string, unknown>> implements VizTable
       values: rowIndices.map((sourceIndex) => column.values[sourceIndex] ?? null),
     };
   }
-}
-
-function normalizeObjectDataset<TRow>(
-  dataset: Extract<VizTableDataset<TRow>, { rows: readonly TRow[] }>,
-) {
-  const definitions = resolveObjectColumnDefinitions(dataset.rows, dataset.columns);
-  const rowIds = dataset.rows.map((row, index) => {
-    const rowIdValue =
-      dataset.rowIdKey && row && typeof row === "object"
-        ? (row as Record<string, unknown>)[dataset.rowIdKey]
-        : null;
-
-    return rowIdValue == null ? String(index) : String(rowIdValue);
-  });
-  const columns = definitions.map((definition) => {
-    const key = definition.key ?? definition.id;
-    const values = dataset.rows.map((row) =>
-      normalizeCellValue(
-        row && typeof row === "object" ? (row as Record<string, unknown>)[key] : null,
-      ),
-    );
-
-    return createNormalizedColumn(definition, values);
-  });
-
-  return {
-    columns,
-    rowCount: dataset.rows.length,
-    rowIds,
-  };
-}
-
-function normalizeColumnarDataset(
-  dataset: Extract<VizTableDataset, { rowIds?: readonly string[] }>,
-) {
-  const rowCount = dataset.columns.reduce(
-    (count, column) => Math.max(count, column.values.length),
-    dataset.rowIds?.length ?? 0,
-  );
-  const rowIds = Array.from(
-    { length: rowCount },
-    (_, index) => dataset.rowIds?.[index] ?? String(index),
-  );
-  const columns = dataset.columns.map((column) => {
-    const values = Array.from({ length: rowCount }, (_, index) => {
-      if (column.validity && column.validity[index] === 0) {
-        return null;
-      }
-
-      return normalizeCellValueForColumn(column.values[index], column.type);
-    });
-
-    return createNormalizedColumn(column, values);
-  });
-
-  return {
-    columns,
-    rowCount,
-    rowIds,
-  };
-}
-
-function resolveObjectColumnDefinitions<TRow>(
-  rows: readonly TRow[],
-  explicitColumns: readonly VizTableColumnDefinition[] | undefined,
-): readonly VizTableColumnDefinition[] {
-  if (explicitColumns?.length) {
-    return explicitColumns;
-  }
-
-  const keys: string[] = [];
-  const seen = new Set<string>();
-  for (const row of rows) {
-    if (!row || typeof row !== "object") {
-      continue;
-    }
-
-    for (const key of Object.keys(row)) {
-      if (!seen.has(key)) {
-        seen.add(key);
-        keys.push(key);
-      }
-    }
-  }
-
-  return keys.map((key) => ({ id: key }));
-}
-
-function createNormalizedColumn(
-  definition: VizTableColumnDefinition,
-  values: Array<VizTableCellValue | null>,
-): NormalizedColumn {
-  const type = definition.type ?? inferColumnType(values);
-  const summary = summarizeColumn(definition, type, values);
-
-  return {
-    definition,
-    summary,
-    values,
-  };
-}
-
-function summarizeColumn(
-  definition: VizTableColumnDefinition,
-  type: VizTableColumnType,
-  values: readonly (VizTableCellValue | null)[],
-): VizTableColumnSummary {
-  let nullCount = 0;
-  let nonNullCount = 0;
-  let min = Number.POSITIVE_INFINITY;
-  let max = Number.NEGATIVE_INFINITY;
-
-  for (const value of values) {
-    if (value == null) {
-      nullCount += 1;
-      continue;
-    }
-
-    nonNullCount += 1;
-    const numeric = numberValue(value);
-    if (numeric != null && (type === "number" || type === "date")) {
-      min = Math.min(min, numeric);
-      max = Math.max(max, numeric);
-    }
-  }
-
-  return {
-    filterable: definition.filterable ?? true,
-    id: definition.id,
-    label: definition.label ?? definition.id,
-    max: Number.isFinite(max) ? max : undefined,
-    meta: definition.meta,
-    min: Number.isFinite(min) ? min : undefined,
-    nonNullCount,
-    nullable: definition.nullable ?? nullCount > 0,
-    nullCount,
-    searchable:
-      definition.searchable ?? (type === "string" || type === "json" || type === "unknown"),
-    sortable: definition.sortable ?? true,
-    type,
-  };
-}
-
-function inferColumnType(values: readonly (VizTableCellValue | null)[]): VizTableColumnType {
-  let inferred: VizTableColumnType | null = null;
-
-  for (const value of values) {
-    if (value == null) {
-      continue;
-    }
-
-    const valueType = inferValueType(value);
-    if (!inferred) {
-      inferred = valueType;
-      continue;
-    }
-
-    if (inferred !== valueType) {
-      return "unknown";
-    }
-  }
-
-  return inferred ?? "unknown";
-}
-
-function inferValueType(value: VizTableCellValue): VizTableColumnType {
-  if (value instanceof Date) {
-    return "date";
-  }
-
-  switch (typeof value) {
-    case "boolean":
-      return "boolean";
-    case "number":
-      return "number";
-    case "string":
-      return "string";
-    case "object":
-      return "json";
-    default:
-      return "unknown";
-  }
-}
-
-function normalizeCellValue(value: unknown): VizTableCellValue | null {
-  if (value == null) {
-    return null;
-  }
-
-  if (value instanceof Date) {
-    return value.getTime();
-  }
-
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean" ||
-    Array.isArray(value)
-  ) {
-    return value;
-  }
-
-  if (typeof value === "object") {
-    return value as Record<string, unknown>;
-  }
-
-  return String(value);
-}
-
-function normalizeCellValueForColumn(
-  value: unknown,
-  type: VizTableColumnType | undefined,
-): VizTableCellValue | null {
-  if (type === "boolean" && value != null) {
-    return value === true || value === 1;
-  }
-
-  return normalizeCellValue(value);
-}
-
-function resolveColumnIds(
-  columns: readonly NormalizedColumn[],
-  columnIds: readonly string[] | undefined,
-) {
-  if (!columnIds) {
-    return columns.map((column) => column.summary.id);
-  }
-
-  const known = new Set(columns.map((column) => column.summary.id));
-  return columnIds.filter((columnId) => known.has(columnId));
-}
-
-function resolveSearchColumns(
-  columns: readonly NormalizedColumn[],
-  columnIds: readonly string[] | undefined,
-) {
-  const requested = columnIds ? new Set(columnIds) : null;
-
-  return columns.filter(
-    (column) => column.summary.searchable && (!requested || requested.has(column.summary.id)),
-  );
-}
-
-function sortRows(
-  rowIndices: readonly number[],
-  sort:
-    | readonly { columnId: string; direction: "asc" | "desc"; nulls?: "first" | "last" }[]
-    | undefined,
-  columnsById: Map<string, NormalizedColumn>,
-) {
-  if (!sort?.length) {
-    return [...rowIndices];
-  }
-
-  return [...rowIndices].sort((leftIndex, rightIndex) => {
-    for (const sortEntry of sort) {
-      const column = columnsById.get(sortEntry.columnId);
-      if (!column) {
-        continue;
-      }
-
-      const comparison = compareValues(
-        column.values[leftIndex],
-        column.values[rightIndex],
-        column.summary.type,
-        sortEntry.nulls ?? "last",
-      );
-      if (comparison !== 0) {
-        return sortEntry.direction === "asc" ? comparison : -comparison;
-      }
-    }
-
-    return leftIndex - rightIndex;
-  });
-}
-
-function compareValues(
-  left: VizTableCellValue | null,
-  right: VizTableCellValue | null,
-  type: VizTableColumnType,
-  nulls: "first" | "last",
-) {
-  const leftNull = left == null;
-  const rightNull = right == null;
-  if (leftNull || rightNull) {
-    if (leftNull && rightNull) {
-      return 0;
-    }
-    return leftNull ? (nulls === "first" ? -1 : 1) : nulls === "first" ? 1 : -1;
-  }
-
-  if (type === "number" || type === "date") {
-    return (numberValue(left) ?? 0) - (numberValue(right) ?? 0);
-  }
-
-  if (type === "boolean") {
-    return Number(left === true) - Number(right === true);
-  }
-
-  return stableStringValue(left).localeCompare(stableStringValue(right));
-}
-
-function rowMatchesFilter(value: VizTableCellValue | null, filter: VizTableFilter) {
-  switch (filter.operator) {
-    case "isNull":
-      return value == null;
-    case "isNotNull":
-      return value != null;
-    case "equals":
-      return compareFilterValue(value, filter.value, filter.caseSensitive) === 0;
-    case "notEquals":
-      return compareFilterValue(value, filter.value, filter.caseSensitive) !== 0;
-    case "contains":
-      return normalizeText(valueToSearchText(value), filter.caseSensitive).includes(
-        normalizeText(String(filter.value ?? ""), filter.caseSensitive),
-      );
-    case "startsWith":
-      return normalizeText(valueToSearchText(value), filter.caseSensitive).startsWith(
-        normalizeText(String(filter.value ?? ""), filter.caseSensitive),
-      );
-    case "endsWith":
-      return normalizeText(valueToSearchText(value), filter.caseSensitive).endsWith(
-        normalizeText(String(filter.value ?? ""), filter.caseSensitive),
-      );
-    case "gt":
-      return numericCompare(value, filter.value) > 0;
-    case "gte":
-      return numericCompare(value, filter.value) >= 0;
-    case "lt":
-      return numericCompare(value, filter.value) < 0;
-    case "lte":
-      return numericCompare(value, filter.value) <= 0;
-    case "between": {
-      if (!Array.isArray(filter.value) || filter.value.length !== 2) {
-        return false;
-      }
-      const numeric = numberValue(value);
-      const min = numberValue(filter.value[0]);
-      const max = numberValue(filter.value[1]);
-      return numeric != null && min != null && max != null && numeric >= min && numeric <= max;
-    }
-    case "in":
-      return Array.isArray(filter.value)
-        ? filter.value.some(
-            (candidate) => compareFilterValue(value, candidate, filter.caseSensitive) === 0,
-          )
-        : false;
-  }
-}
-
-export function isFilterCompatible(type: VizTableColumnType, filter: VizTableFilter) {
-  switch (filter.operator) {
-    case "isNull":
-    case "isNotNull":
-    case "equals":
-    case "notEquals":
-    case "in":
-      return true;
-    case "contains":
-    case "startsWith":
-    case "endsWith":
-      return type === "string" || type === "json" || type === "unknown";
-    case "gt":
-    case "gte":
-    case "lt":
-    case "lte":
-    case "between":
-      return type === "number" || type === "date";
-  }
-}
-
-function compareFilterValue(
-  value: VizTableCellValue | null,
-  expected: VizTableCellValue | readonly VizTableCellValue[] | undefined,
-  caseSensitive: boolean | undefined,
-) {
-  if (value == null || expected == null || Array.isArray(expected)) {
-    return value === expected ? 0 : -1;
-  }
-
-  if (typeof value === "string" || typeof expected === "string") {
-    return normalizeText(String(value), caseSensitive).localeCompare(
-      normalizeText(String(expected), caseSensitive),
-    );
-  }
-
-  return stableStringValue(value).localeCompare(stableStringValue(expected));
-}
-
-function numericCompare(
-  value: VizTableCellValue | null,
-  expected: VizTableCellValue | readonly VizTableCellValue[] | undefined,
-) {
-  if (Array.isArray(expected)) {
-    return Number.NaN;
-  }
-
-  const left = numberValue(value);
-  const right = numberValue(expected);
-  if (left == null || right == null) {
-    return Number.NaN;
-  }
-
-  return left - right;
-}
-
-function numberValue(value: VizTableCellValue | null | undefined) {
-  if (value == null) {
-    return null;
-  }
-
-  if (value instanceof Date) {
-    return value.getTime();
-  }
-
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function valueToSearchText(value: VizTableCellValue | null | undefined) {
-  if (value == null) {
-    return "";
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  return stableStringValue(value);
-}
-
-function stableStringValue(value: unknown): string {
-  if (value == null) {
-    return "";
-  }
-
-  if (value instanceof Date) {
-    return String(value.getTime());
-  }
-
-  if (Array.isArray(value)) {
-    return `[${value.map(stableStringValue).join(",")}]`;
-  }
-
-  if (typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record)
-      .sort()
-      .map((key) => `${key}:${stableStringValue(record[key])}`)
-      .join(",")}}`;
-  }
-
-  return String(value);
-}
-
-function normalizeText(value: string, caseSensitive: boolean | undefined) {
-  return caseSensitive ? value : value.toLocaleLowerCase();
-}
-
-export function normalizeRowOffset(rowOffset: number | undefined) {
-  return Number.isFinite(rowOffset) ? Math.max(0, Math.trunc(rowOffset ?? 0)) : 0;
-}
-
-export function normalizeRowLimit(rowLimit: number | undefined) {
-  if (rowLimit === 0) {
-    return 0;
-  }
-
-  return Number.isFinite(rowLimit) && rowLimit! > 0 ? Math.trunc(rowLimit!) : 100;
 }
