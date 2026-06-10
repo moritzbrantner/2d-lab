@@ -60,8 +60,8 @@ const typedFrame = engine.computeFrame({ viewport });
 const objectFrame = engine.hydrateFrame(typedFrame);
 ```
 
-## Compatibility Aliases
+## Removed Compatibility Aliases
 
-The deprecated `outputMode: "compact"` option and `compact*` fields are still
-available during the pre-1.0 migration. New renderers should use
+The deprecated `outputMode: "compact"` option and `compact*` frame fields were
+removed in the model-cleanup release. New renderers should use
 `frameFormat: "typed"` and `typed*` fields.

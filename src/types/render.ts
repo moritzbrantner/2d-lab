@@ -206,42 +206,19 @@ export type VizViewport = VizCartesianViewport | VizGeoViewport | VizTableViewpo
 
 export type VizFrameFormat = "objects" | "typed";
 
-export type VizObjectComputeFrameOptions =
-  | {
-      frameFormat: "objects";
-      layerIds?: readonly VizLayerId[];
-      /** @deprecated Use frameFormat: "objects". */
-      outputMode?: "object";
-      viewport: VizViewport;
-    }
-  | {
-      frameFormat?: "objects";
-      layerIds?: readonly VizLayerId[];
-      /** @deprecated Use frameFormat: "objects". */
-      outputMode: "object";
-      viewport: VizViewport;
-    };
-
-export type VizCompactComputeFrameOptions = {
-  frameFormat?: "typed";
+export type VizObjectComputeFrameOptions = {
+  frameFormat: "objects";
   layerIds?: readonly VizLayerId[];
-  /** @deprecated Use frameFormat: "typed". */
-  outputMode: "compact";
   viewport: VizViewport;
 };
 
 export type VizTypedComputeFrameOptions = {
   frameFormat?: "typed";
   layerIds?: readonly VizLayerId[];
-  /** @deprecated Use frameFormat: "typed". */
-  outputMode?: "compact";
   viewport: VizViewport;
 };
 
-export type VizComputeFrameOptions =
-  | VizObjectComputeFrameOptions
-  | VizCompactComputeFrameOptions
-  | VizTypedComputeFrameOptions;
+export type VizComputeFrameOptions = VizObjectComputeFrameOptions | VizTypedComputeFrameOptions;
 
 export type VizRenderDatum<TProperties = Record<string, unknown>> = {
   average: number | null;
@@ -372,53 +349,34 @@ export type VizRenderLayer<TProperties = Record<string, unknown>> =
 export type VizTypedCartesianRenderLayer =
   | {
       bounds: VizRenderBounds | null;
-      /** @deprecated Use typedSeries. */
-      compactSeries: VizCompactDensitySeries;
       datasetId: VizDatasetId;
       kind: "binned-series";
       layerId: VizLayerId;
-      /** @deprecated Use frameFormat on computeFrame options. */
-      outputMode: "compact";
       typedSeries: VizCompactDensitySeries;
       valueMode: VizValueMode;
     }
   | {
       bounds: VizRenderBounds | null;
-      /** @deprecated Use typedHistogram. */
-      compactHistogram: VizCompactHistogram;
       datasetId: VizDatasetId;
       kind: "histogram";
       layerId: VizLayerId;
-      /** @deprecated Use frameFormat on computeFrame options. */
-      outputMode: "compact";
       typedHistogram: VizCompactHistogram;
     }
   | {
       bounds: VizRenderBounds | null;
-      /** @deprecated Use typedHeatmap. */
-      compactHeatmap: VizCompactHeatmap;
       datasetId: VizDatasetId;
       kind: "heatmap";
       layerId: VizLayerId;
-      /** @deprecated Use frameFormat on computeFrame options. */
-      outputMode: "compact";
       typedHeatmap: VizCompactHeatmap;
     }
   | {
       bounds: VizRenderBounds | null;
-      /** @deprecated Use typedRollingSeries. */
-      compactRollingSeries: VizCompactRollingSeries;
       datasetId: VizDatasetId;
       kind: "rolling-series";
       layerId: VizLayerId;
-      /** @deprecated Use frameFormat on computeFrame options. */
-      outputMode: "compact";
       statistic: VizRollingStatistic;
       typedRollingSeries: VizCompactRollingSeries;
     };
-
-/** @deprecated Use VizTypedCartesianRenderLayer. */
-export type VizCompactCartesianRenderLayer = VizTypedCartesianRenderLayer;
 
 export type VizTypedFinanceRenderLayer =
   | {
@@ -580,13 +538,6 @@ export type VizRenderFrame<TProperties = Record<string, unknown>> = {
   stats: VizRenderFrameStats;
 };
 
-export type VizCompactRenderFrame<TProperties = Record<string, unknown>> = Omit<
-  VizRenderFrame<TProperties>,
-  "layers"
-> & {
-  layers: Array<VizRenderLayer<TProperties> | VizTypedCartesianRenderLayer>;
-};
-
 export type VizTypedRenderFrame<TProperties = Record<string, unknown>> = Omit<
   VizRenderFrame<TProperties>,
   "layers"
@@ -602,7 +553,6 @@ export type VizTypedRenderFrame<TProperties = Record<string, unknown>> = Omit<
 
 export type VizAnyRenderFrame<TProperties = Record<string, unknown>> =
   | VizRenderFrame<TProperties>
-  | VizCompactRenderFrame<TProperties>
   | VizTypedRenderFrame<TProperties>;
 
 export type VizHitTestMode = "contains" | "nearest-point" | "nearest-x";
@@ -669,7 +619,6 @@ export type VizEngine<TProperties = Record<string, unknown>> = {
   clear(): void;
   clearCache(options?: { datasetId?: VizDatasetId; layerId?: VizLayerId }): void;
   computeFrame(options: VizObjectComputeFrameOptions): VizRenderFrame<TProperties>;
-  computeFrame(options: VizCompactComputeFrameOptions): VizCompactRenderFrame<TProperties>;
   computeFrame(options: VizTypedComputeFrameOptions): VizTypedRenderFrame<TProperties>;
   dispose(): void;
   getCacheStats(): VizCacheStats;

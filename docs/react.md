@@ -1,6 +1,7 @@
 # React Bindings
 
-React bindings live at the explicit React subpath.
+React bindings live at the explicit React subpath. They coordinate engine
+lifecycle in React and do not render visuals.
 
 ```tsx
 import {

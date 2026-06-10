@@ -49,15 +49,12 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
   const record = layer as Record<string, unknown>;
   const bounds = "bounds" in layer ? layer.bounds : null;
 
-  if ("typedSeries" in record || "compactSeries" in record) {
+  if ("typedSeries" in record) {
     const typedLayer = layer as {
-      compactSeries: VizCompactDensitySeries;
-      typedSeries?: VizCompactDensitySeries;
+      typedSeries: VizCompactDensitySeries;
       valueMode: VizCompactDensitySeries["summary"]["valueMode"];
     };
-    const series = densitySeriesFromTyped<TProperties>(
-      typedLayer.typedSeries ?? typedLayer.compactSeries,
-    );
+    const series = densitySeriesFromTyped<TProperties>(typedLayer.typedSeries);
     return {
       bounds,
       datasetId: layer.datasetId,
@@ -68,14 +65,11 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
     };
   }
 
-  if ("typedHistogram" in record || "compactHistogram" in record) {
+  if ("typedHistogram" in record) {
     const typedLayer = layer as {
-      compactHistogram: VizCompactHistogram;
-      typedHistogram?: VizCompactHistogram;
+      typedHistogram: VizCompactHistogram;
     };
-    const histogram = histogramFromTyped<TProperties>(
-      typedLayer.typedHistogram ?? typedLayer.compactHistogram,
-    );
+    const histogram = histogramFromTyped<TProperties>(typedLayer.typedHistogram);
     return {
       bounds,
       buckets: histogram.buckets,
@@ -85,14 +79,11 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
     };
   }
 
-  if ("typedHeatmap" in record || "compactHeatmap" in record) {
+  if ("typedHeatmap" in record) {
     const typedLayer = layer as {
-      compactHeatmap: VizCompactHeatmap;
-      typedHeatmap?: VizCompactHeatmap;
+      typedHeatmap: VizCompactHeatmap;
     };
-    const heatmap = heatmapFromTyped<TProperties>(
-      typedLayer.typedHeatmap ?? typedLayer.compactHeatmap,
-    );
+    const heatmap = heatmapFromTyped<TProperties>(typedLayer.typedHeatmap);
     return {
       bounds,
       cells: heatmap.cells,
@@ -102,15 +93,12 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
     };
   }
 
-  if ("typedRollingSeries" in record || "compactRollingSeries" in record) {
+  if ("typedRollingSeries" in record) {
     const typedLayer = layer as {
-      compactRollingSeries: VizCompactRollingSeries;
       statistic: VizCompactRollingSeries["summary"]["statistic"];
-      typedRollingSeries?: VizCompactRollingSeries;
+      typedRollingSeries: VizCompactRollingSeries;
     };
-    const series = rollingSeriesFromTyped<TProperties>(
-      typedLayer.typedRollingSeries ?? typedLayer.compactRollingSeries,
-    );
+    const series = rollingSeriesFromTyped<TProperties>(typedLayer.typedRollingSeries);
     return {
       bounds,
       datasetId: layer.datasetId,

@@ -53,7 +53,7 @@ that declare at least one supported column type:
 Object-row datasets remain JS even when WASM is requested.
 
 `backend: "auto"` uses the WASM table wrapper only for supported columnar table
-datasets with `>= 100_000` rows.
+datasets with `>= 10_000` rows.
 
 The WASM table wrapper accelerates row-index selection. Typed table
 materialization and object row hydration still reuse the JavaScript table index.
@@ -80,8 +80,8 @@ Frame stats report the selected dataset-level table backend:
   `backendImplementation: "js"`.
 - Supported columnar table + `backend: "wasm"` reports `backend: "wasm"` and
   `backendImplementation: "rust-viz-engine-wasm"`.
-- Supported columnar table + `backend: "auto"` below `100_000` rows reports JS.
-- Supported columnar table + `backend: "auto"` at `100_000` rows reports WASM.
+- Supported columnar table + `backend: "auto"` below `10_000` rows reports JS.
+- Supported columnar table + `backend: "auto"` at `10_000` rows reports WASM.
 
 ## Current Bundle Shape
 

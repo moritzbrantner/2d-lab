@@ -110,7 +110,7 @@ assert(typeof react.useVizFrame === "function", "react export missing useVizFram
 
 const root = await import(pathToFileURL(path.join(rootDir, "dist/index.js")).href);
 assert(typeof root.createVizEngine === "function", "root export missing createVizEngine.");
-assert(typeof root.VizEngineProvider === "function", "root export missing VizEngineProvider.");
+assert(!("VizEngineProvider" in root), "root export must not include React bindings.");
 
 const packOutput = execFileSync("bun", ["pm", "pack", "--dry-run", "--ignore-scripts"], {
   cwd: rootDir,
@@ -341,10 +341,10 @@ function runReactConsumerSmoke(smokeRoot, tarballPath) {
     path.join(workspace, "root.mjs"),
     [
       'import { strict as assert } from "node:assert";',
-      'import { createVizEngine, VizEngineProvider } from "@moritzbrantner/viz-engine";',
+      'import { createVizEngine } from "@moritzbrantner/viz-engine";',
       "",
       'assert.equal(typeof createVizEngine, "function");',
-      'assert.equal(typeof VizEngineProvider, "function");',
+      'assert.ok(!("VizEngineProvider" in await import("@moritzbrantner/viz-engine")));',
       "",
     ].join("\n"),
   );

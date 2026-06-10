@@ -246,7 +246,7 @@ export function useVizFrame<TProperties = Record<string, unknown>>(
 }
 
 export function useVizTypedFrame<TProperties = Record<string, unknown>>(
-  options: Omit<UseVizFrameOptions, "frameFormat" | "outputMode">,
+  options: Omit<UseVizFrameOptions, "frameFormat">,
 ): VizTypedRenderFrame<TProperties> {
   return useVizFrame<TProperties>({
     ...options,

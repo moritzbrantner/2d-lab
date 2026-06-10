@@ -373,10 +373,11 @@ describe("createVizEngine", () => {
     });
     const layer = frame.layers[0];
 
-    expect(layer).toMatchObject({ kind: "binned-series", outputMode: "compact" });
+    expect(layer).toMatchObject({ kind: "binned-series" });
     if (layer?.kind === "binned-series" && "typedSeries" in layer) {
-      expect(layer.typedSeries).toBe(layer.compactSeries);
       expect([...layer.typedSeries.pointCount]).toEqual([1, 1, 1, 1, 1]);
+      expect("compactSeries" in layer).toBe(false);
+      expect("outputMode" in layer).toBe(false);
       expect("rows" in layer).toBe(false);
     } else {
       throw new Error("Expected typed binned-series layer.");

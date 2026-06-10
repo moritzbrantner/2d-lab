@@ -13,11 +13,11 @@ worker, or server integration that does not need React hooks.
 
 | Import path                            | What it includes                                                                                            |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `@moritzbrantner/viz-engine/core`      | Zero-config embedded engine creation, frame hydration, transfer helpers, density index helpers, and types.  |
+| `@moritzbrantner/viz-engine`           | Core data/frame engine APIs without React.                                                                  |
+| `@moritzbrantner/viz-engine/core`      | Explicit core engine creation, frame hydration, transfer helpers, density index helpers, and types.         |
 | `@moritzbrantner/viz-engine/core/lazy` | Async engine creation with lazy WASM loading.                                                               |
 | `@moritzbrantner/viz-engine/worker`    | Worker client and host APIs.                                                                                |
 | `@moritzbrantner/viz-engine/react`     | `VizEngineProvider`, `useVizEngine`, `useVizDataset`, `useVizLayer`, `useVizFrame`, and `useVizTypedFrame`. |
-| `@moritzbrantner/viz-engine`           | Backward-compatible root export. Prefer explicit subpaths for new code.                                     |
 
 ## Compute A Frame
 

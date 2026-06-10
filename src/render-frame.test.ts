@@ -181,7 +181,7 @@ describe("computeVizRenderFrame", () => {
     ]);
   });
 
-  test("renders compact cartesian frame layers with typed-array payloads", () => {
+  test("renders typed cartesian frame layers with typed-array payloads", () => {
     const engine = createVizEngine({ backend: "wasm" });
     const datasetId = engine.addDataset({ kind: "xy", points });
 
@@ -214,48 +214,52 @@ describe("computeVizRenderFrame", () => {
       frameFormat: "objects",
       viewport: { height: 320, width: 800, xDomain: [0, 40] },
     });
-    const compactFrame = engine.computeFrame({
-      outputMode: "compact",
+    const typedFrame = engine.computeFrame({
+      frameFormat: "typed",
       viewport: { height: 320, width: 800, xDomain: [0, 40] },
     });
 
-    expect(compactFrame.stats).toMatchObject({
+    expect(typedFrame.stats).toMatchObject({
       backend: "wasm",
       backendImplementation: "rust-viz-engine-wasm",
       diagnostics: [],
       layerCount: 4,
     });
-    expect(compactFrame.layers.map((layer) => ("bounds" in layer ? layer.bounds : null))).toEqual(
+    expect(typedFrame.layers.map((layer) => ("bounds" in layer ? layer.bounds : null))).toEqual(
       objectFrame.layers.map((layer) => ("bounds" in layer ? layer.bounds : null)),
     );
-    expect(compactFrame.layers[0]).toMatchObject({
+    expect(typedFrame.layers[0]).toMatchObject({
       kind: "binned-series",
-      outputMode: "compact",
     });
     expect(
-      compactFrame.layers[0]?.kind === "binned-series" && "compactSeries" in compactFrame.layers[0]
-        ? [...compactFrame.layers[0].compactSeries.pointCount]
+      typedFrame.layers[0]?.kind === "binned-series" && "typedSeries" in typedFrame.layers[0]
+        ? [...typedFrame.layers[0].typedSeries.pointCount]
         : [],
     ).toEqual([1, 1, 1, 2]);
     expect(
-      compactFrame.layers[1]?.kind === "histogram" && "compactHistogram" in compactFrame.layers[1]
-        ? [...compactFrame.layers[1].compactHistogram.pointCount]
+      typedFrame.layers[1]?.kind === "histogram" && "typedHistogram" in typedFrame.layers[1]
+        ? [...typedFrame.layers[1].typedHistogram.pointCount]
         : [],
     ).toEqual([3, 1, 0, 1]);
     expect(
-      compactFrame.layers[2]?.kind === "heatmap" && "compactHeatmap" in compactFrame.layers[2]
-        ? compactFrame.layers[2].compactHeatmap.pointCount.length
+      typedFrame.layers[2]?.kind === "heatmap" && "typedHeatmap" in typedFrame.layers[2]
+        ? typedFrame.layers[2].typedHeatmap.pointCount.length
         : 0,
     ).toBe(16);
     expect(
-      compactFrame.layers[3]?.kind === "rolling-series" &&
-        "compactRollingSeries" in compactFrame.layers[3]
-        ? [...compactFrame.layers[3].compactRollingSeries.y]
+      typedFrame.layers[3]?.kind === "rolling-series" &&
+        "typedRollingSeries" in typedFrame.layers[3]
+        ? [...typedFrame.layers[3].typedRollingSeries.y]
         : [],
     ).toEqual([Number.NaN, 3, 14 / 3, 28 / 3, 56 / 3]);
+    expect(typedFrame.layers.some((layer) => "outputMode" in layer)).toBe(false);
+    expect(typedFrame.layers.some((layer) => "compactSeries" in layer)).toBe(false);
+    expect(typedFrame.layers.some((layer) => "compactHistogram" in layer)).toBe(false);
+    expect(typedFrame.layers.some((layer) => "compactHeatmap" in layer)).toBe(false);
+    expect(typedFrame.layers.some((layer) => "compactRollingSeries" in layer)).toBe(false);
   });
 
-  test("auto backend defers wasm promotion for compact cartesian frames until warmup", async () => {
+  test("auto backend defers wasm promotion for typed cartesian frames until warmup", async () => {
     const engine = createVizEngine({ backend: "auto" });
     const datasetId = engine.addDataset({ kind: "xy", points });
 
@@ -270,24 +274,24 @@ describe("computeVizRenderFrame", () => {
     const objectFrame = engine.computeFrame({
       viewport: { height: 320, width: 800, xDomain: [0, 40] },
     });
-    const compactFrame = engine.computeFrame({
-      outputMode: "compact",
+    const typedFrame = engine.computeFrame({
+      frameFormat: "typed",
       viewport: { height: 320, width: 800, xDomain: [0, 40] },
     });
 
     expect(["js", "wasm"]).toContain(objectFrame.stats.backend);
-    expect(compactFrame.stats).toMatchObject({
+    expect(typedFrame.stats).toMatchObject({
       backend: "js",
       backendImplementation: "js",
     });
 
     await new Promise((resolve) => setTimeout(resolve, 0));
-    const smallWarmedCompactFrame = engine.computeFrame({
-      outputMode: "compact",
+    const smallWarmedTypedFrame = engine.computeFrame({
+      frameFormat: "typed",
       viewport: { height: 320, width: 800, xDomain: [0, 40] },
     });
 
-    expect(smallWarmedCompactFrame.stats).toMatchObject({
+    expect(smallWarmedTypedFrame.stats).toMatchObject({
       backend: "js",
       backendImplementation: "js",
     });
@@ -306,24 +310,24 @@ describe("computeVizRenderFrame", () => {
       valueMode: "average",
       xDomain: [0, 4_999],
     });
-    const largeFirstCompactFrame = largeEngine.computeFrame({
-      outputMode: "compact",
+    const largeFirstTypedFrame = largeEngine.computeFrame({
+      frameFormat: "typed",
       viewport: { height: 320, width: 800, xDomain: [0, 4_999] },
     });
 
-    expect(largeFirstCompactFrame.stats).toMatchObject({
+    expect(largeFirstTypedFrame.stats).toMatchObject({
       backend: "js",
       backendImplementation: "js",
     });
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     await Promise.resolve();
-    const largeWarmedCompactFrame = largeEngine.computeFrame({
-      outputMode: "compact",
+    const largeWarmedTypedFrame = largeEngine.computeFrame({
+      frameFormat: "typed",
       viewport: { height: 320, width: 800, xDomain: [0, 4_999] },
     });
 
-    expect(largeWarmedCompactFrame.stats).toMatchObject({
+    expect(largeWarmedTypedFrame.stats).toMatchObject({
       backend: "wasm",
       backendImplementation: "rust-viz-engine-wasm",
     });

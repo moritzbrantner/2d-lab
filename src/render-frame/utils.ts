@@ -27,11 +27,7 @@ export function now() {
 }
 
 export function resolveFrameFormat(options: VizComputeFrameOptions) {
-  if (options.frameFormat) {
-    return options.frameFormat;
-  }
-
-  return options.outputMode === "object" ? "objects" : "typed";
+  return options.frameFormat ?? "typed";
 }
 
 export function createVizRenderRows<TProperties>(

@@ -9,8 +9,6 @@ import type {
   VizAnyRenderFrame,
   VizAnyRenderLayer,
   VizCacheOptions,
-  VizCompactComputeFrameOptions,
-  VizCompactRenderFrame,
   VizDataset,
   VizDatasetId,
   VizEngine,
@@ -58,16 +56,10 @@ export function createVizEngineWithBackend<TProperties = Record<string, unknown>
 
   function computeFrame(frameOptions: VizObjectComputeFrameOptions): VizRenderFrame<TProperties>;
   function computeFrame(
-    frameOptions: VizCompactComputeFrameOptions,
-  ): VizCompactRenderFrame<TProperties>;
-  function computeFrame(
     frameOptions: VizTypedComputeFrameOptions,
   ): VizTypedRenderFrame<TProperties>;
   function computeFrame(
-    frameOptions:
-      | VizCompactComputeFrameOptions
-      | VizObjectComputeFrameOptions
-      | VizTypedComputeFrameOptions,
+    frameOptions: VizObjectComputeFrameOptions | VizTypedComputeFrameOptions,
   ): VizAnyRenderFrame<TProperties> {
     assertUsable();
     lastFrame = (

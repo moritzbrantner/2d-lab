@@ -12,8 +12,6 @@ import type {
   VizAnyRenderFrame,
   VizAnyRenderLayer,
   VizBackendDecision,
-  VizCompactComputeFrameOptions,
-  VizCompactRenderFrame,
   VizComputeFrameOptions,
   VizEngineBackend,
   VizEngineDatasetRecord,
@@ -37,13 +35,6 @@ export function computeVizRenderFrame<TProperties>(
   options: VizObjectComputeFrameOptions,
   layerCache?: VizRenderLayerCache<TProperties>,
 ): VizRenderFrame<TProperties>;
-export function computeVizRenderFrame<TProperties>(
-  datasets: Map<string, VizEngineDatasetRecord<TProperties>>,
-  layers: Map<VizLayerId, LayerEntry>,
-  backend: VizEngineBackend<TProperties>,
-  options: VizCompactComputeFrameOptions,
-  layerCache?: VizRenderLayerCache<TProperties>,
-): VizCompactRenderFrame<TProperties>;
 export function computeVizRenderFrame<TProperties>(
   datasets: Map<string, VizEngineDatasetRecord<TProperties>>,
   layers: Map<VizLayerId, LayerEntry>,

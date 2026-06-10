@@ -1,6 +1,6 @@
 # @moritzbrantner/viz-engine
 
-Experimental renderer-agnostic visualization engine backed by JavaScript
+Experimental renderer-agnostic data/frame engine backed by JavaScript
 fallbacks and Rust/WASM kernels for XY, geo, finance, and table data.
 
 `createVizEngine` lets multiple chart layers share datasets and indexes, then
@@ -36,14 +36,14 @@ const hydratedFrame = engine.hydrateFrame(typedFrame);
 
 ## Import Paths
 
-| Import path                                | Use it for                                                                                       |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `@moritzbrantner/viz-engine/core`          | Current zero-config embedded core APIs without React.                                            |
-| `@moritzbrantner/viz-engine/core/embedded` | Explicit embedded core alias.                                                                    |
-| `@moritzbrantner/viz-engine/core/lazy`     | Async core API with lazy WASM loading.                                                           |
-| `@moritzbrantner/viz-engine/worker`        | Worker client and host APIs for off-main-thread frame computation.                               |
-| `@moritzbrantner/viz-engine/react`         | React provider and hooks.                                                                        |
-| `@moritzbrantner/viz-engine`               | Backward-compatible root export. It still includes React bindings during the pre-1.0 transition. |
+| Import path                                | Use it for                                                         |
+| ------------------------------------------ | ------------------------------------------------------------------ |
+| `@moritzbrantner/viz-engine`               | Core data/frame engine APIs without React.                         |
+| `@moritzbrantner/viz-engine/core`          | Explicit core data/frame engine APIs without React.                |
+| `@moritzbrantner/viz-engine/core/embedded` | Explicit embedded core alias.                                      |
+| `@moritzbrantner/viz-engine/core/lazy`     | Async core API with lazy WASM loading.                             |
+| `@moritzbrantner/viz-engine/worker`        | Worker client and host APIs for off-main-thread frame computation. |
+| `@moritzbrantner/viz-engine/react`         | React lifecycle bindings.                                          |
 
 ## Docs
 
@@ -64,8 +64,8 @@ const hydratedFrame = engine.hydrateFrame(typedFrame);
   coordination, hit testing, and renderer-facing data shapes.
 - Rust crates own reusable computation for data-heavy kernels.
 - JavaScript fallbacks preserve the same public contracts.
-- Renderers own visuals and consume returned frame layers.
-- React hooks coordinate lifecycle and UI state only.
+- Renderers own visuals, axes, legends, labels, formatting, selection UI, virtualization, and consume returned frame layers.
+- React hooks coordinate engine lifecycle only.
 
 The package boundary is:
 

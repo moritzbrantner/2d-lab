@@ -3,15 +3,15 @@
 ## Summary
 
 This release improves package adoption without changing visualization semantics.
-It adds explicit core and React subpath exports, keeps the root export
-backward-compatible, documents the new import paths, and adds package smoke
-checks that validate the published shape.
+It adds explicit core and React subpath exports, makes the root export core-only,
+documents the import paths, and adds package smoke checks that validate the
+published shape.
 
 ## Changes
 
 - Added `@moritzbrantner/viz-engine/core` for non-React engine APIs.
 - Added `@moritzbrantner/viz-engine/react` for React provider and hooks.
-- Kept `@moritzbrantner/viz-engine` backward-compatible.
+- Made `@moritzbrantner/viz-engine` core-only.
 - Marked React as an optional peer dependency.
 - Added adoption docs for getting started, frame formats, backend selection,
   React usage, worker handoff, typed-frame migration, focused examples, and
@@ -19,7 +19,7 @@ checks that validate the published shape.
 - Added focused source examples for Canvas, React, worker handoff, geo viewport
   rendering, and finance candles/returns.
 - Added package smoke validation for generated subpath artifacts, package
-  contents, core-without-React, React imports, and root compatibility.
+  contents, core-without-React, React imports, and core-only root exports.
 - Added optional packed-package consumer smoke via
   `VIZ_ENGINE_PACKAGE_SMOKE_CONSUMER=1 bun run package:smoke`.
 - Added bundle-size reporting with `bun run bundle:size`.
@@ -38,15 +38,14 @@ import { createVizEngine } from "@moritzbrantner/viz-engine/core";
 import { VizEngineProvider, useVizFrame } from "@moritzbrantner/viz-engine/react";
 ```
 
-Existing root imports continue to work:
+Root imports expose core APIs only:
 
 ```ts
-import { createVizEngine, VizEngineProvider } from "@moritzbrantner/viz-engine";
+import { createVizEngine } from "@moritzbrantner/viz-engine";
 ```
 
-No breaking runtime behavior is intended. The deprecated
-`outputMode: "compact"` option and `compact*` aliases remain supported during
-the pre-1.0 migration period.
+`outputMode: "compact"` and `compact*` frame aliases were removed. Use
+`frameFormat: "typed"` and the corresponding `typed*` fields.
 
 ## Verification
 

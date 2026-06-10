@@ -54,11 +54,9 @@ export function computeCartesianRenderLayer<TProperties>(
 
         return {
           bounds: getCompactSeriesBounds(compactSeries),
-          compactSeries,
           datasetId: layer.datasetId,
           kind: "binned-series",
           layerId,
-          outputMode: "compact",
           typedSeries: compactSeries,
           valueMode,
         };
@@ -94,11 +92,9 @@ export function computeCartesianRenderLayer<TProperties>(
 
         return {
           bounds: getCompactHistogramBounds(compactHistogram),
-          compactHistogram,
           datasetId: layer.datasetId,
           kind: "histogram",
           layerId,
-          outputMode: "compact",
           typedHistogram: compactHistogram,
         };
       }
@@ -133,11 +129,9 @@ export function computeCartesianRenderLayer<TProperties>(
 
         return {
           bounds: getCompactHeatmapBounds(compactHeatmap),
-          compactHeatmap,
           datasetId: layer.datasetId,
           kind: "heatmap",
           layerId,
-          outputMode: "compact",
           typedHeatmap: compactHeatmap,
         };
       }
@@ -175,11 +169,9 @@ export function computeCartesianRenderLayer<TProperties>(
 
         return {
           bounds: getCompactRollingBounds(compactRollingSeries),
-          compactRollingSeries,
           datasetId: layer.datasetId,
           kind: "rolling-series",
           layerId,
-          outputMode: "compact",
           statistic,
           typedRollingSeries: compactRollingSeries,
         };

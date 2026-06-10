@@ -1,12 +1,6 @@
 import type {
   VizAnyRenderLayer,
   VizCartesianHitTestResult,
-  VizCompactDensitySeries,
-  VizCompactFinanceReturns,
-  VizCompactHeatmap,
-  VizCompactHistogram,
-  VizCompactOhlcvBars,
-  VizCompactRollingSeries,
   VizHitTestOptions,
   VizViewport,
 } from "../types";
@@ -58,56 +52,20 @@ function hitTestCartesianLayer<TProperties>(
 ) {
   switch (layer.kind) {
     case "binned-series":
-      return "typedSeries" in layer || "compactSeries" in layer
-        ? nearestTypedBinnedSample(
-            (
-              layer as {
-                compactSeries: VizCompactDensitySeries;
-                typedSeries?: VizCompactDensitySeries;
-              }
-            ).typedSeries ?? (layer as { compactSeries: VizCompactDensitySeries }).compactSeries,
-            layer,
-            viewport,
-            options,
-          )
+      return "typedSeries" in layer
+        ? nearestTypedBinnedSample(layer.typedSeries, layer, viewport, options)
         : nearestBinnedSamples(layer.series.samples, layer, viewport, options);
     case "rolling-series":
-      return "typedRollingSeries" in layer || "compactRollingSeries" in layer
-        ? nearestTypedRollingSample(
-            (
-              layer as {
-                compactRollingSeries: VizCompactRollingSeries;
-                typedRollingSeries?: VizCompactRollingSeries;
-              }
-            ).typedRollingSeries ??
-              (layer as { compactRollingSeries: VizCompactRollingSeries }).compactRollingSeries,
-            layer,
-            viewport,
-            options,
-          )
+      return "typedRollingSeries" in layer
+        ? nearestTypedRollingSample(layer.typedRollingSeries, layer, viewport, options)
         : nearestRollingPoints(layer.series.points, layer, viewport, options);
     case "histogram":
-      return "typedHistogram" in layer || "compactHistogram" in layer
-        ? hitTestTypedHistogram(
-            (
-              layer as {
-                compactHistogram: VizCompactHistogram;
-                typedHistogram?: VizCompactHistogram;
-              }
-            ).typedHistogram ??
-              (layer as { compactHistogram: VizCompactHistogram }).compactHistogram,
-            layer,
-            options,
-          )
+      return "typedHistogram" in layer
+        ? hitTestTypedHistogram(layer.typedHistogram, layer, options)
         : hitTestObjectHistogram(layer.buckets, layer, options);
     case "heatmap":
-      return "typedHeatmap" in layer || "compactHeatmap" in layer
-        ? hitTestTypedHeatmap(
-            (layer as { compactHeatmap: VizCompactHeatmap; typedHeatmap?: VizCompactHeatmap })
-              .typedHeatmap ?? (layer as { compactHeatmap: VizCompactHeatmap }).compactHeatmap,
-            layer,
-            options,
-          )
+      return "typedHeatmap" in layer
+        ? hitTestTypedHeatmap(layer.typedHeatmap, layer, options)
         : hitTestObjectHeatmap(layer.cells, layer, options);
     case "finance-line":
       return "typedFinanceLine" in layer
