@@ -1,9 +1,10 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { serializeVizError, VizBackendError } from "./errors";
+import { VizBackendError } from "./errors";
 import { createVizWorkerClient, createVizWorkerHost } from "./worker";
 
 import type { VizWorkerClient } from "./worker";
+import type { VizWasmLoader } from "./wasm/types";
 
 describe("worker API", () => {
   test("keeps datasets in the host and returns typed frames", async () => {
@@ -91,20 +92,32 @@ describe("worker API", () => {
   });
 
   test("host VizEngineError responses preserve serialized fields", async () => {
-    const error = new VizBackendError("viz-table-wasm-query-failed", "WASM query failed.", {
-      details: { phase: "query", rowCount: 3 },
+    const { scope, worker } = createWorkerBridge();
+    const loader = {
+      getError: vi.fn(() => null),
+      getState: vi.fn(() => "idle" as const),
+      load: vi.fn(async () => {
+        throw new VizBackendError("viz-backend-unavailable", "preload failed", {
+          details: { phase: "preload" },
+        });
+      }),
+      preload: vi.fn(async () => {}),
+    } satisfies VizWasmLoader;
+    createVizWorkerHost(scope, {
+      backend: "wasm",
+      wasm: { fallback: "error", loadPolicy: "preload", loader },
     });
-    const client = createVizWorkerClient(createErrorWorker(error));
+    const client = createVizWorkerClient(worker);
     const received = await client
       .addLayer({ datasetId: "dataset-1", kind: "binned-series", targetBinCount: 2 })
       .catch((caught: unknown) => caught);
 
     expect(received).toMatchObject({
-      code: "viz-table-wasm-query-failed",
-      details: { phase: "query", rowCount: 3 },
-      message: "WASM query failed.",
-      name: "VizBackendError",
+      code: "viz-wasm-unavailable",
+      message: "Viz Engine WASM preload failed.",
+      name: "VizWasmUnavailableError",
     });
+    expect(loader.load).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -124,40 +137,7 @@ function createSilentWorker(): Worker {
   } as unknown as Worker;
 }
 
-function createErrorWorker(error: Error): Worker {
-  const mainListeners = new Set<(event: MessageEvent) => void>();
-
-  return {
-    addEventListener(type: "message", listener: (event: MessageEvent) => void) {
-      if (type === "message") {
-        mainListeners.add(listener);
-      }
-    },
-    postMessage(message: unknown) {
-      queueMicrotask(() => {
-        const request = message as { id?: number };
-        try {
-          throw error;
-        } catch (caught) {
-          for (const listener of mainListeners) {
-            listener({
-              data: {
-                error: serializeVizError(caught),
-                id: request.id,
-                ok: false,
-              },
-            } as MessageEvent);
-          }
-        }
-      });
-    },
-    terminate() {
-      mainListeners.clear();
-    },
-  } as unknown as Worker;
-}
-
-function createTestWorkerPair(): { client: VizWorkerClient; worker: Worker } {
+function createWorkerBridge() {
   const mainListeners = new Set<(event: MessageEvent) => void>();
   const hostListeners = new Set<(event: MessageEvent) => void>();
 
@@ -178,7 +158,7 @@ function createTestWorkerPair(): { client: VizWorkerClient; worker: Worker } {
       mainListeners.clear();
       hostListeners.clear();
     },
-  } as Worker;
+  } as unknown as Worker;
 
   const scope = {
     addEventListener(type: "message", listener: (event: MessageEvent) => void) {
@@ -198,6 +178,11 @@ function createTestWorkerPair(): { client: VizWorkerClient; worker: Worker } {
     },
   } as Parameters<typeof createVizWorkerHost>[0];
 
+  return { scope, worker };
+}
+
+function createTestWorkerPair(): { client: VizWorkerClient; worker: Worker } {
+  const { scope, worker } = createWorkerBridge();
   createVizWorkerHost(scope, { backend: "js", wasm: { loadPolicy: "never" } });
 
   return {

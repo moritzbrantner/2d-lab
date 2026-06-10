@@ -318,11 +318,23 @@ describe("createVizEngine", () => {
     engine.addDataset({ kind: "xy", points: points.slice(0, 2) });
     engine.clear();
     const nextDatasetId = engine.addDataset({ kind: "xy", points });
+    const nextLayerId = engine.addLayer({
+      datasetId: nextDatasetId,
+      kind: "binned-series",
+      targetBinCount: 1,
+    });
+    const frame = engine.computeFrame({
+      viewport: { height: 320, width: 800, xDomain: [0, 1] },
+    });
 
     expect(indexes[0]?.dispose).toHaveBeenCalledTimes(1);
     expect(indexes[1]?.dispose).toHaveBeenCalledTimes(1);
     expect(nextDatasetId).toBe("dataset-1");
+    expect(nextLayerId).toBe("layer-1");
     expect(engine.getDatasetCount()).toBe(1);
+    expect(frame.layers).toHaveLength(1);
+    expect(frame.layers[0]).toMatchObject({ datasetId: nextDatasetId, kind: "binned-series" });
+    expect(indexes[2]?.dispose).not.toHaveBeenCalled();
   });
 
   test("dispose is idempotent and rejects future engine calls", () => {
@@ -586,6 +598,8 @@ function createLifecycleBackend(events: string[] = []) {
   const indexes: Array<{
     dispose: ReturnType<typeof vi.fn>;
     getBackendCapabilities: () => { backend: "js"; implementation: "js"; usesWasm: false };
+    getCompactChartSeries: ReturnType<typeof vi.fn>;
+    preferCompactBackend: ReturnType<typeof vi.fn>;
   }> = [];
   const backend = {
     createIndex() {
@@ -595,11 +609,32 @@ function createLifecycleBackend(events: string[] = []) {
         dispose: vi.fn(() => {
           events.push(`dispose-${indexId}`);
         }),
+        getCompactChartSeries: vi.fn(() => ({
+          averageY: new Float64Array([1]),
+          firstPointIndex: new Int32Array([0]),
+          lastPointIndex: new Int32Array([0]),
+          maxY: new Float64Array([1]),
+          minY: new Float64Array([1]),
+          pointCount: new Uint32Array([1]),
+          sumY: new Float64Array([1]),
+          summary: {
+            binCount: 1,
+            metricKeys: [],
+            pointCount: 1,
+            sampleCount: 1,
+            valueMode: "average" as const,
+            xDomain: [0, 1] as [number, number],
+          },
+          x0: new Float64Array([0]),
+          x1: new Float64Array([1]),
+          y: new Float64Array([1]),
+        })),
         getBackendCapabilities: () => ({
           backend: "js" as const,
           implementation: "js" as const,
           usesWasm: false as const,
         }),
+        preferCompactBackend: vi.fn(),
       };
       indexes.push(index);
       return { index, kind: "xy" as const } as never;
