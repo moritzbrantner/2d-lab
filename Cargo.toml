@@ -15,4 +15,4 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 video-analysis-core = { package = "moritzbrantner-video-analysis-core", version = "0.1.1" }
-viz-engine-core = { package = "moritzbrantner-viz-engine-core", version = "0.2.0", path = "crates/viz-engine-core" }
+viz-engine-core = { package = "moritzbrantner-viz-engine-core", version = "0.3.0", path = "crates/viz-engine-core" }
