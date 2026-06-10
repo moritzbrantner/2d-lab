@@ -1,40 +1,40 @@
 # Worker Handoff
 
-Typed frames are designed for worker transfer.
+Use the worker subpath when large datasets or repeated viewport queries should
+stay off the main thread.
 
 ## Main Thread
 
 ```ts
-import { getVizFrameTransferables } from "@moritzbrantner/viz-engine/core";
+import { createVizWorkerClient } from "@moritzbrantner/viz-engine/worker";
 
-worker.postMessage(
-  {
-    type: "viz-frame",
-    frame,
-  },
-  getVizFrameTransferables(frame),
-);
+const worker = new Worker(new URL("./viz.worker.ts", import.meta.url), { type: "module" });
+const client = createVizWorkerClient(worker);
+
+const datasetId = await client.addDataset(dataset);
+const layerId = await client.addLayer({
+  datasetId,
+  kind: "heatmap",
+  xBinCount: 160,
+  yBinCount: 80,
+});
+const frame = await client.computeFrame({ viewport });
 ```
 
-`getVizFrameTransferables` collects typed-array buffers from frame layers so the
-browser can transfer them without copying.
+Typed frames are the default response. Object frames are available with
+`frameFormat: "objects"`.
 
 ## Worker Thread
 
 ```ts
-import { createVizEngine, getVizFrameTransferables } from "@moritzbrantner/viz-engine/core";
+import { createVizWorkerHost } from "@moritzbrantner/viz-engine/worker";
 
-const engine = createVizEngine({ backend: "auto" });
-
-self.onmessage = (event) => {
-  if (event.data.type !== "compute-frame") {
-    return;
-  }
-
-  const frame = engine.computeFrame(event.data.options);
-  self.postMessage({ type: "viz-frame", frame }, getVizFrameTransferables(frame));
-};
+createVizWorkerHost(self as DedicatedWorkerGlobalScope, {
+  backend: "auto",
+  wasm: { loadPolicy: "on-demand", fallback: "js" },
+});
 ```
 
-Register datasets inside the worker when the data is large or when repeated
-viewport queries should reuse worker-local indexes.
+The host keeps one engine in the worker. Datasets and layers are registered once
+and reused across frame requests. Typed frame buffers are transferred back with
+`getVizFrameTransferables`.

@@ -2,6 +2,7 @@ import type {
   VizBackendOption,
   VizBackendConfig,
   VizBackendImplementation,
+  VizCacheStats,
   VizCompactDensitySeries,
   VizCompactHeatmap,
   VizCompactHistogram,
@@ -16,6 +17,7 @@ import type {
   VizLayerId,
   VizMetricRecord,
   VizRenderBounds,
+  VizResourceStats,
   VizResolvedBackend,
   VizRollingSeries,
   VizRollingStatistic,
@@ -501,28 +503,81 @@ export type VizAnyRenderLayer<TProperties = Record<string, unknown>> =
   | VizTypedGeoRenderLayer
   | VizTypedTableRenderLayer;
 
+export type VizDiagnosticSeverity = "debug" | "info" | "warning" | "error";
+
+export type VizDiagnosticDomain =
+  | "backend"
+  | "cache"
+  | "dataset"
+  | "engine"
+  | "layer"
+  | "table"
+  | "wasm"
+  | "worker";
+
+export type VizDiagnosticCode =
+  | "missing-layer"
+  | "missing-dataset"
+  | "incompatible-layer"
+  | "incompatible-viewport"
+  | "unknown-table-column"
+  | "incompatible-table-filter"
+  | "invalid-table-filter"
+  | "wasm-loading-js-fallback"
+  | "wasm-load-failed-js-fallback"
+  | "wasm-unsupported-dataset-js-fallback"
+  | "wasm-unsupported-query-js-fallback"
+  | "wasm-query-partial-js-fallback"
+  | "wasm-query-error-js-fallback"
+  | "cache-entry-evicted"
+  | "cache-disabled"
+  | "resource-disposed"
+  | "worker-request-cancelled"
+  | "worker-request-failed";
+
 export type VizFrameDiagnostic = {
-  code: string;
+  backend?: {
+    implementation?: VizBackendImplementation;
+    requested?: VizBackendOption;
+    selected?: Exclude<VizResolvedBackend, "mixed">;
+  };
+  code: VizDiagnosticCode | string;
+  datasetId?: VizDatasetId;
+  details?: Record<string, unknown>;
+  domain?: VizDiagnosticDomain;
   layerId?: VizLayerId;
   message: string;
-  severity: "error" | "warning";
+  severity: VizDiagnosticSeverity;
+};
+
+export type VizBackendDecision = {
+  datasetId: VizDatasetId;
+  datasetKind: VizDataset["kind"];
+  requested: VizBackendOption;
+  selected: Exclude<VizResolvedBackend, "mixed">;
+  implementation: VizBackendImplementation;
+  fallbackReason?: VizDiagnosticCode | string;
+  details?: Record<string, unknown>;
+};
+
+export type VizRenderFrameStats = {
+  backend: VizResolvedBackend;
+  backendDecisions?: VizBackendDecision[];
+  backendImplementation?: VizBackendImplementation;
+  computeMs: number;
+  cacheEvictionCount?: number;
+  cacheHitCount?: number;
+  cacheMissCount?: number;
+  datasetCount: number;
+  diagnostics: VizFrameDiagnostic[];
+  layerCount: number;
+  renderedLayerCount?: number;
+  skippedLayerCount?: number;
 };
 
 export type VizRenderFrame<TProperties = Record<string, unknown>> = {
   layers: Array<VizRenderLayer<TProperties>>;
-  stats: {
-    backend: VizResolvedBackend;
-    backendImplementation?: VizBackendImplementation;
-    computeMs: number;
-    cacheEvictionCount?: number;
-    cacheHitCount?: number;
-    cacheMissCount?: number;
-    datasetCount: number;
-    diagnostics: VizFrameDiagnostic[];
-    layerCount: number;
-    renderedLayerCount?: number;
-    skippedLayerCount?: number;
-  };
+  stats: VizRenderFrameStats;
 };
 
 export type VizCompactRenderFrame<TProperties = Record<string, unknown>> = Omit<
@@ -612,11 +667,15 @@ export type VizEngine<TProperties = Record<string, unknown>> = {
   addDataset(dataset: VizDataset<TProperties>): VizDatasetId;
   addLayer(layer: VizLayer): VizLayerId;
   clear(): void;
+  clearCache(options?: { datasetId?: VizDatasetId; layerId?: VizLayerId }): void;
   computeFrame(options: VizObjectComputeFrameOptions): VizRenderFrame<TProperties>;
   computeFrame(options: VizCompactComputeFrameOptions): VizCompactRenderFrame<TProperties>;
   computeFrame(options: VizTypedComputeFrameOptions): VizTypedRenderFrame<TProperties>;
+  dispose(): void;
+  getCacheStats(): VizCacheStats;
   getDatasetCount(): number;
   getLayerCount(): number;
+  getResourceStats(): VizResourceStats;
   hydrateFrame(frame: VizAnyRenderFrame<TProperties>): VizRenderFrame<TProperties>;
   hydrateLayer(layer: VizAnyRenderLayer<TProperties>): VizRenderLayer<TProperties> | null;
   hitTest(options: VizHitTestOptions<TProperties>): VizHitTestResult<TProperties> | null;
@@ -632,7 +691,7 @@ export type VizEngineBackend<TProperties = Record<string, unknown>> = {
   resolveBackend(index: VizDatasetIndex<TProperties>): Exclude<VizResolvedBackend, "mixed">;
 };
 
-export type VizDatasetIndex<TProperties = Record<string, unknown>> =
+export type VizDatasetIndex<TProperties = Record<string, unknown>> = (
   | {
       index: VizDensityIndex<TProperties>;
       kind: "xy";
@@ -656,7 +715,15 @@ export type VizDatasetIndex<TProperties = Record<string, unknown>> =
   | {
       index: VizTableIndex;
       kind: "table";
-    };
+    }
+) & {
+  backendImplementation?: VizBackendImplementation;
+  diagnostics?: VizFrameDiagnostic[];
+  details?: Record<string, unknown>;
+  fallbackReason?: VizDiagnosticCode | string;
+  requestedBackend?: VizBackendOption;
+  selectedBackend?: Exclude<VizResolvedBackend, "mixed">;
+};
 
 export type VizEngineDatasetRecord<TProperties = Record<string, unknown>> = {
   dataset: VizDataset<TProperties>;

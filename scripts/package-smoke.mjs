@@ -10,11 +10,21 @@ const requiredFiles = [
   "dist/index.d.ts",
   "dist/core.js",
   "dist/core.d.ts",
+  "dist/core-embedded.js",
+  "dist/core-embedded.d.ts",
+  "dist/core-lazy.js",
+  "dist/core-lazy.d.ts",
   "dist/react.js",
   "dist/react.d.ts",
+  "dist/worker.js",
+  "dist/worker.d.ts",
+  "dist/pkg/moritzbrantner_viz_engine_wasm.js",
+  "dist/pkg/moritzbrantner_viz_engine_wasm_bg.wasm",
   "docs/getting-started.md",
   "docs/frame-formats.md",
   "docs/backends.md",
+  "docs/errors-and-diagnostics.md",
+  "docs/lazy-wasm.md",
   "docs/examples.md",
   "docs/react.md",
   "docs/worker-handoff.md",
@@ -29,16 +39,62 @@ for (const file of requiredFiles) {
 
 const packageJson = JSON.parse(readFileSync(path.join(rootDir, "package.json"), "utf8"));
 assert(packageJson.exports?.["./core"]?.import === "./dist/core.js", "Missing ./core export.");
+assert(
+  packageJson.exports?.["./core/embedded"]?.import === "./dist/core-embedded.js",
+  "Missing ./core/embedded export.",
+);
+assert(
+  packageJson.exports?.["./core/lazy"]?.import === "./dist/core-lazy.js",
+  "Missing ./core/lazy export.",
+);
 assert(packageJson.exports?.["./react"]?.import === "./dist/react.js", "Missing ./react export.");
+assert(
+  packageJson.exports?.["./worker"]?.import === "./dist/worker.js",
+  "Missing ./worker export.",
+);
 assert(packageJson.peerDependenciesMeta?.react?.optional === true, "React peer must be optional.");
 
 const coreSource = readFileSync(path.join(rootDir, "dist/core.js"), "utf8");
 assert(!importsReact(coreSource), "dist/core.js must not import React.");
+const lazyCoreSource = readFileSync(path.join(rootDir, "dist/core-lazy.js"), "utf8");
+assert(!importsReact(lazyCoreSource), "dist/core-lazy.js must not import React.");
+assert(
+  !lazyCoreSource.includes("moritzbrantner_viz_engine_wasm_embedded"),
+  "dist/core-lazy.js must not include the embedded WASM module.",
+);
 
 const core = await import(pathToFileURL(path.join(rootDir, "dist/core.js")).href);
 assert(typeof core.createVizEngine === "function", "core export missing createVizEngine.");
 assert(typeof core.getVizFrameTransferables === "function", "core export missing transfer helper.");
+assert(typeof core.VizEngineError === "function", "core export missing VizEngineError.");
 assert(!("VizEngineProvider" in core), "core export must not include React bindings.");
+
+const smokeEngine = core.createVizEngine({ backend: "js", cache: { enabled: false } });
+assert(typeof smokeEngine.clearCache === "function", "engine missing clearCache.");
+assert(typeof smokeEngine.dispose === "function", "engine missing dispose.");
+assert(typeof smokeEngine.getCacheStats === "function", "engine missing getCacheStats.");
+assert(typeof smokeEngine.getResourceStats === "function", "engine missing getResourceStats.");
+
+const embeddedCore = await import(pathToFileURL(path.join(rootDir, "dist/core-embedded.js")).href);
+assert(
+  typeof embeddedCore.createVizEngine === "function",
+  "core/embedded export missing createVizEngine.",
+);
+
+const lazyCore = await import(pathToFileURL(path.join(rootDir, "dist/core-lazy.js")).href);
+assert(
+  typeof lazyCore.createAsyncVizEngine === "function",
+  "core/lazy export missing createAsyncVizEngine.",
+);
+assert(!("VizEngineProvider" in lazyCore), "core/lazy export must not include React bindings.");
+
+const workerApi = await import(pathToFileURL(path.join(rootDir, "dist/worker.js")).href);
+assert(
+  typeof workerApi.createVizWorkerClient === "function",
+  "worker export missing createVizWorkerClient.",
+);
+assert(typeof workerApi.createVizWorkerHost === "function", "worker export missing host.");
+assert(typeof workerApi.VizEngineError === "function", "worker export missing VizEngineError.");
 
 const react = await import(pathToFileURL(path.join(rootDir, "dist/react.js")).href);
 assert(typeof react.VizEngineProvider === "function", "react export missing VizEngineProvider.");
@@ -87,6 +143,8 @@ function runConsumerSmoke() {
   });
 
   runCoreConsumerSmoke(smokeRoot, tarballPath);
+  runLazyConsumerSmoke(smokeRoot, tarballPath);
+  runWorkerConsumerSmoke(smokeRoot, tarballPath);
   runReactConsumerSmoke(smokeRoot, tarballPath);
 }
 
@@ -119,6 +177,73 @@ function runCoreConsumerSmoke(smokeRoot, tarballPath) {
 
   execFileSync("bun", ["install"], { cwd: workspace, stdio: "inherit" });
   execFileSync("bun", ["core.mjs"], { cwd: workspace, stdio: "inherit" });
+}
+
+function runLazyConsumerSmoke(smokeRoot, tarballPath) {
+  const workspace = path.join(smokeRoot, "lazy-no-react");
+  mkdirSync(workspace, { recursive: true });
+  writeJson(path.join(workspace, "package.json"), {
+    dependencies: {
+      "@moritzbrantner/viz-engine": `file:${tarballPath}`,
+    },
+    private: true,
+    type: "module",
+  });
+  writeFileSync(
+    path.join(workspace, "lazy.mjs"),
+    [
+      'import { strict as assert } from "node:assert";',
+      'import { createAsyncVizEngine } from "@moritzbrantner/viz-engine/core/lazy";',
+      "",
+      'const engine = await createAsyncVizEngine({ backend: "js", wasm: { loadPolicy: "never" } });',
+      'const datasetId = engine.addDataset({ kind: "xy", points: [{ x: 0, y: 1 }, { x: 1, y: 3 }] });',
+      'engine.addLayer({ datasetId, kind: "heatmap", xBinCount: 2, yBinCount: 2 });',
+      "const frame = engine.computeFrame({ viewport: { height: 120, width: 240, xDomain: [0, 1] } });",
+      "assert.equal(frame.layers.length, 1);",
+      "",
+    ].join("\n"),
+  );
+
+  execFileSync("bun", ["install"], { cwd: workspace, stdio: "inherit" });
+  execFileSync("bun", ["lazy.mjs"], { cwd: workspace, stdio: "inherit" });
+}
+
+function runWorkerConsumerSmoke(smokeRoot, tarballPath) {
+  const workspace = path.join(smokeRoot, "worker-no-react");
+  mkdirSync(workspace, { recursive: true });
+  writeJson(path.join(workspace, "package.json"), {
+    dependencies: {
+      "@moritzbrantner/viz-engine": `file:${tarballPath}`,
+    },
+    devDependencies: {
+      typescript: "6.0.2",
+    },
+    private: true,
+    type: "module",
+  });
+  writeFileSync(
+    path.join(workspace, "worker-smoke.ts"),
+    [
+      'import { createVizWorkerClient } from "@moritzbrantner/viz-engine/worker";',
+      "",
+      "const worker = {} as Worker;",
+      "const client = createVizWorkerClient(worker);",
+      "await client.computeFrame({ viewport: { height: 120, width: 240, xDomain: [0, 1] } });",
+      "",
+    ].join("\n"),
+  );
+  writeJson(path.join(workspace, "tsconfig.json"), {
+    compilerOptions: {
+      module: "ESNext",
+      moduleResolution: "Bundler",
+      strict: true,
+      target: "ES2022",
+    },
+    include: ["worker-smoke.ts"],
+  });
+
+  execFileSync("bun", ["install"], { cwd: workspace, stdio: "inherit" });
+  execFileSync("bunx", ["tsc", "--noEmit"], { cwd: workspace, stdio: "inherit" });
 }
 
 function runReactConsumerSmoke(smokeRoot, tarballPath) {

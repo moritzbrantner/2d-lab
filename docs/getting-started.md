@@ -11,11 +11,13 @@ worker, or server integration that does not need React hooks.
 
 ## Choose An Entrypoint
 
-| Import path                        | What it includes                                                                                            |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `@moritzbrantner/viz-engine/core`  | Engine creation, frame hydration, worker transfer helpers, density index helpers, and all public types.     |
-| `@moritzbrantner/viz-engine/react` | `VizEngineProvider`, `useVizEngine`, `useVizDataset`, `useVizLayer`, `useVizFrame`, and `useVizTypedFrame`. |
-| `@moritzbrantner/viz-engine`       | Backward-compatible root export. Prefer explicit subpaths for new code.                                     |
+| Import path                            | What it includes                                                                                            |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `@moritzbrantner/viz-engine/core`      | Zero-config embedded engine creation, frame hydration, transfer helpers, density index helpers, and types.  |
+| `@moritzbrantner/viz-engine/core/lazy` | Async engine creation with lazy WASM loading.                                                               |
+| `@moritzbrantner/viz-engine/worker`    | Worker client and host APIs.                                                                                |
+| `@moritzbrantner/viz-engine/react`     | `VizEngineProvider`, `useVizEngine`, `useVizDataset`, `useVizLayer`, `useVizFrame`, and `useVizTypedFrame`. |
+| `@moritzbrantner/viz-engine`           | Backward-compatible root export. Prefer explicit subpaths for new code.                                     |
 
 ## Compute A Frame
 
@@ -100,9 +102,46 @@ const frame = engine.computeFrame({
 console.log(frame.stats.renderedLayerCount, frame.stats.cacheHitCount);
 ```
 
+## Cache And Resources
+
+Render-layer caching is enabled by default. You can disable it or bound it when
+creating an engine:
+
+```ts
+const engine = createVizEngine({
+  backend: "auto",
+  cache: {
+    enabled: true,
+    maxEntriesPerLayer: 4,
+    maxTotalEntries: 32,
+  },
+});
+```
+
+Inspect or clear cache state explicitly:
+
+```ts
+console.log(engine.getCacheStats());
+
+engine.clearCache();
+engine.clearCache({ layerId });
+engine.clearCache({ datasetId });
+```
+
+Use `dispose()` when an engine is permanently finished. It clears datasets,
+layers, frame cache, and disposable WASM resources. Future mutating or compute
+calls throw `VizDisposedError`.
+
+```ts
+console.log(engine.getResourceStats());
+engine.dispose();
+```
+
 ## Next Steps
 
 - Use [frame formats](frame-formats.md) to choose typed or object frames.
 - Use [table data](table-data.md) for table datasets, filters, sorting, and row windows.
 - Use [backends](backends.md) to understand JS, WASM, and auto selection.
+- Use [errors and diagnostics](errors-and-diagnostics.md) for stable error codes and frame diagnostics.
+- Use [lazy WASM](lazy-wasm.md) when the embedded WASM payload should not be in the default import.
 - Use [worker handoff](worker-handoff.md) for off-main-thread frame computation.

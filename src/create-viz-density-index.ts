@@ -1,6 +1,7 @@
 import { JsVizDensityIndex } from "./backend/js-density-index";
 import { ProgressiveVizDensityIndex } from "./backend/progressive-density-index";
 import { RustWasmVizDensityIndex } from "./backend/rust-wasm-density-index";
+import { embeddedVizWasmModule } from "./wasm/embedded-module";
 
 import type { VizBackendOption, VizDensityIndex, VizSeriesPoint, VizXyDataset } from "./types";
 
@@ -16,7 +17,7 @@ export function createVizDensityIndex<TProperties = Record<string, unknown>>(
     case "js":
       return new JsVizDensityIndex(points);
     case "wasm":
-      return new RustWasmVizDensityIndex(points);
+      return new RustWasmVizDensityIndex(points, embeddedVizWasmModule);
     case "auto":
       return new ProgressiveVizDensityIndex(points);
   }

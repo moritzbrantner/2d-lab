@@ -6,10 +6,12 @@ import { computeTableRenderLayer, resolveTableQuery } from "./render-frame/table
 import { now, resolveFrameFormat } from "./render-frame/utils";
 
 export { createVizRenderRows } from "./render-frame/utils";
+export type { VizRenderLayerCache, VizRenderLayerCacheQuery } from "./cache";
 
 import type {
   VizAnyRenderFrame,
   VizAnyRenderLayer,
+  VizBackendDecision,
   VizCompactComputeFrameOptions,
   VizCompactRenderFrame,
   VizComputeFrameOptions,
@@ -24,23 +26,7 @@ import type {
   VizTypedComputeFrameOptions,
   VizTypedRenderFrame,
 } from "./types";
-
-export type VizRenderLayerCache<TProperties = Record<string, unknown>> = {
-  clear(): void;
-  deleteLayer(layerId: VizLayerId): void;
-  get(query: VizRenderLayerCacheQuery): VizAnyRenderLayer<TProperties> | undefined;
-  set(query: VizRenderLayerCacheQuery, layer: VizAnyRenderLayer<TProperties>): number;
-};
-
-export type VizRenderLayerCacheQuery = {
-  datasetId: string;
-  datasetVersion: number;
-  frameFormat: "objects" | "typed";
-  layerId: VizLayerId;
-  layerVersion: number;
-  querySignature: string;
-  viewportSignature: string;
-};
+import type { VizRenderLayerCache, VizRenderLayerCacheQuery } from "./cache";
 
 type LayerEntry = VizLayer | VizEngineLayerRecord;
 
@@ -75,6 +61,7 @@ export function computeVizRenderFrame<TProperties>(
   const startedAt = now();
   const renderLayers: Array<VizAnyRenderLayer<TProperties>> = [];
   const usedIndexes: Array<VizEngineDatasetRecord<TProperties>["index"]> = [];
+  const backendDecisionsByDatasetId = new Map<string, VizBackendDecision>();
   const diagnostics: VizFrameDiagnostic[] = [];
   let cacheHitCount = 0;
   let cacheMissCount = 0;
@@ -85,6 +72,7 @@ export function computeVizRenderFrame<TProperties>(
         if (!layerEntry) {
           diagnostics.push({
             code: "missing-layer",
+            domain: "layer",
             layerId,
             message: `Requested layer ${layerId} does not exist.`,
             severity: "warning",
@@ -105,6 +93,8 @@ export function computeVizRenderFrame<TProperties>(
     if (!datasetRecord) {
       diagnostics.push({
         code: "missing-dataset",
+        datasetId: layer.datasetId,
+        domain: "dataset",
         layerId,
         message: `Layer ${layerId} references missing dataset ${layer.datasetId}.`,
         severity: "warning",
@@ -113,6 +103,17 @@ export function computeVizRenderFrame<TProperties>(
     }
 
     usedIndexes.push(datasetRecord.index);
+    if (!backendDecisionsByDatasetId.has(layer.datasetId)) {
+      backendDecisionsByDatasetId.set(
+        layer.datasetId,
+        createBackendDecision(layer.datasetId, datasetRecord),
+      );
+    }
+    if (datasetRecord.index.diagnostics?.length) {
+      for (const diagnostic of datasetRecord.index.diagnostics) {
+        diagnostics.push({ ...diagnostic, layerId: diagnostic.layerId ?? layerId });
+      }
+    }
     const cacheQuery = getRenderLayerCacheQuery(
       layerId,
       layerRecord.version ?? 0,
@@ -144,6 +145,7 @@ export function computeVizRenderFrame<TProperties>(
     layers: renderLayers,
     stats: {
       backend: resolveFrameBackend(backend, usedIndexes),
+      backendDecisions: [...backendDecisionsByDatasetId.values()],
       backendImplementation: resolveFrameBackendImplementation(usedIndexes),
       cacheEvictionCount,
       computeMs: now() - startedAt,
@@ -155,6 +157,25 @@ export function computeVizRenderFrame<TProperties>(
       renderedLayerCount: renderLayers.length,
       skippedLayerCount: Math.max(0, layers.size - renderLayers.length),
     },
+  };
+}
+
+function createBackendDecision<TProperties>(
+  datasetId: string,
+  datasetRecord: VizEngineDatasetRecord<TProperties>,
+): VizBackendDecision {
+  const capabilities = datasetRecord.index.index.getBackendCapabilities();
+  return {
+    datasetId,
+    datasetKind: datasetRecord.dataset.kind,
+    requested: datasetRecord.index.requestedBackend ?? "auto",
+    selected: datasetRecord.index.selectedBackend ?? capabilities.backend,
+    implementation:
+      datasetRecord.index.backendImplementation ??
+      capabilities.implementation ??
+      (capabilities.backend === "js" ? "js" : "legacy-wasm"),
+    fallbackReason: datasetRecord.index.fallbackReason,
+    details: datasetRecord.index.details,
   };
 }
 

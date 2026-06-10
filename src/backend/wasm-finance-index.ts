@@ -1,5 +1,3 @@
-import { FinanceDataSeriesIndex, initVizEngineWasm } from "../wasm/viz-engine-wasm-bindings";
-
 import {
   downsampleOhlcvBarsCompactInRange,
   lowerBoundTimestamp,
@@ -21,6 +19,17 @@ import type {
   VizOhlcvBar,
   VizRenderBounds,
 } from "../types";
+import type { VizWasmModule } from "../wasm/types";
+
+type FinanceDataSeriesIndex = {
+  free?: () => void;
+  getBars(query: unknown): unknown;
+  getBounds(): unknown;
+  getCompactReturns(query: unknown): unknown;
+  getDownsampledBars(query: unknown): unknown;
+  getRiskSummary(query: unknown): unknown;
+};
+type FinanceDataSeriesIndexConstructor = new (input: unknown) => FinanceDataSeriesIndex;
 
 type RustFinanceBounds = {
   endMs: number;
@@ -64,9 +73,14 @@ export class WasmVizFinanceIndex<
   private readonly rustIndex: FinanceDataSeriesIndex;
   private readonly timestampIndexLookup = new Map<number, number>();
   private readonly timestampLookup = new Map<number, VizOhlcvBar<TProperties>>();
+  private disposed = false;
 
-  constructor(dataset: VizFinanceDataset<TProperties>) {
-    initVizEngineWasm();
+  constructor(
+    dataset: VizFinanceDataset<TProperties>,
+    wasmModule: Pick<VizWasmModule, "FinanceDataSeriesIndex" | "initVizEngineWasm">,
+  ) {
+    wasmModule.initVizEngineWasm();
+    const FinanceIndex = wasmModule.FinanceDataSeriesIndex as FinanceDataSeriesIndexConstructor;
 
     this.instrument = normalizeFinanceInstrument(dataset.instrument);
     this.bars = normalizeOhlcvBars(dataset.bars);
@@ -74,7 +88,7 @@ export class WasmVizFinanceIndex<
       this.timestampLookup.set(bar.timestamp, bar);
       this.timestampIndexLookup.set(bar.timestamp, index);
     }
-    this.rustIndex = new FinanceDataSeriesIndex({
+    this.rustIndex = new FinanceIndex({
       bars: this.bars.map(toRustBar),
       instrument: {
         assetClass: this.instrument.assetClass ?? "other",
@@ -93,6 +107,14 @@ export class WasmVizFinanceIndex<
       implementation: "rust-finance-data-wasm" as const,
       usesWasm: true,
     };
+  }
+
+  dispose() {
+    if (this.disposed) {
+      return;
+    }
+    this.rustIndex.free?.();
+    this.disposed = true;
   }
 
   getBars(query: VizFinanceBarsQuery): Array<VizOhlcvBar<TProperties>> {

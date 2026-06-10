@@ -1,5 +1,3 @@
-import { initVizEngineWasm, VizEngineWasmDensityIndex } from "../wasm/viz-engine-wasm-bindings";
-
 import {
   collectMetricKeys,
   createPointLookup,
@@ -34,9 +32,10 @@ import type {
   VizXyDataset,
   VizXyTypedDataset,
 } from "../types";
+import type { VizWasmModule } from "../wasm/types";
 
-type RustWasmDensityIndex = InstanceType<typeof VizEngineWasmDensityIndex>;
-type RustWasmDensityIndexConstructor = typeof VizEngineWasmDensityIndex & {
+type RustWasmDensityIndex = Record<string, (...args: unknown[]) => unknown> & { free?: () => void };
+type RustWasmDensityIndexConstructor = VizWasmModule["VizEngineWasmDensityIndex"] & {
   fromArrays?: (
     x: Float64Array,
     y: Float64Array,
@@ -72,16 +71,27 @@ export class RustWasmVizDensityIndex<
 > implements VizDensityIndex<TProperties> {
   private readonly input: readonly VizSeriesPoint<TProperties>[] | VizXyDataset<TProperties>;
   private readonly index: RustWasmDensityIndex;
+  private readonly wasmDensityIndexConstructor: RustWasmDensityIndexConstructor;
+  private disposed = false;
   private normalizedPoints: Array<NormalizedSeriesPoint<TProperties>> | null;
   private pointLookup: ReturnType<typeof createPointLookup<TProperties>> | null = null;
 
-  constructor(points: readonly VizSeriesPoint<TProperties>[] | VizXyDataset<TProperties>) {
-    initVizEngineWasm();
+  constructor(
+    points: readonly VizSeriesPoint<TProperties>[] | VizXyDataset<TProperties>,
+    wasmModule: Pick<VizWasmModule, "VizEngineWasmDensityIndex" | "initVizEngineWasm">,
+  ) {
+    wasmModule.initVizEngineWasm();
+    this.wasmDensityIndexConstructor =
+      wasmModule.VizEngineWasmDensityIndex as RustWasmDensityIndexConstructor;
     this.input = points;
 
     if (isVizXyTypedDataset(points)) {
       const metricKeys = [...(points.metricKeys ?? [])];
-      const typedIndex = tryCreateWasmDensityIndexFromTyped(points, metricKeys);
+      const typedIndex = tryCreateWasmDensityIndexFromTyped(
+        points,
+        metricKeys,
+        this.wasmDensityIndexConstructor,
+      );
 
       if (typedIndex) {
         this.normalizedPoints = null;
@@ -96,7 +106,11 @@ export class RustWasmVizDensityIndex<
       : collectMetricKeys(normalizedPoints);
 
     this.normalizedPoints = normalizedPoints;
-    this.index = createWasmDensityIndex(normalizedPoints, metricKeys);
+    this.index = createWasmDensityIndex(
+      normalizedPoints,
+      metricKeys,
+      this.wasmDensityIndexConstructor,
+    );
   }
 
   getBackendCapabilities() {
@@ -105,6 +119,14 @@ export class RustWasmVizDensityIndex<
       implementation: "rust-viz-engine-wasm" as const,
       usesWasm: true,
     };
+  }
+
+  dispose() {
+    if (this.disposed) {
+      return;
+    }
+    this.index.free?.();
+    this.disposed = true;
   }
 
   getBinnedSeries(query: VizBinnedSeriesQuery) {
@@ -373,8 +395,8 @@ function metricValues(metrics: VizMetricRecord | undefined, metricKeys: readonly
 function tryCreateWasmDensityIndexFromTyped(
   dataset: VizXyTypedDataset,
   metricKeys: readonly string[],
+  constructor: RustWasmDensityIndexConstructor,
 ): RustWasmDensityIndex | null {
-  const constructor = VizEngineWasmDensityIndex as RustWasmDensityIndexConstructor;
   const pointCount = Math.min(dataset.x.length, dataset.y.length);
   const canUseTypedConstructor =
     !isBrowserRuntime() &&
@@ -386,8 +408,9 @@ function tryCreateWasmDensityIndexFromTyped(
   }
 
   const metricCount = metricKeys.length;
+  const fromArrays = constructor.fromArrays!;
 
-  return constructor.fromArrays(
+  return fromArrays(
     dataset.x.length === pointCount ? dataset.x : dataset.x.slice(0, pointCount),
     dataset.y.length === pointCount ? dataset.y : dataset.y.slice(0, pointCount),
     dataset.sourceIndices?.length === pointCount
@@ -431,8 +454,8 @@ function isSortedTypedX(
 function createWasmDensityIndex<TProperties>(
   points: readonly NormalizedSeriesPoint<TProperties>[],
   metricKeys: readonly string[],
+  constructor: RustWasmDensityIndexConstructor,
 ) {
-  const constructor = VizEngineWasmDensityIndex as RustWasmDensityIndexConstructor;
   if (!isBrowserRuntime() && constructor.fromArrays) {
     return constructor.fromArrays(
       new Float64Array(points.map((point) => point.x)),
@@ -446,7 +469,7 @@ function createWasmDensityIndex<TProperties>(
     ) as RustWasmDensityIndex;
   }
 
-  return new VizEngineWasmDensityIndex({
+  return new constructor({
     ids: points.map((point) => point.id ?? ""),
     labels: points.map((point) => point.label ?? ""),
     metricKeys,

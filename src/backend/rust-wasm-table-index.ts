@@ -1,8 +1,16 @@
-import { initVizEngineWasm, VizEngineWasmTableIndex } from "../wasm/viz-engine-wasm-bindings";
 import { JsVizTableIndex } from "./js-table-index";
+import {
+  isAsciiString,
+  planTableWasmQuery,
+  type VizTableWasmPlan,
+  type WasmTableColumnRef,
+} from "./table-wasm-plan";
+import { createBackendDiagnostic } from "../diagnostics";
 
 import type {
+  VizFrameDiagnostic,
   VizTableColumnSummary,
+  VizTableColumnType,
   VizTableColumnarDataset,
   VizTableDataset,
   VizTableFilter,
@@ -12,13 +20,22 @@ import type {
   VizTableRow,
   VizTypedTable,
 } from "../types";
+import type { VizWasmModule } from "../wasm/types";
 
-type WasmTableIndex = InstanceType<typeof VizEngineWasmTableIndex>;
-type WasmTableColumnKind = "boolean" | "numeric" | "string";
-type WasmTableColumnRef = {
-  kind: WasmTableColumnKind;
-  wasmColumnIndex: number;
+type WasmTableIndex = {
+  addAsciiStringColumn(values: Array<string | null>, validity?: Uint8Array): number;
+  addBooleanColumn(values: Uint8Array, validity?: Uint8Array): number;
+  addNumericColumn(kind: "date" | "number", values: Float64Array, validity?: Uint8Array): number;
+  queryBoolean(...args: unknown[]): unknown;
+  queryNumeric(...args: unknown[]): unknown;
+  queryPlanned?(query: unknown): unknown;
+  queryStringFilter(...args: unknown[]): unknown;
+  queryStringSearch(...args: unknown[]): unknown;
+  sortBoolean(...args: unknown[]): unknown;
+  sortNumeric(...args: unknown[]): unknown;
+  free?(): void;
 };
+type WasmTableIndexConstructor = new () => WasmTableIndex;
 type WasmTableQueryResult = {
   filteredRowCount: number;
   sourceIndex: Uint32Array;
@@ -29,12 +46,27 @@ export class RustWasmVizTableIndex<TRow = Record<string, unknown>> implements Vi
   private readonly jsIndex: JsVizTableIndex<TRow>;
   private readonly wasmColumnsById: Map<string, WasmTableColumnRef>;
   private readonly wasmIndex: WasmTableIndex | null;
+  private lastDiagnostics: VizFrameDiagnostic[] = [];
+  private disposed = false;
+  private readonly objectRowDataset: boolean;
 
-  constructor(dataset: VizTableDataset<TRow>) {
+  constructor(
+    dataset: VizTableDataset<TRow>,
+    wasmModule: Pick<VizWasmModule, "VizEngineWasmTableIndex" | "initVizEngineWasm">,
+  ) {
     this.jsIndex = new JsVizTableIndex(dataset);
-    const wasmInput = "rows" in dataset ? null : createWasmTableIndex(dataset);
+    this.objectRowDataset = "rows" in dataset;
+    const wasmInput = "rows" in dataset ? null : createWasmTableIndex(dataset, wasmModule);
     this.wasmIndex = wasmInput?.index ?? null;
     this.wasmColumnsById = wasmInput?.columnsById ?? new Map();
+  }
+
+  dispose() {
+    if (this.disposed) {
+      return;
+    }
+    this.wasmIndex?.free?.();
+    this.disposed = true;
   }
 
   getBackendCapabilities() {
@@ -84,18 +116,85 @@ export class RustWasmVizTableIndex<TRow = Record<string, unknown>> implements Vi
   }
 
   canUseWasmForQuery(query: VizTableQuery) {
-    return this.wasmIndex != null && this.isSupportedWasmQuery(query);
+    return this.explainWasmQuery(query).supported;
+  }
+
+  explainWasmQuery(query: VizTableQuery): VizTableWasmPlan {
+    if (this.objectRowDataset) {
+      return {
+        supported: false,
+        reason: "object-row-dataset",
+        details: { reason: "object-row-dataset" },
+      };
+    }
+
+    return planTableWasmQuery(query, this.getSchema(), this.wasmColumnsById);
+  }
+
+  getDiagnostics() {
+    return this.lastDiagnostics;
   }
 
   private tryWasmQuery(query: VizTableQuery): WasmTableQueryResult | null {
-    if (!this.wasmIndex || !this.isSupportedWasmQuery(query)) {
+    this.lastDiagnostics = [];
+    if (!this.wasmIndex) {
       return null;
     }
 
+    const plan = this.explainWasmQuery(query);
+    if (!plan.supported) {
+      this.lastDiagnostics.push(
+        createBackendDiagnostic({
+          code: "wasm-unsupported-query-js-fallback",
+          details: plan.details,
+          implementation: "js",
+          message: "Table query is not supported by the WASM backend; using JavaScript.",
+          selected: "js",
+        }),
+      );
+      return null;
+    }
+
+    if (this.wasmIndex.queryPlanned) {
+      try {
+        return this.wasmIndex.queryPlanned(
+          this.createPlannedQuery(query, plan),
+        ) as WasmTableQueryResult;
+      } catch (error) {
+        this.lastDiagnostics.push(
+          createBackendDiagnostic({
+            code: "wasm-query-error-js-fallback",
+            details: { message: error instanceof Error ? error.message : String(error) },
+            implementation: "js",
+            message: "Table WASM query failed; using JavaScript.",
+            selected: "js",
+          }),
+        );
+        return null;
+      }
+    }
+
+    try {
+      return this.tryLegacyWasmQuery(query);
+    } catch (error) {
+      this.lastDiagnostics.push(
+        createBackendDiagnostic({
+          code: "wasm-query-error-js-fallback",
+          details: { message: error instanceof Error ? error.message : String(error) },
+          implementation: "js",
+          message: "Table WASM query failed; using JavaScript.",
+          selected: "js",
+        }),
+      );
+      return null;
+    }
+  }
+
+  private tryLegacyWasmQuery(query: VizTableQuery): WasmTableQueryResult | null {
     if (query.search?.query) {
       const searchColumnIndices = this.resolveWasmSearchColumnIndices(query);
       if (searchColumnIndices.length > 0) {
-        return this.wasmIndex.queryStringSearch(
+        return this.wasmIndex!.queryStringSearch(
           searchColumnIndices,
           query.search.query,
           query.search.caseSensitive ?? false,
@@ -110,7 +209,7 @@ export class RustWasmVizTableIndex<TRow = Record<string, unknown>> implements Vi
     if (firstFilter) {
       const column = this.wasmColumnsById.get(firstFilter.columnId);
       if (column?.kind === "numeric") {
-        return this.wasmIndex.queryNumeric({
+        return this.wasmIndex!.queryNumeric({
           filters: (query.filters ?? []).map((filter) => ({
             columnIndex: this.wasmColumnsById.get(filter.columnId)?.wasmColumnIndex ?? -1,
             maxValue: numericFilterMaxValue(filter),
@@ -130,7 +229,7 @@ export class RustWasmVizTableIndex<TRow = Record<string, unknown>> implements Vi
       }
 
       if (column?.kind === "boolean") {
-        return this.wasmIndex.queryBoolean(
+        return this.wasmIndex!.queryBoolean(
           column.wasmColumnIndex,
           firstFilter.operator,
           typeof firstFilter.value === "boolean" ? firstFilter.value : undefined,
@@ -140,7 +239,7 @@ export class RustWasmVizTableIndex<TRow = Record<string, unknown>> implements Vi
       }
 
       if (column?.kind === "string") {
-        return this.wasmIndex.queryStringFilter(
+        return this.wasmIndex!.queryStringFilter(
           column.wasmColumnIndex,
           firstFilter.operator,
           typeof firstFilter.value === "string" ? firstFilter.value : undefined,
@@ -154,7 +253,7 @@ export class RustWasmVizTableIndex<TRow = Record<string, unknown>> implements Vi
     if (sort) {
       const column = this.wasmColumnsById.get(sort.columnId);
       if (column?.kind === "numeric") {
-        return this.wasmIndex.sortNumeric(
+        return this.wasmIndex!.sortNumeric(
           column.wasmColumnIndex,
           sort.direction,
           sort.nulls ?? "last",
@@ -163,7 +262,7 @@ export class RustWasmVizTableIndex<TRow = Record<string, unknown>> implements Vi
         ) as WasmTableQueryResult;
       }
       if (column?.kind === "boolean") {
-        return this.wasmIndex.sortBoolean(
+        return this.wasmIndex!.sortBoolean(
           column.wasmColumnIndex,
           sort.direction,
           sort.nulls ?? "last",
@@ -176,54 +275,42 @@ export class RustWasmVizTableIndex<TRow = Record<string, unknown>> implements Vi
     return null;
   }
 
-  private isSupportedWasmQuery(query: VizTableQuery) {
-    if ((query.sort?.length ?? 0) > 1) {
-      return false;
-    }
-
-    const filters = query.filters ?? [];
-    const sort = query.sort?.[0];
-    if (query.search?.query) {
-      return (
-        !sort &&
-        filters.length === 0 &&
-        isAsciiString(query.search.query) &&
-        this.resolveWasmSearchColumnIndices(query).length > 0
-      );
-    }
-
-    for (const filter of filters) {
-      const column = this.wasmColumnsById.get(filter.columnId);
-      if (!column || !isWasmFilterSupported(column.kind, filter)) {
-        return false;
-      }
-    }
-
-    if (filters.length > 0) {
-      const firstFilterKind = this.wasmColumnsById.get(filters[0]!.columnId)?.kind;
-      if (firstFilterKind === "numeric") {
-        const allFiltersNumeric = filters.every(
-          (filter) => this.wasmColumnsById.get(filter.columnId)?.kind === "numeric",
-        );
-        const sortKind = sort ? this.wasmColumnsById.get(sort.columnId)?.kind : undefined;
-        return allFiltersNumeric && (!sort || sortKind === "numeric");
-      }
-
-      if (firstFilterKind === "boolean") {
-        return filters.length === 1 && !sort;
-      }
-
-      return firstFilterKind === "string" && filters.length === 1 && !sort;
-    }
-
-    for (const sortEntry of query.sort ?? []) {
-      const kind = this.wasmColumnsById.get(sortEntry.columnId)?.kind;
-      if (kind !== "numeric" && kind !== "boolean") {
-        return false;
-      }
-    }
-
-    return (query.sort?.length ?? 0) > 0;
+  private createPlannedQuery(
+    query: VizTableQuery,
+    plan: Extract<VizTableWasmPlan, { supported: true }>,
+  ) {
+    const schemaById = new Map(this.getSchema().map((column) => [column.id, column]));
+    return {
+      filters: plan.filters.map((filter) => {
+        const column = schemaById.get(filter.columnId)!;
+        const wasmColumn = plan.wasmColumnsById.get(filter.columnId)!;
+        return {
+          columnIndex: wasmColumn.wasmColumnIndex,
+          columnKind: plannedColumnKind(column.type),
+          operator: filter.operator,
+          value: plannedFilterValue(filter, column.type),
+        };
+      }),
+      rowLimit: query.rowLimit,
+      rowOffset: query.rowOffset ?? 0,
+      search: plan.search?.query
+        ? {
+            caseSensitive: plan.search.caseSensitive ?? false,
+            columnIndices: this.resolveWasmSearchColumnIndices(query),
+            query: plan.search.query,
+          }
+        : undefined,
+      sort: (plan.sort ?? []).map((sort) => {
+        const column = schemaById.get(sort.columnId)!;
+        const wasmColumn = plan.wasmColumnsById.get(sort.columnId)!;
+        return {
+          columnIndex: wasmColumn.wasmColumnIndex,
+          columnKind: plannedColumnKind(column.type),
+          direction: sort.direction,
+          nulls: sort.nulls ?? "last",
+        };
+      }),
+    };
   }
 
   private resolveWasmSearchColumnIndices(query: VizTableQuery) {
@@ -251,9 +338,13 @@ export class RustWasmVizTableIndex<TRow = Record<string, unknown>> implements Vi
   }
 }
 
-function createWasmTableIndex(dataset: VizTableColumnarDataset) {
-  initVizEngineWasm();
-  const index = new VizEngineWasmTableIndex();
+function createWasmTableIndex(
+  dataset: VizTableColumnarDataset,
+  wasmModule: Pick<VizWasmModule, "VizEngineWasmTableIndex" | "initVizEngineWasm">,
+) {
+  wasmModule.initVizEngineWasm();
+  const TableIndex = wasmModule.VizEngineWasmTableIndex as WasmTableIndexConstructor;
+  const index = new TableIndex();
   const columnsById = new Map<string, WasmTableColumnRef>();
 
   for (const column of dataset.columns) {
@@ -282,6 +373,7 @@ function createWasmTableIndex(dataset: VizTableColumnarDataset) {
       if (values) {
         columnsById.set(column.id, {
           kind: "string",
+          supportsSort: supportsAsciiStringSort(values),
           wasmColumnIndex: index.addAsciiStringColumn(values, column.validity),
         });
       }
@@ -293,35 +385,6 @@ function createWasmTableIndex(dataset: VizTableColumnarDataset) {
   }
 
   return { columnsById, index };
-}
-
-function isWasmFilterSupported(kind: WasmTableColumnKind, filter: VizTableFilter) {
-  if (kind === "boolean") {
-    return ["equals", "notEquals", "isNull", "isNotNull"].includes(filter.operator);
-  }
-
-  if (kind === "string") {
-    return (
-      ["contains", "endsWith", "equals", "isNotNull", "isNull", "notEquals", "startsWith"].includes(
-        filter.operator,
-      ) &&
-      (filter.operator === "isNull" ||
-        filter.operator === "isNotNull" ||
-        (typeof filter.value === "string" && isAsciiString(filter.value)))
-    );
-  }
-
-  return [
-    "between",
-    "equals",
-    "gt",
-    "gte",
-    "isNotNull",
-    "isNull",
-    "lt",
-    "lte",
-    "notEquals",
-  ].includes(filter.operator);
 }
 
 function toFloat64Array(values: VizTableColumnarDataset["columns"][number]["values"]) {
@@ -355,8 +418,8 @@ function toAsciiStringValues(
   return values.some((value) => value === undefined) ? null : (values as Array<string | null>);
 }
 
-function isAsciiString(value: string) {
-  return /^[\x00-\x7F]*$/.test(value);
+function supportsAsciiStringSort(values: readonly (string | null)[]) {
+  return values.every((value) => value == null || value === value.toLowerCase());
 }
 
 function numericFilterValue(filter: VizTableFilter) {
@@ -377,4 +440,41 @@ function numericFilterMaxValue(filter: VizTableFilter) {
   }
   const value = Number(filter.value[1]);
   return Number.isFinite(value) ? value : undefined;
+}
+
+function plannedColumnKind(type: VizTableColumnType) {
+  switch (type) {
+    case "date":
+      return "date";
+    case "boolean":
+      return "boolean";
+    case "string":
+      return "string";
+    case "number":
+    default:
+      return "number";
+  }
+}
+
+function plannedFilterValue(filter: VizTableFilter, type: VizTableColumnType) {
+  if (type === "boolean") {
+    return {
+      kind: "boolean",
+      value: typeof filter.value === "boolean" ? filter.value : undefined,
+    };
+  }
+
+  if (type === "string") {
+    return {
+      caseSensitive: filter.caseSensitive ?? false,
+      kind: "string",
+      value: typeof filter.value === "string" ? filter.value : undefined,
+    };
+  }
+
+  return {
+    kind: "numeric",
+    maxValue: numericFilterMaxValue(filter),
+    value: numericFilterValue(filter),
+  };
 }

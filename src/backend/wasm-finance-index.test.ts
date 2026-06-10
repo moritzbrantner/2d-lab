@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { JsVizFinanceIndex } from "./js-finance-index";
 import { WasmVizFinanceIndex } from "./wasm-finance-index";
+import { embeddedVizWasmModule } from "../wasm/embedded-module";
 
 import type { VizFinanceDataset } from "../types";
 
@@ -18,7 +19,7 @@ const dataset: VizFinanceDataset = {
 describe("WasmVizFinanceIndex", () => {
   test("matches JS finance index output and reports Rust-backed capabilities", () => {
     const jsIndex = new JsVizFinanceIndex(dataset);
-    const wasmIndex = new WasmVizFinanceIndex(dataset);
+    const wasmIndex = new WasmVizFinanceIndex(dataset, embeddedVizWasmModule);
 
     expect(wasmIndex.getBackendCapabilities()).toEqual({
       backend: "wasm",

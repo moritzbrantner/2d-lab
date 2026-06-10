@@ -1,5 +1,6 @@
 import { JsVizDensityIndex } from "./js-density-index";
 import { RustWasmVizDensityIndex } from "./rust-wasm-density-index";
+import { embeddedVizWasmModule } from "../wasm/embedded-module";
 
 import type {
   VizBinnedSeriesQuery,
@@ -19,6 +20,7 @@ export class ProgressiveVizDensityIndex<
   private readonly jsIndex: VizDensityIndex<TProperties>;
   private readonly pointCount: number;
   private compactIndex: VizDensityIndex<TProperties>;
+  private disposed = false;
   private warmupError: unknown = null;
   private warmupPromise: Promise<void> | null = null;
   private wasmIndex: VizDensityIndex<TProperties> | null = null;
@@ -27,7 +29,8 @@ export class ProgressiveVizDensityIndex<
     private readonly points: readonly VizSeriesPoint<TProperties>[] | VizXyDataset<TProperties>,
     private readonly createWasmIndex: (
       points: readonly VizSeriesPoint<TProperties>[] | VizXyDataset<TProperties>,
-    ) => VizDensityIndex<TProperties> = (points) => new RustWasmVizDensityIndex(points),
+    ) => VizDensityIndex<TProperties> = (points) =>
+      new RustWasmVizDensityIndex(points, embeddedVizWasmModule),
   ) {
     this.pointCount = getXyPointCount(points);
     this.jsIndex = new JsVizDensityIndex(points);
@@ -39,6 +42,17 @@ export class ProgressiveVizDensityIndex<
 
   getBackendCapabilities() {
     return this.compactIndex.getBackendCapabilities();
+  }
+
+  dispose() {
+    if (this.disposed) {
+      return;
+    }
+    disposeIndex(this.jsIndex);
+    if (this.wasmIndex && this.wasmIndex !== this.jsIndex) {
+      disposeIndex(this.wasmIndex);
+    }
+    this.disposed = true;
   }
 
   getBinnedSeries(query: VizBinnedSeriesQuery) {
@@ -143,6 +157,18 @@ export class ProgressiveVizDensityIndex<
       void this.warmWasmIndex();
     });
   }
+}
+
+function disposeIndex<TProperties>(index: VizDensityIndex<TProperties>) {
+  const disposable = index as VizDensityIndex<TProperties> & {
+    dispose?: () => void;
+    free?: () => void;
+  };
+  if (typeof disposable.dispose === "function") {
+    disposable.dispose();
+    return;
+  }
+  disposable.free?.();
 }
 
 const WASM_COMPACT_WARMUP_POINT_THRESHOLD = 5_000;

@@ -8,6 +8,7 @@ import { WasmVizFinanceIndex } from "./wasm-finance-index";
 import { WasmVizGeoFlowIndex } from "./wasm-geo-flow-index";
 import { WasmVizGeoPointIndex } from "./wasm-geo-index";
 import { WasmVizGeoJsonIndex } from "./wasm-geojson-index";
+import { embeddedVizWasmModule } from "../wasm/embedded-module";
 
 import type {
   VizFinanceDataset,
@@ -62,7 +63,7 @@ describe("JS/WASM backend parity", () => {
       zoom: 12,
     };
     const js = new JsVizGeoPointIndex(geoPoints);
-    const wasm = new WasmVizGeoPointIndex(geoPoints);
+    const wasm = new WasmVizGeoPointIndex(geoPoints, embeddedVizWasmModule);
 
     expect(wasm.getBounds()).toEqual(js.getBounds());
     expect(
@@ -82,7 +83,7 @@ describe("JS/WASM backend parity", () => {
       zoom: 12,
     };
     const js = new JsVizGeoJsonIndex(geoJson);
-    const wasm = new WasmVizGeoJsonIndex(geoJson);
+    const wasm = new WasmVizGeoJsonIndex(geoJson, embeddedVizWasmModule);
 
     expect(wasm.getBounds()).toEqual(js.getBounds());
     expect(wasm.getViewportFeatures(query)).toMatchObject({
@@ -99,7 +100,7 @@ describe("JS/WASM backend parity", () => {
     };
     const options = { weightMetric: "demand" };
     const js = new JsVizGeoFlowIndex(flows);
-    const wasm = new WasmVizGeoFlowIndex(flows);
+    const wasm = new WasmVizGeoFlowIndex(flows, embeddedVizWasmModule);
 
     expect(wasm.getBounds()).toEqual(js.getBounds());
     expect(flowAggregationSnapshot(wasm.getViewportFlows(query, options))).toEqual(
@@ -120,7 +121,7 @@ describe("JS/WASM backend parity", () => {
       valueMetric: "demand",
     };
     const js = new JsVizGeoPointIndex(geoPoints);
-    const wasm = new WasmVizGeoPointIndex(geoPoints);
+    const wasm = new WasmVizGeoPointIndex(geoPoints, embeddedVizWasmModule);
     const jsGrid = js.getScalarFieldGrid(query, options);
     const wasmGrid = wasm.getScalarFieldGrid(query, options);
 
@@ -136,7 +137,7 @@ describe("JS/WASM backend parity", () => {
 
   test("matches finance output while reporting Rust-backed capabilities", () => {
     const js = new JsVizFinanceIndex(financeDataset);
-    const wasm = new WasmVizFinanceIndex(financeDataset);
+    const wasm = new WasmVizFinanceIndex(financeDataset, embeddedVizWasmModule);
 
     expect(wasm.getBackendCapabilities()).toEqual({
       backend: "wasm",

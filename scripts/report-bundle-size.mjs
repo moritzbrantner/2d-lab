@@ -5,7 +5,10 @@ const rootDir = path.resolve(import.meta.dirname, "..");
 const files = [
   "dist/index.js",
   "dist/core.js",
+  "dist/core-embedded.js",
+  "dist/core-lazy.js",
   "dist/react.js",
+  "dist/worker.js",
   "src/wasm/pkg/moritzbrantner_viz_engine_wasm_embedded.js",
   "src/wasm/pkg/moritzbrantner_viz_engine_wasm_bg.wasm",
 ];
@@ -37,8 +40,18 @@ for (const row of rows) {
 
 console.log("");
 console.log(
-  "Note: the embedded local WASM shim is expected to dominate the default bundle until a lazy or light entrypoint is introduced.",
+  "Note: core and core/embedded intentionally include the embedded local WASM shim; core/lazy must not include it.",
 );
+
+const lazyCorePath = path.join(rootDir, "dist/core-lazy.js");
+if (existsSync(lazyCorePath)) {
+  const lazyCoreSource = await import("node:fs").then(({ readFileSync }) =>
+    readFileSync(lazyCorePath, "utf8"),
+  );
+  if (lazyCoreSource.includes("moritzbrantner_viz_engine_wasm_embedded")) {
+    throw new Error("dist/core-lazy.js includes the embedded WASM payload.");
+  }
+}
 
 function formatSize(bytes) {
   if (bytes >= 1024 * 1024) {

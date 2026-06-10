@@ -10,6 +10,15 @@ pub enum VizTableColumnType {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum VizTableColumnKind {
+    Number,
+    Date,
+    Boolean,
+    String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum VizTableSortDirection {
     Asc,
@@ -41,6 +50,24 @@ pub enum VizTableNumericFilterOperator {
     Between,
     IsNull,
     IsNotNull,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum VizTableFilterOperator {
+    Equals,
+    NotEquals,
+    Gt,
+    Gte,
+    Lt,
+    Lte,
+    Between,
+    Contains,
+    EndsWith,
+    In,
+    IsNull,
+    IsNotNull,
+    StartsWith,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -137,6 +164,61 @@ pub struct VizTableStringColumn {
     #[serde(default)]
     pub validity: Option<Vec<u8>>,
     pub ascii_only: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum VizTableFilterValue {
+    Numeric {
+        #[serde(default)]
+        value: Option<f64>,
+        #[serde(default)]
+        max_value: Option<f64>,
+    },
+    Boolean {
+        #[serde(default)]
+        value: Option<bool>,
+    },
+    String {
+        #[serde(default)]
+        value: Option<String>,
+        #[serde(default)]
+        case_sensitive: bool,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VizTableFilterPlan {
+    pub column_kind: VizTableColumnKind,
+    pub column_index: usize,
+    pub operator: VizTableFilterOperator,
+    pub value: VizTableFilterValue,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VizTableSortPlan {
+    pub column_kind: VizTableColumnKind,
+    pub column_index: usize,
+    pub direction: VizTableSortDirection,
+    #[serde(default)]
+    pub nulls: VizTableNulls,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VizTablePlannedQuery {
+    #[serde(default)]
+    pub filters: Vec<VizTableFilterPlan>,
+    #[serde(default)]
+    pub search: Option<VizTableStringSearchQuery>,
+    #[serde(default)]
+    pub sort: Vec<VizTableSortPlan>,
+    #[serde(default)]
+    pub row_offset: usize,
+    #[serde(default)]
+    pub row_limit: Option<usize>,
 }
 
 impl VizTableStringColumn {
@@ -381,6 +463,76 @@ pub fn query_numeric_table(
     }
 }
 
+pub fn query_table_plan(
+    numeric_columns: &[VizTableNumericColumn],
+    boolean_columns: &[VizTableBooleanColumn],
+    string_columns: &[VizTableStringColumn],
+    query: &VizTablePlannedQuery,
+) -> VizTableIndexResult {
+    if query
+        .search
+        .as_ref()
+        .map_or(false, |search| !search.query.is_ascii())
+    {
+        return empty_index_result();
+    }
+
+    let row_count = planned_row_count(numeric_columns, boolean_columns, string_columns, query);
+    if row_count == 0 {
+        return empty_index_result();
+    }
+
+    let mut filtered_row_count = 0;
+    let limit = normalized_row_limit(query.row_limit);
+
+    if query.sort.is_empty() {
+        let mut row_indices = Vec::with_capacity(limit.min(row_count));
+        for row_index in 0..row_count {
+            if !planned_row_matches(
+                numeric_columns,
+                boolean_columns,
+                string_columns,
+                query,
+                row_index,
+            ) {
+                continue;
+            }
+
+            if limit > 0 && filtered_row_count >= query.row_offset && row_indices.len() < limit {
+                row_indices.push(row_index as u32);
+            }
+            filtered_row_count += 1;
+        }
+
+        return VizTableIndexResult {
+            filtered_row_count,
+            row_indices,
+        };
+    }
+
+    let mut rows = Vec::with_capacity(row_count);
+    for row_index in 0..row_count {
+        if planned_row_matches(
+            numeric_columns,
+            boolean_columns,
+            string_columns,
+            query,
+            row_index,
+        ) {
+            rows.push(row_index as u32);
+        }
+    }
+    filtered_row_count = rows.len();
+    rows.sort_by(|left, right| {
+        compare_planned_rows(numeric_columns, boolean_columns, string_columns, *left, *right, query)
+    });
+
+    VizTableIndexResult {
+        filtered_row_count,
+        row_indices: window_rows(&rows, query.row_offset, query.row_limit),
+    }
+}
+
 pub fn query_numeric_filters_window(
     columns: &[VizTableNumericColumn],
     filters: &[VizTableNumericFilter],
@@ -514,6 +666,248 @@ pub fn query_ascii_string_search(
         filtered_row_count,
         row_indices,
     }
+}
+
+fn planned_row_count(
+    numeric_columns: &[VizTableNumericColumn],
+    boolean_columns: &[VizTableBooleanColumn],
+    string_columns: &[VizTableStringColumn],
+    query: &VizTablePlannedQuery,
+) -> usize {
+    let mut row_count = 0;
+
+    for filter in &query.filters {
+        row_count = row_count.max(planned_column_len(
+            numeric_columns,
+            boolean_columns,
+            string_columns,
+            filter.column_kind,
+            filter.column_index,
+        ));
+    }
+
+    if let Some(search) = &query.search {
+        for column_index in &search.column_indices {
+            row_count = row_count.max(
+                string_columns
+                    .get(*column_index)
+                    .map_or(0, |column| column.values.len()),
+            );
+        }
+    }
+
+    for sort in &query.sort {
+        row_count = row_count.max(planned_column_len(
+            numeric_columns,
+            boolean_columns,
+            string_columns,
+            sort.column_kind,
+            sort.column_index,
+        ));
+    }
+
+    row_count
+}
+
+fn planned_column_len(
+    numeric_columns: &[VizTableNumericColumn],
+    boolean_columns: &[VizTableBooleanColumn],
+    string_columns: &[VizTableStringColumn],
+    column_kind: VizTableColumnKind,
+    column_index: usize,
+) -> usize {
+    match column_kind {
+        VizTableColumnKind::Number | VizTableColumnKind::Date => numeric_columns
+            .get(column_index)
+            .map_or(0, |column| column.values.len()),
+        VizTableColumnKind::Boolean => boolean_columns
+            .get(column_index)
+            .map_or(0, |column| column.values.len()),
+        VizTableColumnKind::String => string_columns
+            .get(column_index)
+            .map_or(0, |column| column.values.len()),
+    }
+}
+
+fn planned_row_matches(
+    numeric_columns: &[VizTableNumericColumn],
+    boolean_columns: &[VizTableBooleanColumn],
+    string_columns: &[VizTableStringColumn],
+    query: &VizTablePlannedQuery,
+    row_index: usize,
+) -> bool {
+    if !query.filters.iter().all(|filter| {
+        planned_filter_matches(numeric_columns, boolean_columns, string_columns, filter, row_index)
+    }) {
+        return false;
+    }
+
+    let Some(search) = &query.search else {
+        return true;
+    };
+    if !search.query.is_ascii() {
+        return false;
+    }
+    let needle = if search.case_sensitive {
+        search.query.clone()
+    } else {
+        search.query.to_ascii_lowercase()
+    };
+
+    search.column_indices.iter().any(|column_index| {
+        string_columns
+            .get(*column_index)
+            .filter(|column| column.ascii_only)
+            .and_then(|column| string_value(column, row_index, search.case_sensitive))
+            .map_or(false, |value| value.contains(&needle))
+    })
+}
+
+fn planned_filter_matches(
+    numeric_columns: &[VizTableNumericColumn],
+    boolean_columns: &[VizTableBooleanColumn],
+    string_columns: &[VizTableStringColumn],
+    filter: &VizTableFilterPlan,
+    row_index: usize,
+) -> bool {
+    match (&filter.column_kind, &filter.value) {
+        (
+            VizTableColumnKind::Number | VizTableColumnKind::Date,
+            VizTableFilterValue::Numeric { value, max_value },
+        ) => numeric_columns.get(filter.column_index).map_or(false, |column| {
+            let Some(operator) = planned_numeric_filter_operator(filter.operator) else {
+                return false;
+            };
+            numeric_row_matches(
+                column,
+                row_index,
+                &VizTableNumericFilter {
+                    column_index: filter.column_index,
+                    max_value: *max_value,
+                    operator,
+                    value: *value,
+                },
+            )
+        }),
+        (VizTableColumnKind::Boolean, VizTableFilterValue::Boolean { value }) => boolean_columns
+            .get(filter.column_index)
+            .map_or(false, |column| {
+                let Some(operator) = planned_boolean_filter_operator(filter.operator) else {
+                    return false;
+                };
+                boolean_row_matches(column, row_index, operator, *value)
+            }),
+        (
+            VizTableColumnKind::String,
+            VizTableFilterValue::String {
+                value,
+                case_sensitive,
+            },
+        ) => string_columns
+            .get(filter.column_index)
+            .filter(|column| column.ascii_only)
+            .map_or(false, |column| {
+                let Some(operator) = planned_string_filter_operator(filter.operator) else {
+                    return false;
+                };
+                string_row_matches(
+                    column,
+                    row_index,
+                    &VizTableStringFilter {
+                        column_index: filter.column_index,
+                        operator,
+                        value: value.clone(),
+                        case_sensitive: *case_sensitive,
+                    },
+                )
+            }),
+        _ => false,
+    }
+}
+
+fn planned_numeric_filter_operator(
+    operator: VizTableFilterOperator,
+) -> Option<VizTableNumericFilterOperator> {
+    match operator {
+        VizTableFilterOperator::Equals => Some(VizTableNumericFilterOperator::Equals),
+        VizTableFilterOperator::NotEquals => Some(VizTableNumericFilterOperator::NotEquals),
+        VizTableFilterOperator::Gt => Some(VizTableNumericFilterOperator::Gt),
+        VizTableFilterOperator::Gte => Some(VizTableNumericFilterOperator::Gte),
+        VizTableFilterOperator::Lt => Some(VizTableNumericFilterOperator::Lt),
+        VizTableFilterOperator::Lte => Some(VizTableNumericFilterOperator::Lte),
+        VizTableFilterOperator::Between => Some(VizTableNumericFilterOperator::Between),
+        VizTableFilterOperator::IsNull => Some(VizTableNumericFilterOperator::IsNull),
+        VizTableFilterOperator::IsNotNull => Some(VizTableNumericFilterOperator::IsNotNull),
+        _ => None,
+    }
+}
+
+fn planned_boolean_filter_operator(
+    operator: VizTableFilterOperator,
+) -> Option<VizTableNumericFilterOperator> {
+    match operator {
+        VizTableFilterOperator::Equals => Some(VizTableNumericFilterOperator::Equals),
+        VizTableFilterOperator::NotEquals => Some(VizTableNumericFilterOperator::NotEquals),
+        VizTableFilterOperator::IsNull => Some(VizTableNumericFilterOperator::IsNull),
+        VizTableFilterOperator::IsNotNull => Some(VizTableNumericFilterOperator::IsNotNull),
+        _ => None,
+    }
+}
+
+fn planned_string_filter_operator(
+    operator: VizTableFilterOperator,
+) -> Option<VizTableStringFilterOperator> {
+    match operator {
+        VizTableFilterOperator::Contains => Some(VizTableStringFilterOperator::Contains),
+        VizTableFilterOperator::EndsWith => Some(VizTableStringFilterOperator::EndsWith),
+        VizTableFilterOperator::Equals => Some(VizTableStringFilterOperator::Equals),
+        VizTableFilterOperator::IsNull => Some(VizTableStringFilterOperator::IsNull),
+        VizTableFilterOperator::IsNotNull => Some(VizTableStringFilterOperator::IsNotNull),
+        VizTableFilterOperator::NotEquals => Some(VizTableStringFilterOperator::NotEquals),
+        VizTableFilterOperator::StartsWith => Some(VizTableStringFilterOperator::StartsWith),
+        _ => None,
+    }
+}
+
+fn compare_planned_rows(
+    numeric_columns: &[VizTableNumericColumn],
+    boolean_columns: &[VizTableBooleanColumn],
+    string_columns: &[VizTableStringColumn],
+    left: u32,
+    right: u32,
+    query: &VizTablePlannedQuery,
+) -> Ordering {
+    for sort in &query.sort {
+        let ordering = match sort.column_kind {
+            VizTableColumnKind::Number | VizTableColumnKind::Date => numeric_columns
+                .get(sort.column_index)
+                .map_or(Ordering::Equal, |column| {
+                    compare_optional_numeric(
+                        numeric_value(column, left as usize),
+                        numeric_value(column, right as usize),
+                        sort.direction,
+                        sort.nulls,
+                    )
+                }),
+            VizTableColumnKind::Boolean => boolean_columns
+                .get(sort.column_index)
+                .map_or(Ordering::Equal, |column| {
+                    compare_boolean_rows(column, left, right, sort.direction, sort.nulls)
+                }),
+            VizTableColumnKind::String => string_columns
+                .get(sort.column_index)
+                .filter(|column| column.ascii_only)
+                .map_or(Ordering::Equal, |column| {
+                    compare_ascii_string_rows(column, left, right, sort.direction, sort.nulls)
+                }),
+        };
+
+        if ordering != Ordering::Equal {
+            return ordering;
+        }
+    }
+
+    left.cmp(&right)
 }
 
 fn filter_numeric_rows_subset(
@@ -675,6 +1069,76 @@ fn compare_numeric_rows(
         sort.nulls,
     )
     .then(left.cmp(&right))
+}
+
+fn compare_boolean_rows(
+    column: &VizTableBooleanColumn,
+    left: u32,
+    right: u32,
+    direction: VizTableSortDirection,
+    nulls: VizTableNulls,
+) -> Ordering {
+    compare_optional_boolean(
+        boolean_value(column, left as usize),
+        boolean_value(column, right as usize),
+        direction,
+        nulls,
+    )
+}
+
+fn compare_optional_boolean(
+    left: Option<bool>,
+    right: Option<bool>,
+    direction: VizTableSortDirection,
+    nulls: VizTableNulls,
+) -> Ordering {
+    match (left, right) {
+        (None, None) => Ordering::Equal,
+        (None, Some(_)) => null_order(nulls),
+        (Some(_), None) => null_order(nulls).reverse(),
+        (Some(left), Some(right)) => {
+            let ordering = left.cmp(&right);
+            match direction {
+                VizTableSortDirection::Asc => ordering,
+                VizTableSortDirection::Desc => ordering.reverse(),
+            }
+        }
+    }
+}
+
+fn compare_ascii_string_rows(
+    column: &VizTableStringColumn,
+    left: u32,
+    right: u32,
+    direction: VizTableSortDirection,
+    nulls: VizTableNulls,
+) -> Ordering {
+    compare_optional_string(
+        string_value(column, left as usize, true),
+        string_value(column, right as usize, true),
+        direction,
+        nulls,
+    )
+}
+
+fn compare_optional_string(
+    left: Option<&str>,
+    right: Option<&str>,
+    direction: VizTableSortDirection,
+    nulls: VizTableNulls,
+) -> Ordering {
+    match (left, right) {
+        (None, None) => Ordering::Equal,
+        (None, Some(_)) => null_order(nulls),
+        (Some(_), None) => null_order(nulls).reverse(),
+        (Some(left), Some(right)) => {
+            let ordering = left.cmp(right);
+            match direction {
+                VizTableSortDirection::Asc => ordering,
+                VizTableSortDirection::Desc => ordering.reverse(),
+            }
+        }
+    }
 }
 
 fn compare_optional_numeric(
@@ -1124,6 +1588,206 @@ mod tests {
         assert_eq!(result.row_indices, vec![1, 3]);
     }
 
+    #[test]
+    fn planned_mixed_primitive_filters() {
+        let numeric_columns = vec![numeric_column(vec![10.0, 20.0, 30.0, 40.0], None)];
+        let boolean_columns = vec![boolean_column(vec![1, 0, 1, 1], None)];
+        let string_columns = vec![string_column(vec!["core", "edge", "core", "growth"], None)];
+        let result = query_table_plan(
+            &numeric_columns,
+            &boolean_columns,
+            &string_columns,
+            &VizTablePlannedQuery {
+                filters: vec![
+                    numeric_filter_plan(0, VizTableFilterOperator::Gte, Some(20.0), None),
+                    boolean_filter_plan(0, VizTableFilterOperator::Equals, Some(true)),
+                    string_filter_plan(0, VizTableFilterOperator::Equals, Some("core")),
+                ],
+                row_limit: Some(10),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            result,
+            VizTableIndexResult {
+                filtered_row_count: 1,
+                row_indices: vec![2],
+            }
+        );
+    }
+
+    #[test]
+    fn planned_multi_sort() {
+        let numeric_columns = vec![numeric_column(vec![30.0, 10.0, 20.0, 10.0, 20.0], None)];
+        let boolean_columns = vec![boolean_column(vec![1, 1, 1, 0, 1], None)];
+        let result = query_table_plan(
+            &numeric_columns,
+            &boolean_columns,
+            &[],
+            &VizTablePlannedQuery {
+                sort: vec![
+                    sort_plan(
+                        VizTableColumnKind::Boolean,
+                        0,
+                        VizTableSortDirection::Desc,
+                        VizTableNulls::Last,
+                    ),
+                    sort_plan(
+                        VizTableColumnKind::Number,
+                        0,
+                        VizTableSortDirection::Asc,
+                        VizTableNulls::Last,
+                    ),
+                ],
+                row_limit: Some(10),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(result.row_indices, vec![1, 2, 4, 0, 3]);
+    }
+
+    #[test]
+    fn planned_ascii_string_sort() {
+        let string_columns = vec![string_column(
+            vec!["core", "edge", "alpha", "missing"],
+            Some(vec![1, 1, 1, 0]),
+        )];
+        let result = query_table_plan(
+            &[],
+            &[],
+            &string_columns,
+            &VizTablePlannedQuery {
+                sort: vec![sort_plan(
+                    VizTableColumnKind::String,
+                    0,
+                    VizTableSortDirection::Asc,
+                    VizTableNulls::Last,
+                )],
+                row_limit: Some(10),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(result.row_indices, vec![2, 0, 1, 3]);
+    }
+
+    #[test]
+    fn planned_null_ordering() {
+        let numeric_columns = vec![numeric_column(vec![2.0, 99.0, 1.0], Some(vec![1, 0, 1]))];
+        let boolean_columns = vec![boolean_column(vec![1, 0, 0], Some(vec![1, 0, 1]))];
+        let string_columns = vec![string_column(
+            vec!["core", "missing", "alpha"],
+            Some(vec![1, 0, 1]),
+        )];
+
+        for (column_kind, expected_first, expected_last) in [
+            (VizTableColumnKind::Number, vec![1, 2, 0], vec![2, 0, 1]),
+            (VizTableColumnKind::Boolean, vec![1, 2, 0], vec![2, 0, 1]),
+            (VizTableColumnKind::String, vec![1, 2, 0], vec![2, 0, 1]),
+        ] {
+            assert_eq!(
+                planned_sort_rows(
+                    &numeric_columns,
+                    &boolean_columns,
+                    &string_columns,
+                    column_kind,
+                    VizTableNulls::First,
+                ),
+                expected_first
+            );
+            assert_eq!(
+                planned_sort_rows(
+                    &numeric_columns,
+                    &boolean_columns,
+                    &string_columns,
+                    column_kind,
+                    VizTableNulls::Last,
+                ),
+                expected_last
+            );
+        }
+    }
+
+    #[test]
+    fn planned_stable_tie_breaks() {
+        let numeric_columns = vec![numeric_column(vec![5.0, 5.0, 5.0, 5.0], None)];
+        let boolean_columns = vec![boolean_column(vec![1, 1, 1, 1], None)];
+        let result = query_table_plan(
+            &numeric_columns,
+            &boolean_columns,
+            &[],
+            &VizTablePlannedQuery {
+                sort: vec![
+                    sort_plan(
+                        VizTableColumnKind::Number,
+                        0,
+                        VizTableSortDirection::Asc,
+                        VizTableNulls::Last,
+                    ),
+                    sort_plan(
+                        VizTableColumnKind::Boolean,
+                        0,
+                        VizTableSortDirection::Desc,
+                        VizTableNulls::Last,
+                    ),
+                ],
+                row_limit: Some(10),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(result.row_indices, vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn planned_zero_row_limit() {
+        let numeric_columns = vec![numeric_column(vec![10.0, 20.0, 30.0], None)];
+        let result = query_table_plan(
+            &numeric_columns,
+            &[],
+            &[],
+            &VizTablePlannedQuery {
+                filters: vec![numeric_filter_plan(
+                    0,
+                    VizTableFilterOperator::Gte,
+                    Some(20.0),
+                    None,
+                )],
+                row_limit: Some(0),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(result.filtered_row_count, 2);
+        assert!(result.row_indices.is_empty());
+    }
+
+    #[test]
+    fn planned_offset_beyond_filtered_row_count() {
+        let numeric_columns = vec![numeric_column(vec![10.0, 20.0, 30.0], None)];
+        let result = query_table_plan(
+            &numeric_columns,
+            &[],
+            &[],
+            &VizTablePlannedQuery {
+                filters: vec![numeric_filter_plan(
+                    0,
+                    VizTableFilterOperator::Gte,
+                    Some(20.0),
+                    None,
+                )],
+                row_limit: Some(10),
+                row_offset: 99,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(result.filtered_row_count, 2);
+        assert!(result.row_indices.is_empty());
+    }
+
     fn numeric_column(values: Vec<f64>, validity: Option<Vec<u8>>) -> VizTableNumericColumn {
         VizTableNumericColumn {
             column_type: VizTableColumnType::Number,
@@ -1132,10 +1796,96 @@ mod tests {
         }
     }
 
+    fn boolean_column(values: Vec<u8>, validity: Option<Vec<u8>>) -> VizTableBooleanColumn {
+        VizTableBooleanColumn { values, validity }
+    }
+
     fn string_column(values: Vec<&str>, validity: Option<Vec<u8>>) -> VizTableStringColumn {
         VizTableStringColumn::from_values(
             values.into_iter().map(|value| value.to_string()).collect(),
             validity,
         )
+    }
+
+    fn numeric_filter_plan(
+        column_index: usize,
+        operator: VizTableFilterOperator,
+        value: Option<f64>,
+        max_value: Option<f64>,
+    ) -> VizTableFilterPlan {
+        VizTableFilterPlan {
+            column_index,
+            column_kind: VizTableColumnKind::Number,
+            operator,
+            value: VizTableFilterValue::Numeric { max_value, value },
+        }
+    }
+
+    fn boolean_filter_plan(
+        column_index: usize,
+        operator: VizTableFilterOperator,
+        value: Option<bool>,
+    ) -> VizTableFilterPlan {
+        VizTableFilterPlan {
+            column_index,
+            column_kind: VizTableColumnKind::Boolean,
+            operator,
+            value: VizTableFilterValue::Boolean { value },
+        }
+    }
+
+    fn string_filter_plan(
+        column_index: usize,
+        operator: VizTableFilterOperator,
+        value: Option<&str>,
+    ) -> VizTableFilterPlan {
+        VizTableFilterPlan {
+            column_index,
+            column_kind: VizTableColumnKind::String,
+            operator,
+            value: VizTableFilterValue::String {
+                case_sensitive: false,
+                value: value.map(str::to_string),
+            },
+        }
+    }
+
+    fn sort_plan(
+        column_kind: VizTableColumnKind,
+        column_index: usize,
+        direction: VizTableSortDirection,
+        nulls: VizTableNulls,
+    ) -> VizTableSortPlan {
+        VizTableSortPlan {
+            column_index,
+            column_kind,
+            direction,
+            nulls,
+        }
+    }
+
+    fn planned_sort_rows(
+        numeric_columns: &[VizTableNumericColumn],
+        boolean_columns: &[VizTableBooleanColumn],
+        string_columns: &[VizTableStringColumn],
+        column_kind: VizTableColumnKind,
+        nulls: VizTableNulls,
+    ) -> Vec<u32> {
+        query_table_plan(
+            numeric_columns,
+            boolean_columns,
+            string_columns,
+            &VizTablePlannedQuery {
+                sort: vec![sort_plan(
+                    column_kind,
+                    0,
+                    VizTableSortDirection::Asc,
+                    nulls,
+                )],
+                row_limit: Some(10),
+                ..Default::default()
+            },
+        )
+        .row_indices
     }
 }

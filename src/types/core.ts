@@ -17,6 +17,32 @@ export type VizBackendImplementation =
   | "rust-geo-viz-wasm"
   | "rust-viz-engine-wasm";
 
+export type VizCacheOptions = {
+  enabled?: boolean;
+  maxEntriesPerLayer?: number;
+  maxTotalEntries?: number;
+};
+
+export type VizCacheStats = {
+  enabled: boolean;
+  entryCount: number;
+  layerCount: number;
+  maxEntriesPerLayer: number;
+  maxTotalEntries?: number;
+  hitCount: number;
+  missCount: number;
+  evictionCount: number;
+};
+
+export type VizResourceStats = {
+  cachedFrame: boolean;
+  cache: VizCacheStats;
+  datasetCount: number;
+  disposed: boolean;
+  layerCount: number;
+  wasmIndexCount: number;
+};
+
 export type VizMetricRecord = Record<string, number>;
 export type VizPercentileMode = "p10" | "p25" | "p50" | "p75" | "p90" | "p95" | "p99";
 export type VizRollingStatistic = "ema" | "max" | "mean" | "min" | "stdDev" | "zScore";

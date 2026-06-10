@@ -5,6 +5,7 @@ import { RustWasmVizDensityIndex } from "./backend/rust-wasm-density-index";
 import { createVizEngine } from "./create-viz-engine";
 import { createVizEngineBackend } from "./js-backend";
 import { computeVizRenderFrame, createVizRenderRows } from "./render-frame";
+import { embeddedVizWasmModule } from "./wasm/embedded-module";
 
 import type {
   VizAnyRenderLayer,
@@ -40,6 +41,17 @@ function createTestRenderLayerCache(): VizRenderLayerCache {
     },
     get(query) {
       return cache.get(testCacheKey(query));
+    },
+    getStats() {
+      return {
+        enabled: true,
+        entryCount: cache.size,
+        evictionCount: 0,
+        hitCount: 0,
+        layerCount: 1,
+        maxEntriesPerLayer: 8,
+        missCount: 0,
+      };
     },
     set(query, layer) {
       cache.set(testCacheKey(query), layer);
@@ -738,7 +750,7 @@ describe("computeVizRenderFrame", () => {
         "xy",
         {
           dataset: { kind: "xy", points },
-          index: { index: new RustWasmVizDensityIndex(points), kind: "xy" },
+          index: { index: new RustWasmVizDensityIndex(points, embeddedVizWasmModule), kind: "xy" },
         },
       ],
       [
@@ -767,6 +779,9 @@ describe("computeVizRenderFrame", () => {
       datasetCount: 2,
       layerCount: 2,
     });
+    const backendDecisions = frame.stats.backendDecisions ?? [];
+    expect(backendDecisions).toHaveLength(2);
+    expect(backendDecisions.map((decision) => decision.datasetId).sort()).toEqual(["geo", "xy"]);
     expect(frame.stats.diagnostics[0]).toMatchObject({ code: "incompatible-viewport" });
   });
 
@@ -795,8 +810,18 @@ describe("computeVizRenderFrame", () => {
     expect(frame.stats).toMatchObject({
       backend: "js",
       backendImplementation: "js",
-      diagnostics: [],
     });
+    expect(frame.stats.diagnostics).toEqual([
+      expect.objectContaining({
+        backend: expect.objectContaining({
+          requested: "wasm",
+          selected: "js",
+        }),
+        code: "wasm-unsupported-dataset-js-fallback",
+        details: expect.objectContaining({ reason: "unsupported-table-dataset" }),
+        domain: "backend",
+      }),
+    ]);
     expect(layer?.kind).toBe("table");
     expect(layer?.kind === "table" && "typedTable" in layer ? layer.typedTable.rowIds : []).toEqual(
       ["a"],

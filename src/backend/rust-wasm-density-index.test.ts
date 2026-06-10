@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { JsVizDensityIndex } from "./js-density-index";
 import { RustWasmVizDensityIndex } from "./rust-wasm-density-index";
+import { embeddedVizWasmModule } from "../wasm/embedded-module";
 
 import type { VizDensityIndex, VizSeriesPoint, VizValueMode } from "../types";
 
@@ -45,7 +46,7 @@ const points: VizSeriesPoint<{ group: string }>[] = [
 
 describe("RustWasmVizDensityIndex", () => {
   test("reports wasm capabilities and preserves point lookup data", () => {
-    const index = new RustWasmVizDensityIndex(points);
+    const index = new RustWasmVizDensityIndex(points, embeddedVizWasmModule);
 
     expect(index.getBackendCapabilities()).toEqual({
       backend: "wasm",
@@ -64,14 +65,14 @@ describe("RustWasmVizDensityIndex", () => {
 
   test("matches the JS density index for public query outputs", () => {
     const js = new JsVizDensityIndex(points);
-    const wasm = new RustWasmVizDensityIndex(points);
+    const wasm = new RustWasmVizDensityIndex(points, embeddedVizWasmModule);
 
     expect(publicResults(wasm)).toEqual(publicResults(js));
   });
 
   test("matches JS compact density outputs", () => {
     const js = new JsVizDensityIndex(points);
-    const wasm = new RustWasmVizDensityIndex(points);
+    const wasm = new RustWasmVizDensityIndex(points, embeddedVizWasmModule);
 
     expect(compactResults(wasm)).toEqual(compactResults(js));
   });
@@ -80,30 +81,34 @@ describe("RustWasmVizDensityIndex", () => {
     const finitePoints = points.filter(
       (point) => Number.isFinite(point.x) && Number.isFinite(point.y),
     );
-    const typed = new RustWasmVizDensityIndex({
-      ids: finitePoints.map((point) => point.id ?? ""),
-      labels: finitePoints.map((point) => point.label ?? ""),
-      kind: "xy",
-      metricKeys: ["count", "weight"],
-      metrics: new Float64Array(
-        finitePoints.flatMap((point) => [
-          Number.isFinite(point.metrics?.count) ? point.metrics!.count : 0,
-          Number.isFinite(point.metrics?.weight) ? point.metrics!.weight : 0,
-        ]),
-      ),
-      sourceIndices: new Uint32Array(finitePoints.map((_, index) => index)),
-      x: new Float64Array(finitePoints.map((point) => point.x)),
-      y: new Float64Array(finitePoints.map((point) => point.y)),
-    });
+    const typed = new RustWasmVizDensityIndex(
+      {
+        ids: finitePoints.map((point) => point.id ?? ""),
+        labels: finitePoints.map((point) => point.label ?? ""),
+        kind: "xy",
+        metricKeys: ["count", "weight"],
+        metrics: new Float64Array(
+          finitePoints.flatMap((point) => [
+            Number.isFinite(point.metrics?.count) ? point.metrics!.count : 0,
+            Number.isFinite(point.metrics?.weight) ? point.metrics!.weight : 0,
+          ]),
+        ),
+        sourceIndices: new Uint32Array(finitePoints.map((_, index) => index)),
+        x: new Float64Array(finitePoints.map((point) => point.x)),
+        y: new Float64Array(finitePoints.map((point) => point.y)),
+      },
+      embeddedVizWasmModule,
+    );
     const object = new RustWasmVizDensityIndex(
       finitePoints.map((point, sourceIndex) => ({ ...point, sourceIndex })),
+      embeddedVizWasmModule,
     );
 
     expect(compactResults(typed)).toEqual(compactResults(object));
   });
 
   test("handles empty input like the JS density index", () => {
-    expect(publicResults(new RustWasmVizDensityIndex([]))).toEqual(
+    expect(publicResults(new RustWasmVizDensityIndex([], embeddedVizWasmModule))).toEqual(
       publicResults(new JsVizDensityIndex([])),
     );
   });

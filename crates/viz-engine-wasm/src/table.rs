@@ -1,10 +1,11 @@
 use js_sys::{Object, Reflect, Uint32Array, Uint8Array};
 use viz_engine_core::table::{
     query_ascii_string_filter_window, query_ascii_string_search, query_boolean_filter_window,
-    query_numeric_table, sort_boolean_rows_window, sort_numeric_rows_window, VizTableBooleanColumn,
-    VizTableColumnType, VizTableIndexResult, VizTableNulls, VizTableNumericColumn,
-    VizTableNumericFilterOperator, VizTableQuery, VizTableSort, VizTableSortDirection,
-    VizTableStringColumn, VizTableStringFilter, VizTableStringFilterOperator,
+    query_numeric_table, query_table_plan, sort_boolean_rows_window, sort_numeric_rows_window,
+    VizTableBooleanColumn, VizTableColumnType, VizTableIndexResult, VizTableNulls,
+    VizTableNumericColumn, VizTableNumericFilterOperator, VizTablePlannedQuery, VizTableQuery,
+    VizTableSort, VizTableSortDirection, VizTableStringColumn, VizTableStringFilter,
+    VizTableStringFilterOperator,
     VizTableStringSearchQuery,
 };
 use wasm_bindgen::prelude::*;
@@ -120,6 +121,18 @@ impl VizEngineWasmTableIndex {
     pub fn query_numeric(&self, query: JsValue) -> Result<JsValue, JsValue> {
         let query: VizTableQuery = serde_wasm_bindgen::from_value(query).map_err(into_js_error)?;
         row_index_result_object(query_numeric_table(&self.numeric_columns, &query))
+    }
+
+    #[wasm_bindgen(js_name = queryPlanned)]
+    pub fn query_planned(&self, query: JsValue) -> Result<JsValue, JsValue> {
+        let query: VizTablePlannedQuery =
+            serde_wasm_bindgen::from_value(query).map_err(into_js_error)?;
+        row_index_result_object(query_table_plan(
+            &self.numeric_columns,
+            &self.boolean_columns,
+            &self.string_columns,
+            &query,
+        ))
     }
 
     #[wasm_bindgen(js_name = queryStringFilter)]

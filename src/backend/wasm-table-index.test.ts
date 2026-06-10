@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from "vitest";
 import { createTableFixture } from "../../bench/fixtures/table";
 import { JsVizTableIndex } from "./js-table-index";
 import { RustWasmVizTableIndex } from "./rust-wasm-table-index";
+import { embeddedVizWasmModule } from "../wasm/embedded-module";
 
 import type { VizTableQuery, VizTypedTable } from "../types";
 
@@ -63,7 +64,7 @@ describe("RustWasmVizTableIndex", () => {
   });
 
   test("uses wasm row indices for supported typed queries", () => {
-    const wasm = new RustWasmVizTableIndex(fixture.columnarDataset);
+    const wasm = new RustWasmVizTableIndex(fixture.columnarDataset, embeddedVizWasmModule);
     const spy = vi.spyOn(JsVizTableIndex.prototype, "getTypedTable");
 
     const output = wasm.getTypedTable({
@@ -131,7 +132,7 @@ describe("RustWasmVizTableIndex", () => {
   });
 
   test("reports supported WASM query coverage", () => {
-    const wasm = new RustWasmVizTableIndex(fixture.columnarDataset);
+    const wasm = new RustWasmVizTableIndex(fixture.columnarDataset, embeddedVizWasmModule);
 
     expect(
       wasm.canUseWasmForQuery({
@@ -172,26 +173,29 @@ describe("RustWasmVizTableIndex", () => {
     ).toBe(true);
   });
 
-  test("falls back for unsupported string and mixed queries", () => {
-    expectFallback({
+  test("matches supported string sort and mixed primitive queries", () => {
+    expectParity({
       rowLimit: 32,
       sort: [{ columnId: "category", direction: "asc" }],
     });
-    expectFallback({
+    expectParity({
       rowLimit: 32,
       search: { columnIds: ["name", "category", "region"], query: "core" },
       sort: [{ columnId: "score", direction: "desc" }],
     });
-    expectFallback({
+    expectParity({
       filters: [{ columnId: "score", operator: "gte", value: 60 }],
       rowLimit: 32,
       sort: [{ columnId: "category", direction: "asc" }],
     });
-    expectFallback({
+    expectParity({
       filters: [{ columnId: "active", operator: "equals", value: true }],
       rowLimit: 32,
       sort: [{ columnId: "active", direction: "asc" }],
     });
+  });
+
+  test("falls back for unsupported string and JSON queries", () => {
     expectFallback({
       rowLimit: 32,
       search: { columnIds: ["metadata"], query: "enabled" },
@@ -202,13 +206,62 @@ describe("RustWasmVizTableIndex", () => {
     });
   });
 
+  test("reports unsupported query fallback diagnostics with planner details", () => {
+    const wasm = new RustWasmVizTableIndex(fixture.columnarDataset, embeddedVizWasmModule);
+    const js = new JsVizTableIndex(fixture.columnarDataset);
+    const actual = wasm.getTypedTable({});
+
+    expect(typedTableSnapshot(actual)).toEqual(typedTableSnapshot(js.getTypedTable({})));
+    expect(wasm.getDiagnostics()).toEqual([
+      expect.objectContaining({
+        backend: expect.objectContaining({
+          selected: "js",
+        }),
+        code: "wasm-unsupported-query-js-fallback",
+        details: expect.objectContaining({ reason: "no-wasm-operation" }),
+        domain: "backend",
+      }),
+    ]);
+  });
+
+  test("reports WASM query errors and preserves JS fallback parity", () => {
+    const query = {
+      filters: [{ columnId: "score", operator: "gte" as const, value: 60 }],
+      rowLimit: 16,
+      sort: [{ columnId: "score", direction: "desc" as const }],
+    };
+    const js = new JsVizTableIndex(fixture.columnarDataset);
+    const wasm = new RustWasmVizTableIndex(fixture.columnarDataset, embeddedVizWasmModule);
+    const wasmInternals = wasm as unknown as {
+      wasmIndex: { queryPlanned: () => unknown };
+    };
+
+    wasmInternals.wasmIndex.queryPlanned = vi.fn(() => {
+      throw new Error("planned query failed");
+    });
+
+    expect(typedTableSnapshot(wasm.getTypedTable(query))).toEqual(
+      typedTableSnapshot(js.getTypedTable(query)),
+    );
+    expect(wasm.getDiagnostics()).toEqual([
+      expect.objectContaining({
+        backend: expect.objectContaining({
+          selected: "js",
+        }),
+        code: "wasm-query-error-js-fallback",
+        details: expect.objectContaining({ message: "planned query failed" }),
+        domain: "backend",
+      }),
+    ]);
+  });
+
   test("falls back for non-ASCII string columns", () => {
     const dataset = {
       columns: [{ id: "name", type: "string" as const, values: ["café", "core"] }],
       kind: "table" as const,
       rowIds: ["one", "two"],
     };
-    const wasm = new RustWasmVizTableIndex(dataset);
+    const wasm = new RustWasmVizTableIndex(dataset, embeddedVizWasmModule);
 
     expect(
       wasm.canUseWasmForQuery({
@@ -217,12 +270,33 @@ describe("RustWasmVizTableIndex", () => {
     ).toBe(false);
   });
 
-  test("reports WASM capabilities for string-only ASCII columnar datasets", () => {
-    const wasm = new RustWasmVizTableIndex({
-      columns: [{ id: "name", type: "string" as const, values: ["core", "edge"] }],
-      kind: "table",
-      rowIds: ["core", "edge"],
+  test("falls back for locale-sensitive mixed-case string sort", () => {
+    const wasm = new RustWasmVizTableIndex(
+      {
+        columns: [{ id: "name", type: "string" as const, values: ["ada", "Grace", "Ada"] }],
+        kind: "table",
+        rowIds: ["lower", "upper-g", "upper-a"],
+      },
+      embeddedVizWasmModule,
+    );
+
+    const plan = wasm.explainWasmQuery?.({
+      sort: [{ columnId: "name", direction: "asc" }],
     });
+
+    expect(plan).toMatchObject({ reason: "locale-string-sort", supported: false });
+    expect(wasm.canUseWasmForQuery({ sort: [{ columnId: "name", direction: "asc" }] })).toBe(false);
+  });
+
+  test("reports WASM capabilities for string-only ASCII columnar datasets", () => {
+    const wasm = new RustWasmVizTableIndex(
+      {
+        columns: [{ id: "name", type: "string" as const, values: ["core", "edge"] }],
+        kind: "table",
+        rowIds: ["core", "edge"],
+      },
+      embeddedVizWasmModule,
+    );
 
     expect(wasm.getBackendCapabilities()).toMatchObject({
       backend: "wasm",
@@ -232,14 +306,17 @@ describe("RustWasmVizTableIndex", () => {
   });
 
   test("reports WASM capabilities when another supported column exists beside non-ASCII strings", () => {
-    const wasm = new RustWasmVizTableIndex({
-      columns: [
-        { id: "score", type: "number" as const, values: new Float64Array([1, 2]) },
-        { id: "name", type: "string" as const, values: ["café", "core"] },
-      ],
-      kind: "table",
-      rowIds: ["accent", "plain"],
-    });
+    const wasm = new RustWasmVizTableIndex(
+      {
+        columns: [
+          { id: "score", type: "number" as const, values: new Float64Array([1, 2]) },
+          { id: "name", type: "string" as const, values: ["café", "core"] },
+        ],
+        kind: "table",
+        rowIds: ["accent", "plain"],
+      },
+      embeddedVizWasmModule,
+    );
 
     expect(wasm.getBackendCapabilities()).toMatchObject({
       backend: "wasm",
@@ -254,13 +331,16 @@ describe("RustWasmVizTableIndex", () => {
   });
 
   test("falls back to JS capabilities for JSON and unknown-only columnar datasets", () => {
-    const wasm = new RustWasmVizTableIndex({
-      columns: [
-        { id: "metadata", type: "json" as const, values: [{ enabled: true }] },
-        { id: "raw", type: "unknown" as const, values: [Symbol.for("raw")] },
-      ],
-      kind: "table",
-    });
+    const wasm = new RustWasmVizTableIndex(
+      {
+        columns: [
+          { id: "metadata", type: "json" as const, values: [{ enabled: true }] },
+          { id: "raw", type: "unknown" as const, values: [Symbol.for("raw")] },
+        ],
+        kind: "table",
+      },
+      embeddedVizWasmModule,
+    );
 
     expect(wasm.getBackendCapabilities()).toMatchObject({
       backend: "js",
@@ -270,11 +350,14 @@ describe("RustWasmVizTableIndex", () => {
   });
 
   test("falls back to JS capabilities for empty columnar datasets", () => {
-    const wasm = new RustWasmVizTableIndex({
-      columns: [],
-      kind: "table",
-      rowIds: [],
-    });
+    const wasm = new RustWasmVizTableIndex(
+      {
+        columns: [],
+        kind: "table",
+        rowIds: [],
+      },
+      embeddedVizWasmModule,
+    );
 
     expect(wasm.getBackendCapabilities()).toMatchObject({
       backend: "js",
@@ -284,7 +367,7 @@ describe("RustWasmVizTableIndex", () => {
   });
 
   test("object dataset constructor falls back to JS", () => {
-    const wasm = new RustWasmVizTableIndex(fixture.objectDataset);
+    const wasm = new RustWasmVizTableIndex(fixture.objectDataset, embeddedVizWasmModule);
 
     expect(wasm.getBackendCapabilities()).toMatchObject({
       backend: "js",
@@ -305,7 +388,7 @@ describe("RustWasmVizTableIndex", () => {
       sort: [{ columnId: "score", direction: "desc" }],
     } satisfies VizTableQuery;
     const js = new JsVizTableIndex(fixture.columnarDataset);
-    const wasm = new RustWasmVizTableIndex(fixture.columnarDataset);
+    const wasm = new RustWasmVizTableIndex(fixture.columnarDataset, embeddedVizWasmModule);
 
     expect(wasm.getTable(query)).toEqual(js.getTable(query));
   });
@@ -316,7 +399,7 @@ describe("RustWasmVizTableIndex", () => {
       rowLimit: 16,
       sort: [{ columnId: "score", direction: "desc" }],
     } satisfies VizTableQuery;
-    const wasm = new RustWasmVizTableIndex(fixture.columnarDataset);
+    const wasm = new RustWasmVizTableIndex(fixture.columnarDataset, embeddedVizWasmModule);
     const spy = vi.spyOn(JsVizTableIndex.prototype, "getTable");
 
     const output = wasm.getTable(query);
@@ -329,7 +412,7 @@ describe("RustWasmVizTableIndex", () => {
 
   function expectParity(query: VizTableQuery) {
     const js = new JsVizTableIndex(fixture.columnarDataset);
-    const wasm = new RustWasmVizTableIndex(fixture.columnarDataset);
+    const wasm = new RustWasmVizTableIndex(fixture.columnarDataset, embeddedVizWasmModule);
     expect(wasm.getBackendCapabilities()).toMatchObject({
       backend: "wasm",
       implementation: "rust-viz-engine-wasm",
@@ -345,7 +428,7 @@ describe("RustWasmVizTableIndex", () => {
 
   function expectFallback(query: VizTableQuery) {
     const js = new JsVizTableIndex(fixture.columnarDataset);
-    const wasm = new RustWasmVizTableIndex(fixture.columnarDataset);
+    const wasm = new RustWasmVizTableIndex(fixture.columnarDataset, embeddedVizWasmModule);
     const spy = vi.spyOn(JsVizTableIndex.prototype, "getTypedTable");
 
     expect(wasm.canUseWasmForQuery(query)).toBe(false);

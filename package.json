@@ -24,16 +24,28 @@
       "types": "./dist/core.d.ts",
       "import": "./dist/core.js"
     },
+    "./core/embedded": {
+      "types": "./dist/core-embedded.d.ts",
+      "import": "./dist/core-embedded.js"
+    },
+    "./core/lazy": {
+      "types": "./dist/core-lazy.d.ts",
+      "import": "./dist/core-lazy.js"
+    },
     "./react": {
       "types": "./dist/react.d.ts",
       "import": "./dist/react.js"
+    },
+    "./worker": {
+      "types": "./dist/worker.d.ts",
+      "import": "./dist/worker.js"
     }
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "bun run build:wasm && tsup",
+    "build": "bun run build:wasm && tsup && bun scripts/copy-lazy-wasm-pkg.mjs",
     "build:wasm": "bun ./scripts/build-wasm.mjs",
     "bench": "bun run bench:node && bun run bench:browser",
     "bench:browser": "bun run bench/browser/run-browser.ts --quick",

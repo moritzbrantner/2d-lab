@@ -1,46 +1,41 @@
-// Demonstrates main-thread worker handoff using @moritzbrantner/viz-engine/core.
-// Mount from a local app; the paired worker module computes and transfers frames.
-import {
-  getVizFrameTransferables,
-  type VizTypedRenderFrame,
-} from "@moritzbrantner/viz-engine/core";
+// Demonstrates main-thread worker handoff using @moritzbrantner/viz-engine/worker.
+// Mount from a local app; the paired worker module keeps datasets and layers in the worker.
+import { createVizWorkerClient } from "@moritzbrantner/viz-engine/worker";
+import type { VizSeriesPoint } from "@moritzbrantner/viz-engine/core";
 
-export function mountWorkerFrameExample(root: HTMLElement) {
+export async function mountWorkerFrameExample(root: HTMLElement) {
   const worker = new Worker(new URL("./worker-thread.ts", import.meta.url), { type: "module" });
+  const client = createVizWorkerClient(worker);
   const output = document.createElement("pre");
   root.replaceChildren(output);
 
-  worker.onmessage = (event: MessageEvent<WorkerFrameMessage>) => {
-    if (event.data.type !== "viz-frame") {
-      return;
-    }
+  const points = createWorkerPoints(10_000);
+  const datasetId = await client.addDataset({ kind: "xy", points });
+  await client.addLayer({
+    datasetId,
+    kind: "heatmap",
+    xBinCount: 160,
+    yBinCount: 80,
+  });
 
-    output.textContent = JSON.stringify(
-      {
-        layers: event.data.frame.layers.length,
-        stats: event.data.frame.stats,
-      },
-      null,
-      2,
-    );
-  };
+  const frame = await client.computeFrame({
+    viewport: { height: 320, width: 640, xDomain: [0, points.length - 1] },
+  });
 
-  worker.postMessage({
-    pointCount: 10_000,
-    type: "compute-frame",
-  } satisfies WorkerComputeMessage);
+  output.textContent = JSON.stringify(
+    {
+      layers: frame.layers.length,
+      stats: frame.stats,
+    },
+    null,
+    2,
+  );
 }
 
-export function transferFrameFromMainThread(frame: VizTypedRenderFrame) {
-  return getVizFrameTransferables(frame);
+function createWorkerPoints(count: number): VizSeriesPoint[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `worker-point-${index}`,
+    x: index,
+    y: Math.sin(index / 50) * 50 + Math.cos(index / 17) * 12,
+  }));
 }
-
-export type WorkerComputeMessage = {
-  pointCount: number;
-  type: "compute-frame";
-};
-
-export type WorkerFrameMessage = {
-  frame: VizTypedRenderFrame;
-  type: "viz-frame";
-};

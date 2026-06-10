@@ -1,4 +1,6 @@
 import type { VizBackendCapabilities } from "./core";
+import type { VizFrameDiagnostic } from "./render";
+import type { VizTableWasmPlan } from "../backend/table-wasm-plan";
 
 export type VizTableCellValue =
   | string
@@ -160,7 +162,9 @@ export type VizTypedTable = {
 };
 
 export type VizTableIndex = {
+  explainWasmQuery?(query: VizTableQuery): VizTableWasmPlan;
   getBackendCapabilities(): VizBackendCapabilities;
+  getDiagnostics?(): readonly VizFrameDiagnostic[];
   getRowById(rowId: string): VizTableRow | null;
   getRowCount(): number;
   getSchema(): readonly VizTableColumnSummary[];

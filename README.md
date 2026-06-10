@@ -36,11 +36,14 @@ const hydratedFrame = engine.hydrateFrame(typedFrame);
 
 ## Import Paths
 
-| Import path                        | Use it for                                                                                               |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `@moritzbrantner/viz-engine/core`  | Engine APIs without React. Recommended for libraries, workers, Canvas, SVG, WebGL, and server renderers. |
-| `@moritzbrantner/viz-engine/react` | React provider and hooks.                                                                                |
-| `@moritzbrantner/viz-engine`       | Backward-compatible root export. It still includes React bindings during the pre-1.0 transition.         |
+| Import path                                | Use it for                                                                                       |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `@moritzbrantner/viz-engine/core`          | Current zero-config embedded core APIs without React.                                            |
+| `@moritzbrantner/viz-engine/core/embedded` | Explicit embedded core alias.                                                                    |
+| `@moritzbrantner/viz-engine/core/lazy`     | Async core API with lazy WASM loading.                                                           |
+| `@moritzbrantner/viz-engine/worker`        | Worker client and host APIs for off-main-thread frame computation.                               |
+| `@moritzbrantner/viz-engine/react`         | React provider and hooks.                                                                        |
+| `@moritzbrantner/viz-engine`               | Backward-compatible root export. It still includes React bindings during the pre-1.0 transition. |
 
 ## Docs
 
@@ -48,6 +51,7 @@ const hydratedFrame = engine.hydrateFrame(typedFrame);
 - [Frame formats](docs/frame-formats.md)
 - [Table data](docs/table-data.md)
 - [Backends and WASM](docs/backends.md)
+- [Lazy WASM](docs/lazy-wasm.md)
 - [Focused examples](docs/examples.md)
 - [React bindings](docs/react.md)
 - [Worker handoff](docs/worker-handoff.md)

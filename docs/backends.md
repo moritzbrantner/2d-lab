@@ -62,12 +62,17 @@ These paths remain JS-owned or JS-fallback:
 
 - object-row normalization
 - object table frame hydration
-- string sort
 - non-ASCII string search/filter
+- non-ASCII string sort
 - locale-sensitive string behavior
 - JSON/unknown columns
-- unsupported mixed queries
-- multi-sort
+- unsupported mixed queries that include unsupported column types
+
+The WASM table wrapper can select row indices for supported primitive query
+shapes, including multiple numeric/date/boolean/ASCII-string filters, ASCII
+string search, primitive sorting, mixed filters plus sorting, multi-sort,
+`rowOffset`, `rowLimit`, and null ordering. Projection and row hydration remain
+JavaScript-owned after WASM returns source row indices.
 
 Frame stats report the selected dataset-level table backend:
 
@@ -80,12 +85,16 @@ Frame stats report the selected dataset-level table backend:
 
 ## Current Bundle Shape
 
-The package currently embeds the local viz-engine WASM payload for zero-config
-use. That keeps setup simple, but it also makes the default JavaScript bundle
-larger. Use `bun run bundle:size` to inspect the built artifact sizes.
+The package exposes explicit bundle shapes:
 
-Future adoption work should evaluate a split between a zero-config embedded
-entrypoint and a lighter lazy-loading entrypoint.
+- `@moritzbrantner/viz-engine/core`: current zero-config embedded path.
+- `@moritzbrantner/viz-engine/core/embedded`: explicit embedded path.
+- `@moritzbrantner/viz-engine/core/lazy`: async path that lazy-loads the
+  wasm-pack module.
+- `@moritzbrantner/viz-engine/worker`: worker client and host API.
+
+Use `bun run bundle:size` to inspect the built artifact sizes. `core/lazy`
+should not include `moritzbrantner_viz_engine_wasm_embedded`.
 
 ## Diagnostics
 
@@ -96,5 +105,15 @@ const frame = engine.computeFrame({ viewport });
 
 console.log(frame.stats.backend);
 console.log(frame.stats.backendImplementation);
+console.log(frame.stats.backendDecisions);
 console.log(frame.stats.diagnostics);
 ```
+
+Lazy WASM fallbacks also report diagnostics, including
+`wasm-loading-js-fallback` and `wasm-load-failed-js-fallback`.
+
+When a requested WASM path falls back to JavaScript, diagnostics use stable
+codes such as `wasm-unsupported-dataset-js-fallback`,
+`wasm-unsupported-query-js-fallback`, and `wasm-query-error-js-fallback`.
+`frame.stats.backendDecisions` reports one decision per used dataset with the
+requested backend, selected backend, implementation, and fallback reason.

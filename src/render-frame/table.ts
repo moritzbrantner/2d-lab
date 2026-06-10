@@ -52,20 +52,34 @@ export function computeTableRenderLayer<TProperties>(
   }
 
   if (resolveFrameFormat(options) === "typed") {
+    const typedTable = index.getTypedTable(query);
+    appendTableDiagnostics(index, layerId, diagnostics);
     return {
       datasetId: layer.datasetId,
       kind: "table",
       layerId,
-      typedTable: index.getTypedTable(query),
+      typedTable,
     };
   }
 
+  const table = index.getTable(query);
+  appendTableDiagnostics(index, layerId, diagnostics);
   return {
     datasetId: layer.datasetId,
     kind: "table",
     layerId,
-    table: index.getTable(query),
+    table,
   };
+}
+
+function appendTableDiagnostics(
+  index: { getDiagnostics?(): readonly VizFrameDiagnostic[] },
+  layerId: VizLayerId,
+  diagnostics: VizFrameDiagnostic[],
+) {
+  for (const diagnostic of index.getDiagnostics?.() ?? []) {
+    diagnostics.push({ ...diagnostic, layerId: diagnostic.layerId ?? layerId });
+  }
 }
 
 export function resolveTableQuery(

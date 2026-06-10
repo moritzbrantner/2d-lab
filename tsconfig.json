@@ -9,6 +9,9 @@
     "paths": {
       "@moritzbrantner/viz-engine": ["src/index.ts"],
       "@moritzbrantner/viz-engine/core": ["src/core.ts"],
+      "@moritzbrantner/viz-engine/core/embedded": ["src/core-embedded.ts"],
+      "@moritzbrantner/viz-engine/core/lazy": ["src/core-lazy.ts"],
+      "@moritzbrantner/viz-engine/worker": ["src/worker.ts"],
       "@moritzbrantner/viz-engine/react": ["src/react.tsx"]
     },
     "skipLibCheck": true,

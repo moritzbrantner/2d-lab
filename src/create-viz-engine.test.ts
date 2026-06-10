@@ -1,6 +1,8 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { createVizEngine } from "./create-viz-engine";
+import { createVizEngineWithBackend } from "./create-viz-engine-core";
+import { VizDisposedError } from "./errors";
 
 import type { VizSeriesPoint } from "./types";
 
@@ -207,6 +209,141 @@ describe("createVizEngine", () => {
     });
 
     expect(afterDatasetUpdate.stats).toMatchObject({ cacheHitCount: 0, cacheMissCount: 1 });
+  });
+
+  test("can disable, inspect, and clear the render cache", () => {
+    const disabled = createVizEngine({ backend: "js", cache: { enabled: false } });
+    const disabledDatasetId = disabled.addDataset({ kind: "xy", points });
+    disabled.addLayer({
+      datasetId: disabledDatasetId,
+      kind: "binned-series",
+      targetBinCount: 5,
+      xDomain: [0, 40],
+    });
+
+    const options = { viewport: { height: 320, width: 800, xDomain: [0, 40] as [number, number] } };
+    disabled.computeFrame(options);
+    disabled.computeFrame(options);
+
+    expect(disabled.getCacheStats()).toMatchObject({
+      enabled: false,
+      entryCount: 0,
+      hitCount: 0,
+      missCount: 2,
+    });
+
+    const engine = createVizEngine({ backend: "js", cache: { maxTotalEntries: 1 } });
+    const datasetId = engine.addDataset({ kind: "xy", points });
+    const layerId = engine.addLayer({
+      datasetId,
+      kind: "binned-series",
+      targetBinCount: 5,
+      xDomain: [0, 40],
+    });
+    engine.computeFrame(options);
+    engine.computeFrame(options);
+    expect(engine.getCacheStats()).toMatchObject({ entryCount: 1, hitCount: 1 });
+
+    engine.clearCache({ layerId });
+    expect(engine.getCacheStats().entryCount).toBe(0);
+    expect(engine.getResourceStats()).toMatchObject({
+      cachedFrame: false,
+      datasetCount: 1,
+      disposed: false,
+      layerCount: 1,
+    });
+  });
+
+  test("dispose clears resources and rejects future mutating and compute calls", () => {
+    const engine = createVizEngine({ backend: "wasm" });
+    const datasetId = engine.addDataset({ kind: "xy", points });
+    engine.addLayer({
+      datasetId,
+      kind: "binned-series",
+      targetBinCount: 5,
+      xDomain: [0, 40],
+    });
+
+    engine.computeFrame({ viewport: { height: 320, width: 800, xDomain: [0, 40] } });
+    expect(engine.getResourceStats().wasmIndexCount).toBe(1);
+
+    engine.dispose();
+    engine.dispose();
+
+    expect(engine.getResourceStats()).toMatchObject({
+      cachedFrame: false,
+      datasetCount: 0,
+      disposed: true,
+      layerCount: 0,
+      wasmIndexCount: 0,
+    });
+    expect(() => engine.addDataset({ kind: "xy", points })).toThrow(VizDisposedError);
+    expect(() =>
+      engine.computeFrame({ viewport: { height: 320, width: 800, xDomain: [0, 40] } }),
+    ).toThrow(VizDisposedError);
+    expect(() =>
+      engine.hitTest({ viewport: { height: 320, width: 800, xDomain: [0, 40] }, x: 0, y: 0 }),
+    ).toThrow(VizDisposedError);
+  });
+
+  test("removeDataset disposes the dataset index exactly once", () => {
+    const { backend, indexes } = createLifecycleBackend();
+    const engine = createVizEngineWithBackend(backend);
+    const datasetId = engine.addDataset({ kind: "xy", points });
+
+    engine.removeDataset(datasetId);
+    engine.removeDataset(datasetId);
+
+    expect(indexes[0]?.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  test("updateDataset creates the replacement index before disposing the old index", () => {
+    const events: string[] = [];
+    const { backend, indexes } = createLifecycleBackend(events);
+    const engine = createVizEngineWithBackend(backend);
+    const datasetId = engine.addDataset({ kind: "xy", points });
+
+    expect(engine.updateDataset(datasetId, { kind: "xy", points: points.slice(0, 2) })).toBe(true);
+
+    expect(events).toEqual(["create-0", "create-1", "dispose-0"]);
+    expect(indexes[0]?.dispose).toHaveBeenCalledTimes(1);
+    expect(indexes[1]?.dispose).not.toHaveBeenCalled();
+  });
+
+  test("clear disposes every current index once and leaves the engine usable", () => {
+    const { backend, indexes } = createLifecycleBackend();
+    const engine = createVizEngineWithBackend(backend);
+
+    engine.addDataset({ kind: "xy", points });
+    engine.addDataset({ kind: "xy", points: points.slice(0, 2) });
+    engine.clear();
+    const nextDatasetId = engine.addDataset({ kind: "xy", points });
+
+    expect(indexes[0]?.dispose).toHaveBeenCalledTimes(1);
+    expect(indexes[1]?.dispose).toHaveBeenCalledTimes(1);
+    expect(nextDatasetId).toBe("dataset-1");
+    expect(engine.getDatasetCount()).toBe(1);
+  });
+
+  test("dispose is idempotent and rejects future engine calls", () => {
+    const { backend, indexes } = createLifecycleBackend();
+    const engine = createVizEngineWithBackend(backend);
+
+    engine.addDataset({ kind: "xy", points });
+    engine.dispose();
+    engine.dispose();
+
+    expect(indexes[0]?.dispose).toHaveBeenCalledTimes(1);
+    expect(() => engine.addDataset({ kind: "xy", points })).toThrow(VizDisposedError);
+    expect(() =>
+      engine.addLayer({ datasetId: "dataset-1", kind: "binned-series", targetBinCount: 2 }),
+    ).toThrow(VizDisposedError);
+    expect(() =>
+      engine.computeFrame({ viewport: { height: 320, width: 800, xDomain: [0, 40] } }),
+    ).toThrow(VizDisposedError);
+    expect(() =>
+      engine.hitTest({ viewport: { height: 320, width: 800, xDomain: [0, 40] }, x: 0, y: 0 }),
+    ).toThrow(VizDisposedError);
   });
 
   test("returns typed cartesian frames by default and hydrates object layers explicitly", () => {
@@ -443,3 +580,33 @@ describe("createVizEngine", () => {
     });
   });
 });
+
+function createLifecycleBackend(events: string[] = []) {
+  let nextIndexId = 0;
+  const indexes: Array<{
+    dispose: ReturnType<typeof vi.fn>;
+    getBackendCapabilities: () => { backend: "js"; implementation: "js"; usesWasm: false };
+  }> = [];
+  const backend = {
+    createIndex() {
+      const indexId = nextIndexId++;
+      events.push(`create-${indexId}`);
+      const index = {
+        dispose: vi.fn(() => {
+          events.push(`dispose-${indexId}`);
+        }),
+        getBackendCapabilities: () => ({
+          backend: "js" as const,
+          implementation: "js" as const,
+          usesWasm: false as const,
+        }),
+      };
+      indexes.push(index);
+      return { index, kind: "xy" as const } as never;
+    },
+    option: { finance: "js", geo: "js", table: "js", xy: "js" } as const,
+    resolveBackend: () => "js" as const,
+  };
+
+  return { backend, indexes };
+}

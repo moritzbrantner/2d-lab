@@ -1,5 +1,3 @@
-import { GeoFlowIndex, initVizEngineWasm } from "../wasm/viz-engine-wasm-bindings";
-
 import type {
   VizGeoBounds,
   VizGeoFlow,
@@ -8,16 +6,29 @@ import type {
   VizGeoFlowOptions,
   VizGeoViewportQuery,
 } from "../types";
+import type { VizWasmModule } from "../wasm/types";
+
+type GeoFlowIndex = {
+  free?: () => void;
+  getBounds(): unknown;
+  getViewportFlows(query: unknown, options: unknown): unknown;
+};
+type GeoFlowIndexConstructor = new (flows: unknown) => GeoFlowIndex;
 
 export class WasmVizGeoFlowIndex<
   TProperties = Record<string, unknown>,
 > implements VizGeoFlowIndex<TProperties> {
   private readonly inner: GeoFlowIndex;
+  private disposed = false;
 
-  constructor(flows: readonly VizGeoFlow<TProperties>[]) {
-    initVizEngineWasm();
+  constructor(
+    flows: readonly VizGeoFlow<TProperties>[],
+    wasmModule: Pick<VizWasmModule, "GeoFlowIndex" | "initVizEngineWasm">,
+  ) {
+    wasmModule.initVizEngineWasm();
+    const GeoFlow = wasmModule.GeoFlowIndex as GeoFlowIndexConstructor;
 
-    this.inner = new GeoFlowIndex(flows as Array<VizGeoFlow<TProperties>>);
+    this.inner = new GeoFlow(flows as Array<VizGeoFlow<TProperties>>);
   }
 
   getBackendCapabilities() {
@@ -26,6 +37,14 @@ export class WasmVizGeoFlowIndex<
       implementation: "rust-geo-viz-wasm" as const,
       usesWasm: true,
     };
+  }
+
+  dispose() {
+    if (this.disposed) {
+      return;
+    }
+    this.inner.free?.();
+    this.disposed = true;
   }
 
   getBounds(): VizGeoBounds | null {

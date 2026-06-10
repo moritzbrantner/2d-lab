@@ -1,9 +1,3 @@
-import {
-  GeoPointIndex,
-  initVizEngineWasm,
-  ScalarFieldIndex,
-} from "../wasm/viz-engine-wasm-bindings";
-
 import type {
   VizGeoAggregation,
   VizGeoAggregationFeature,
@@ -19,6 +13,7 @@ import type {
   VizIndexedGeoPoint,
   VizMetricRecord,
 } from "../types";
+import type { VizWasmModule } from "../wasm/types";
 
 type GeoVizPoint<TProperties = Record<string, unknown>> = VizGeoPoint<TProperties>;
 type GeoVizAggregationOptions = Omit<
@@ -47,20 +42,47 @@ type GeoVizAggregation<TProperties = Record<string, unknown>> = {
 };
 
 type ClusterIndexEntry = {
-  inner: GeoPointIndex;
+  inner: GeoPointIndexInstance;
   key: string;
   numericToString: Map<number, string>;
   stringToNumeric: Map<string, number>;
 };
+type GeoPointIndexInstance = {
+  free?: () => void;
+  getBounds(): unknown;
+  getClusterExpansionZoom(clusterId: string): number;
+  getClusterLeaves(clusterId: string, limit: number, offset: number): unknown;
+  getHeatFeatures(query: unknown, options: unknown): unknown;
+  getPointById(pointId: string): unknown;
+  getViewportAggregation(query: unknown): unknown;
+  nearestPoint(query: unknown): unknown;
+};
+type GeoPointIndexConstructor = new (points: unknown, options: unknown) => GeoPointIndexInstance;
+type ScalarFieldIndexInstance = {
+  createGrid(): unknown;
+  free(): void;
+};
+type ScalarFieldIndexConstructor = new (
+  points: unknown,
+  options: unknown,
+) => ScalarFieldIndexInstance;
 
 export class WasmVizGeoPointIndex<
   TProperties = Record<string, unknown>,
 > implements VizGeoPointIndex<TProperties> {
   private readonly indexes = new Map<string, ClusterIndexEntry>();
   private latestIndexKey: string | null = null;
+  private readonly geoPointIndexConstructor: GeoPointIndexConstructor;
+  private readonly scalarFieldIndexConstructor: ScalarFieldIndexConstructor;
+  private disposed = false;
 
-  constructor(private readonly points: readonly VizGeoPoint<TProperties>[]) {
-    initVizEngineWasm();
+  constructor(
+    private readonly points: readonly VizGeoPoint<TProperties>[],
+    wasmModule: Pick<VizWasmModule, "GeoPointIndex" | "ScalarFieldIndex" | "initVizEngineWasm">,
+  ) {
+    wasmModule.initVizEngineWasm();
+    this.geoPointIndexConstructor = wasmModule.GeoPointIndex as GeoPointIndexConstructor;
+    this.scalarFieldIndexConstructor = wasmModule.ScalarFieldIndex as ScalarFieldIndexConstructor;
   }
 
   getBackendCapabilities() {
@@ -69,6 +91,17 @@ export class WasmVizGeoPointIndex<
       implementation: "rust-geo-viz-wasm" as const,
       usesWasm: true,
     };
+  }
+
+  dispose() {
+    if (this.disposed) {
+      return;
+    }
+    for (const entry of this.indexes.values()) {
+      entry.inner.free?.();
+    }
+    this.indexes.clear();
+    this.disposed = true;
   }
 
   getBounds(): VizGeoBounds | null {
@@ -115,10 +148,13 @@ export class WasmVizGeoPointIndex<
     query: VizGeoViewportQuery,
     options: VizGeoScalarFieldOptions = {},
   ): VizGeoScalarFieldGrid {
-    const index = new ScalarFieldIndex(this.points as Array<GeoVizPoint<TProperties>>, {
-      ...options,
-      domainBounds: query.bounds,
-    } satisfies GeoVizScalarFieldOptions);
+    const index = new this.scalarFieldIndexConstructor(
+      this.points as Array<GeoVizPoint<TProperties>>,
+      {
+        ...options,
+        domainBounds: query.bounds,
+      } satisfies GeoVizScalarFieldOptions,
+    );
 
     try {
       return index.createGrid() as VizGeoScalarFieldGrid;
@@ -166,7 +202,7 @@ export class WasmVizGeoPointIndex<
     }
 
     const entry: ClusterIndexEntry = {
-      inner: new GeoPointIndex(
+      inner: new this.geoPointIndexConstructor(
         this.points as Array<GeoVizPoint<TProperties>>,
         normalized satisfies GeoVizAggregationOptions,
       ),
