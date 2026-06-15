@@ -8,7 +8,7 @@ import {
 
 import type {
   VizAnyRenderLayer,
-  VizCompactMetricArrays,
+  VizTypedMetricArrays,
   VizComputeFrameOptions,
   VizEngineDatasetRecord,
   VizFrameDiagnostic,
@@ -472,12 +472,12 @@ function collectFeatureMetricKeys<TProperties>(
 function createMetricArrays(
   items: ReadonlyArray<{ metrics: Record<string, number> }>,
   metricKeys: readonly string[],
-): VizCompactMetricArrays | undefined {
+): VizTypedMetricArrays | undefined {
   if (!metricKeys.length) {
     return undefined;
   }
 
-  const metrics: VizCompactMetricArrays = {};
+  const metrics: VizTypedMetricArrays = {};
   for (const metricKey of metricKeys) {
     const values = new Float64Array(items.length);
     items.forEach((item, index) => {
@@ -492,12 +492,12 @@ function createMetricArrays(
 function createFeatureMetricArrays<TProperties>(
   features: readonly VizGeoAggregationFeature<TProperties>[],
   metricKeys: readonly string[],
-): VizCompactMetricArrays | undefined {
+): VizTypedMetricArrays | undefined {
   if (!metricKeys.length) {
     return undefined;
   }
 
-  const metrics: VizCompactMetricArrays = {};
+  const metrics: VizTypedMetricArrays = {};
   for (const metricKey of metricKeys) {
     const values = new Float64Array(features.length);
     features.forEach((feature, index) => {

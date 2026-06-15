@@ -3,10 +3,10 @@ import type {
   VizBackendConfig,
   VizBackendImplementation,
   VizCacheStats,
-  VizCompactDensitySeries,
-  VizCompactHeatmap,
-  VizCompactHistogram,
-  VizCompactRollingSeries,
+  VizTypedDensitySeries,
+  VizTypedHeatmap,
+  VizTypedHistogram,
+  VizTypedRollingSeries,
   VizDensityIndex,
   VizDensitySample,
   VizDensitySeries,
@@ -26,8 +26,8 @@ import type {
   VizXyDataset,
 } from "./core";
 import type {
-  VizCompactFinanceReturns,
-  VizCompactOhlcvBars,
+  VizTypedFinanceReturns,
+  VizTypedOhlcvBars,
   VizFinanceDataset,
   VizFinanceIndex,
   VizFinancialInstrument,
@@ -352,7 +352,7 @@ export type VizTypedCartesianRenderLayer =
       datasetId: VizDatasetId;
       kind: "binned-series";
       layerId: VizLayerId;
-      typedSeries: VizCompactDensitySeries;
+      typedSeries: VizTypedDensitySeries;
       valueMode: VizValueMode;
     }
   | {
@@ -360,14 +360,14 @@ export type VizTypedCartesianRenderLayer =
       datasetId: VizDatasetId;
       kind: "histogram";
       layerId: VizLayerId;
-      typedHistogram: VizCompactHistogram;
+      typedHistogram: VizTypedHistogram;
     }
   | {
       bounds: VizRenderBounds | null;
       datasetId: VizDatasetId;
       kind: "heatmap";
       layerId: VizLayerId;
-      typedHeatmap: VizCompactHeatmap;
+      typedHeatmap: VizTypedHeatmap;
     }
   | {
       bounds: VizRenderBounds | null;
@@ -375,7 +375,7 @@ export type VizTypedCartesianRenderLayer =
       kind: "rolling-series";
       layerId: VizLayerId;
       statistic: VizRollingStatistic;
-      typedRollingSeries: VizCompactRollingSeries;
+      typedRollingSeries: VizTypedRollingSeries;
     };
 
 export type VizTypedFinanceRenderLayer =
@@ -385,21 +385,21 @@ export type VizTypedFinanceRenderLayer =
       instrument: VizFinancialInstrument;
       kind: "finance-candles";
       layerId: VizLayerId;
-      typedCandles: VizCompactOhlcvBars;
+      typedCandles: VizTypedOhlcvBars;
     }
   | {
       bounds: VizRenderBounds | null;
       datasetId: VizDatasetId;
       kind: "finance-line";
       layerId: VizLayerId;
-      typedFinanceLine: VizCompactFinanceReturns;
+      typedFinanceLine: VizTypedFinanceReturns;
     }
   | {
       bounds: VizRenderBounds | null;
       datasetId: VizDatasetId;
       kind: "finance-returns";
       layerId: VizLayerId;
-      typedReturns: VizCompactFinanceReturns;
+      typedReturns: VizTypedFinanceReturns;
     };
 
 export type VizTypedGeoRenderLayer =

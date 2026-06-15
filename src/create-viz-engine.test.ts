@@ -599,8 +599,8 @@ function createLifecycleBackend(events: string[] = []) {
   const indexes: Array<{
     dispose: ReturnType<typeof vi.fn>;
     getBackendCapabilities: () => { backend: "js"; implementation: "js"; usesWasm: false };
-    getCompactChartSeries: ReturnType<typeof vi.fn>;
-    preferCompactBackend: ReturnType<typeof vi.fn>;
+    getTypedBinnedSeries: ReturnType<typeof vi.fn>;
+    preferTypedBackend: ReturnType<typeof vi.fn>;
   }> = [];
   const backend = {
     createIndex() {
@@ -610,7 +610,7 @@ function createLifecycleBackend(events: string[] = []) {
         dispose: vi.fn(() => {
           events.push(`dispose-${indexId}`);
         }),
-        getCompactChartSeries: vi.fn(() => ({
+        getTypedBinnedSeries: vi.fn(() => ({
           averageY: new Float64Array([1]),
           firstPointIndex: new Int32Array([0]),
           lastPointIndex: new Int32Array([0]),
@@ -635,7 +635,7 @@ function createLifecycleBackend(events: string[] = []) {
           implementation: "js" as const,
           usesWasm: false as const,
         }),
-        preferCompactBackend: vi.fn(),
+        preferTypedBackend: vi.fn(),
       };
       indexes.push(index);
       return { index, kind: "xy" as const } as never;

@@ -8,7 +8,7 @@ or copy the relevant pattern into a consumer project.
 
 File: `examples/focused/vanilla-canvas.ts`
 
-Uses `@moritzbrantner/viz-engine/core` to compute a typed binned-series frame
+Uses `@moritzbrantner/viz-engine` to compute a typed binned-series frame
 and draw it directly to a `<canvas>`.
 
 ## React Renderer
@@ -25,7 +25,7 @@ Files:
 - `examples/focused/worker-main.ts`
 - `examples/focused/worker-thread.ts`
 
-Uses `@moritzbrantner/viz-engine/core` and `getVizFrameTransferables` to compute
+Uses `@moritzbrantner/viz-engine` and `getVizFrameTransferables` to compute
 a typed heatmap frame in a worker and transfer typed-array buffers back to the
 main thread.
 
@@ -33,14 +33,14 @@ main thread.
 
 File: `examples/focused/geo-viewport.ts`
 
-Uses `@moritzbrantner/viz-engine/core` to cluster geo points for a flat viewport
+Uses `@moritzbrantner/viz-engine` to cluster geo points for a flat viewport
 and draw the typed cluster payload to a canvas.
 
 ## Finance Candles And Returns
 
 File: `examples/focused/finance-candles.ts`
 
-Uses `@moritzbrantner/viz-engine/core` to compute finance candles and returns
+Uses `@moritzbrantner/viz-engine` to compute finance candles and returns
 from OHLCV bars, then draws the typed candle payload to a canvas.
 
 ## Run Model

@@ -81,7 +81,7 @@ export type VizFinanceRiskSummary = {
   valueAtRisk: number;
 };
 
-export type VizCompactOhlcvBars = {
+export type VizTypedOhlcvBars = {
   adjustedClose: Float64Array;
   close: Float64Array;
   high: Float64Array;
@@ -95,7 +95,7 @@ export type VizCompactOhlcvBars = {
   };
 };
 
-export type VizCompactFinanceReturns = {
+export type VizTypedFinanceReturns = {
   pointCount: Uint32Array;
   x: Float64Array;
   y: Float64Array;
@@ -110,12 +110,12 @@ export type VizFinanceIndex<TProperties = Record<string, unknown>> = {
   getBackendCapabilities(): VizBackendCapabilities;
   getBars(query: VizFinanceBarsQuery): Array<VizOhlcvBar<TProperties>>;
   getBounds(): VizRenderBounds | null;
-  getCompactBars(query: VizFinanceBarsQuery): VizCompactOhlcvBars;
-  getCompactDownsampledBars(query: VizFinanceDownsampleQuery): VizCompactOhlcvBars;
-  getCompactReturns(query: VizFinanceReturnsQuery): VizCompactFinanceReturns;
-  /** @deprecated Use getCompactDownsampledBars for render workloads, or hydrate typed frames for debugging. */
+  getTypedBars(query: VizFinanceBarsQuery): VizTypedOhlcvBars;
+  getTypedDownsampledBars(query: VizFinanceDownsampleQuery): VizTypedOhlcvBars;
+  getTypedReturns(query: VizFinanceReturnsQuery): VizTypedFinanceReturns;
+  /** @deprecated Use getTypedDownsampledBars for render workloads, or hydrate typed frames for debugging. */
   getDownsampledBars(query: VizFinanceDownsampleQuery): Array<VizOhlcvBar<TProperties>>;
-  /** @deprecated Use getCompactReturns for render workloads, or hydrate typed frames for debugging. */
+  /** @deprecated Use getTypedReturns for render workloads, or hydrate typed frames for debugging. */
   getReturns(query: VizFinanceReturnsQuery): VizDensitySeries<TProperties>;
   getRiskSummary(query: VizFinanceRiskQuery): VizFinanceRiskSummary;
 };

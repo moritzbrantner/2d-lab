@@ -4,7 +4,7 @@ The engine can use JavaScript indexes, Rust/WASM indexes, or automatic backend
 selection.
 
 ```ts
-import { createVizEngine } from "@moritzbrantner/viz-engine/core";
+import { createVizEngine } from "@moritzbrantner/viz-engine";
 
 const engine = createVizEngine({ backend: "auto" });
 ```
@@ -87,7 +87,8 @@ Frame stats report the selected dataset-level table backend:
 
 The package exposes explicit bundle shapes:
 
-- `@moritzbrantner/viz-engine/core`: current zero-config embedded path.
+- `@moritzbrantner/viz-engine`: primary sync core path.
+- `@moritzbrantner/viz-engine/core`: explicit sync core alias.
 - `@moritzbrantner/viz-engine/core/embedded`: explicit embedded path.
 - `@moritzbrantner/viz-engine/core/lazy`: async path that lazy-loads the
   wasm-pack module.

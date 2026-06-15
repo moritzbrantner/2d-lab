@@ -90,8 +90,8 @@ impl VizEngineWasmDensityIndex {
             .map_err(|error| error.into())
     }
 
-    #[wasm_bindgen(js_name = getCompactChartSeries)]
-    pub fn get_compact_chart_series(
+    #[wasm_bindgen(js_name = getTypedBinnedSeries)]
+    pub fn get_typed_binned_series(
         &self,
         x_min: f64,
         x_max: f64,
@@ -171,7 +171,7 @@ impl VizEngineWasmDensityIndex {
             output_max_y.push(max_y[source_index]);
             output_first_indexes.push(first_indexes[source_index]);
             output_last_indexes.push(last_indexes[source_index]);
-            y.push(compact_density_y(
+            y.push(typed_density_y(
                 value_mode,
                 average,
                 count,
@@ -185,7 +185,7 @@ impl VizEngineWasmDensityIndex {
         }
 
         let point_count = output_counts.iter().map(|value| *value as usize).sum();
-        Ok(compact_density_object(CompactDensityObject {
+        Ok(typed_density_object(TypedDensityObject {
             average_y,
             first_indexes: output_first_indexes,
             last_indexes: output_last_indexes,
@@ -211,8 +211,8 @@ impl VizEngineWasmDensityIndex {
         serde_wasm_bindgen::to_value(&self.index.get_histogram(query)).map_err(|error| error.into())
     }
 
-    #[wasm_bindgen(js_name = getCompactHistogram)]
-    pub fn get_compact_histogram(
+    #[wasm_bindgen(js_name = getTypedHistogram)]
+    pub fn get_typed_histogram(
         &self,
         bucket_count: usize,
         include_empty_buckets: bool,
@@ -371,8 +371,8 @@ impl VizEngineWasmDensityIndex {
         serde_wasm_bindgen::to_value(&self.index.get_heatmap(query)).map_err(|error| error.into())
     }
 
-    #[wasm_bindgen(js_name = getCompactHeatmap)]
-    pub fn get_compact_heatmap(
+    #[wasm_bindgen(js_name = getTypedHeatmap)]
+    pub fn get_typed_heatmap(
         &self,
         x_min: f64,
         x_max: f64,
@@ -521,8 +521,8 @@ impl VizEngineWasmDensityIndex {
             .map_err(|error| error.into())
     }
 
-    #[wasm_bindgen(js_name = getCompactRollingSeries)]
-    pub fn get_compact_rolling_series(
+    #[wasm_bindgen(js_name = getTypedRollingSeries)]
+    pub fn get_typed_rolling_series(
         &self,
         x_min: f64,
         x_max: f64,
@@ -714,7 +714,7 @@ fn inflate_metric_rows(
         .collect()
 }
 
-struct CompactDensityObject<'a> {
+struct TypedDensityObject<'a> {
     average_y: Vec<f64>,
     first_indexes: Vec<i32>,
     last_indexes: Vec<i32>,
@@ -733,7 +733,7 @@ struct CompactDensityObject<'a> {
     y: Vec<f64>,
 }
 
-fn compact_density_object(input: CompactDensityObject<'_>) -> JsValue {
+fn typed_density_object(input: TypedDensityObject<'_>) -> JsValue {
     let object = Object::new();
     set(
         &object,
@@ -931,7 +931,7 @@ fn parse_rolling_statistic(value: &str) -> VizRollingStatistic {
     }
 }
 
-fn compact_density_y(
+fn typed_density_y(
     value_mode: VizValueMode,
     average_y: f64,
     point_count: u32,

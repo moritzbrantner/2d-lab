@@ -19,7 +19,7 @@ export class ProgressiveVizDensityIndex<
 > implements VizDensityIndex<TProperties> {
   private readonly jsIndex: VizDensityIndex<TProperties>;
   private readonly pointCount: number;
-  private compactIndex: VizDensityIndex<TProperties>;
+  private typedIndex: VizDensityIndex<TProperties>;
   private disposed = false;
   private warmupError: unknown = null;
   private warmupPromise: Promise<void> | null = null;
@@ -34,14 +34,14 @@ export class ProgressiveVizDensityIndex<
   ) {
     this.pointCount = getXyPointCount(points);
     this.jsIndex = new JsVizDensityIndex(points);
-    this.compactIndex = this.jsIndex;
-    if (this.pointCount >= WASM_COMPACT_WARMUP_POINT_THRESHOLD) {
+    this.typedIndex = this.jsIndex;
+    if (this.pointCount >= WASM_TYPED_WARMUP_POINT_THRESHOLD) {
       this.scheduleWarmup();
     }
   }
 
   getBackendCapabilities() {
-    return this.compactIndex.getBackendCapabilities();
+    return this.typedIndex.getBackendCapabilities();
   }
 
   dispose() {
@@ -63,20 +63,20 @@ export class ProgressiveVizDensityIndex<
     return this.jsIndex.getChartSeries(query);
   }
 
-  getCompactChartSeries(query: VizDensityQuery) {
-    return this.compactIndex.getCompactChartSeries(query);
+  getTypedBinnedSeries(query: VizDensityQuery) {
+    return this.typedIndex.getTypedBinnedSeries(query);
   }
 
-  getCompactHeatmap(query: VizHeatmapQuery) {
-    return this.compactIndex.getCompactHeatmap(query);
+  getTypedHeatmap(query: VizHeatmapQuery) {
+    return this.typedIndex.getTypedHeatmap(query);
   }
 
-  getCompactHistogram(query: VizHistogramQuery) {
-    return this.compactIndex.getCompactHistogram(query);
+  getTypedHistogram(query: VizHistogramQuery) {
+    return this.typedIndex.getTypedHistogram(query);
   }
 
-  getCompactRollingSeries(query: VizRollingSeriesQuery) {
-    return this.compactIndex.getCompactRollingSeries(query);
+  getTypedRollingSeries(query: VizRollingSeriesQuery) {
+    return this.typedIndex.getTypedRollingSeries(query);
   }
 
   getHeatmap(query: VizHeatmapQuery) {
@@ -101,30 +101,30 @@ export class ProgressiveVizDensityIndex<
 
   useWasmIndex() {
     if (this.wasmIndex) {
-      this.compactIndex = this.wasmIndex;
+      this.typedIndex = this.wasmIndex;
       return;
     }
 
     this.wasmIndex = this.createWasmIndex(this.points);
-    this.compactIndex = this.wasmIndex;
+    this.typedIndex = this.wasmIndex;
     this.warmupError = null;
     this.warmupPromise = Promise.resolve();
   }
 
-  preferCompactBackend(context: {
+  preferTypedBackend(context: {
     layerKind: "binned-series" | "heatmap" | "histogram" | "rolling-series";
     pointCount?: number;
   }) {
-    if (!isWasmCompactCandidate(context.layerKind)) {
+    if (!isWasmTypedCandidate(context.layerKind)) {
       return;
     }
 
-    if ((context.pointCount ?? this.pointCount) < WASM_COMPACT_WARMUP_POINT_THRESHOLD) {
+    if ((context.pointCount ?? this.pointCount) < WASM_TYPED_WARMUP_POINT_THRESHOLD) {
       return;
     }
 
     if (this.wasmIndex) {
-      this.compactIndex = this.wasmIndex;
+      this.typedIndex = this.wasmIndex;
       return;
     }
 
@@ -171,7 +171,7 @@ function disposeIndex<TProperties>(index: VizDensityIndex<TProperties>) {
   disposable.free?.();
 }
 
-const WASM_COMPACT_WARMUP_POINT_THRESHOLD = 5_000;
+const WASM_TYPED_WARMUP_POINT_THRESHOLD = 5_000;
 
 function getXyPointCount<TProperties>(
   points: readonly VizSeriesPoint<TProperties>[] | VizXyDataset<TProperties>,
@@ -188,7 +188,7 @@ function getXyPointCount<TProperties>(
   return Math.min(dataset.x.length, dataset.y.length);
 }
 
-function isWasmCompactCandidate(
+function isWasmTypedCandidate(
   layerKind: "binned-series" | "heatmap" | "histogram" | "rolling-series",
 ) {
   switch (layerKind) {

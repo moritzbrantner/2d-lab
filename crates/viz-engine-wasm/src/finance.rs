@@ -28,7 +28,7 @@ struct ReturnsQuery {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CompactReturnsQuery {
+struct TypedReturnsQuery {
     start_ms: i64,
     end_ms: i64,
     #[serde(default)]
@@ -40,16 +40,16 @@ struct CompactReturnsQuery {
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CompactReturns {
+struct TypedReturns {
     point_count: Vec<u32>,
     x: Vec<f64>,
     y: Vec<f64>,
-    summary: CompactReturnsSummary,
+    summary: TypedReturnsSummary,
 }
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CompactReturnsSummary {
+struct TypedReturnsSummary {
     point_count: usize,
     sample_count: usize,
     x_domain: [f64; 2],
@@ -106,9 +106,9 @@ impl FinanceDataWasmSeriesIndex {
         serde_wasm_bindgen::to_value(&returns).map_err(into_js_error)
     }
 
-    #[wasm_bindgen(js_name = getCompactReturns)]
-    pub fn get_compact_returns(&self, query: JsValue) -> Result<JsValue, JsValue> {
-        let query: CompactReturnsQuery =
+    #[wasm_bindgen(js_name = getTypedReturns)]
+    pub fn get_typed_returns(&self, query: JsValue) -> Result<JsValue, JsValue> {
+        let query: TypedReturnsQuery =
             serde_wasm_bindgen::from_value(query).map_err(into_js_error)?;
         let series = self.index.series();
         let start = lower_bound_timestamp(&series.bars, query.start_ms);
@@ -155,11 +155,11 @@ impl FinanceDataWasmSeriesIndex {
             }
         }
 
-        serde_wasm_bindgen::to_value(&CompactReturns {
+        serde_wasm_bindgen::to_value(&TypedReturns {
             point_count,
             x,
             y,
-            summary: CompactReturnsSummary {
+            summary: TypedReturnsSummary {
                 point_count: return_count,
                 sample_count: bucket_count,
                 x_domain: [query.start_ms as f64, query.end_ms as f64],

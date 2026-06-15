@@ -9,14 +9,14 @@ import {
 } from "./utils";
 
 import type {
-  VizCompactDensitySeries,
-  VizCompactHistogram,
-  VizCompactRollingSeries,
+  VizTypedDensitySeries,
+  VizTypedHistogram,
+  VizTypedRollingSeries,
   VizComputeFrameOptions,
   VizEngineDatasetRecord,
   VizFrameDiagnostic,
   VizHeatmap,
-  VizCompactHeatmap,
+  VizTypedHeatmap,
   VizHistogram,
   VizLayer,
   VizLayerId,
@@ -44,8 +44,8 @@ export function computeCartesianRenderLayer<TProperties>(
       }
       const valueMode = layer.valueMode ?? "average";
       if (resolveFrameFormat(options) === "typed") {
-        preferCompactBackend(index, layer.kind, getXyDatasetPointCount(datasetRecord));
-        const compactSeries = index.getCompactChartSeries({
+        preferTypedBackend(index, layer.kind, getXyDatasetPointCount(datasetRecord));
+        const typedSeries = index.getTypedBinnedSeries({
           includeEmptyBins: layer.includeEmptyBins ?? true,
           targetBinCount: layer.targetBinCount,
           valueMode,
@@ -53,11 +53,11 @@ export function computeCartesianRenderLayer<TProperties>(
         });
 
         return {
-          bounds: getCompactSeriesBounds(compactSeries),
+          bounds: getTypedSeriesBounds(typedSeries),
           datasetId: layer.datasetId,
           kind: "binned-series",
           layerId,
-          typedSeries: compactSeries,
+          typedSeries: typedSeries,
           valueMode,
         };
       }
@@ -83,19 +83,19 @@ export function computeCartesianRenderLayer<TProperties>(
         return null;
       }
       if (resolveFrameFormat(options) === "typed") {
-        preferCompactBackend(index, layer.kind, getXyDatasetPointCount(datasetRecord));
-        const compactHistogram = index.getCompactHistogram({
+        preferTypedBackend(index, layer.kind, getXyDatasetPointCount(datasetRecord));
+        const typedHistogram = index.getTypedHistogram({
           bucketCount: layer.bucketCount,
           includeEmptyBuckets: true,
           xDomain: layer.xDomain ?? options.viewport.xDomain,
         });
 
         return {
-          bounds: getCompactHistogramBounds(compactHistogram),
+          bounds: getTypedHistogramBounds(typedHistogram),
           datasetId: layer.datasetId,
           kind: "histogram",
           layerId,
-          typedHistogram: compactHistogram,
+          typedHistogram: typedHistogram,
         };
       }
       const histogram = index.getHistogram({
@@ -118,8 +118,8 @@ export function computeCartesianRenderLayer<TProperties>(
         return null;
       }
       if (resolveFrameFormat(options) === "typed") {
-        preferCompactBackend(index, layer.kind, getXyDatasetPointCount(datasetRecord));
-        const compactHeatmap = index.getCompactHeatmap({
+        preferTypedBackend(index, layer.kind, getXyDatasetPointCount(datasetRecord));
+        const typedHeatmap = index.getTypedHeatmap({
           includeEmptyCells: true,
           xBinCount: layer.xBinCount,
           xDomain: layer.xDomain ?? options.viewport.xDomain,
@@ -128,11 +128,11 @@ export function computeCartesianRenderLayer<TProperties>(
         });
 
         return {
-          bounds: getCompactHeatmapBounds(compactHeatmap),
+          bounds: getTypedHeatmapBounds(typedHeatmap),
           datasetId: layer.datasetId,
           kind: "heatmap",
           layerId,
-          typedHeatmap: compactHeatmap,
+          typedHeatmap: typedHeatmap,
         };
       }
       const heatmap = index.getHeatmap({
@@ -158,8 +158,8 @@ export function computeCartesianRenderLayer<TProperties>(
       }
       const statistic = layer.statistic ?? "mean";
       if (resolveFrameFormat(options) === "typed") {
-        preferCompactBackend(index, layer.kind, getXyDatasetPointCount(datasetRecord));
-        const compactRollingSeries = index.getCompactRollingSeries({
+        preferTypedBackend(index, layer.kind, getXyDatasetPointCount(datasetRecord));
+        const typedRollingSeries = index.getTypedRollingSeries({
           alpha: layer.alpha,
           minPeriods: layer.minPeriods,
           statistic,
@@ -168,12 +168,12 @@ export function computeCartesianRenderLayer<TProperties>(
         });
 
         return {
-          bounds: getCompactRollingBounds(compactRollingSeries),
+          bounds: getTypedRollingBounds(typedRollingSeries),
           datasetId: layer.datasetId,
           kind: "rolling-series",
           layerId,
           statistic,
-          typedRollingSeries: compactRollingSeries,
+          typedRollingSeries: typedRollingSeries,
         };
       }
       const series = index.getRollingSeries({
@@ -198,9 +198,9 @@ export function computeCartesianRenderLayer<TProperties>(
   }
 }
 
-function preferCompactBackend(
+function preferTypedBackend(
   index: {
-    preferCompactBackend?: (context: {
+    preferTypedBackend?: (context: {
       layerKind: CartesianLayer["kind"];
       pointCount?: number;
     }) => void;
@@ -208,7 +208,7 @@ function preferCompactBackend(
   layerKind: CartesianLayer["kind"],
   pointCount: number | undefined,
 ) {
-  index.preferCompactBackend?.({ layerKind, pointCount });
+  index.preferTypedBackend?.({ layerKind, pointCount });
 }
 
 function getXyDatasetPointCount<TProperties>(
@@ -226,7 +226,7 @@ function getXyDatasetPointCount<TProperties>(
   return Math.min(dataset.x.length, dataset.y.length);
 }
 
-function getCompactSeriesBounds(series: VizCompactDensitySeries): VizRenderBounds | null {
+function getTypedSeriesBounds(series: VizTypedDensitySeries): VizRenderBounds | null {
   let minX = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
@@ -265,7 +265,7 @@ function getHistogramBounds<TProperties>(
   return [histogram.summary.valueDomain[0], 0, histogram.summary.valueDomain[1], maxPointCount];
 }
 
-function getCompactHistogramBounds(histogram: VizCompactHistogram): VizRenderBounds | null {
+function getTypedHistogramBounds(histogram: VizTypedHistogram): VizRenderBounds | null {
   if (!histogram.pointCount.length) {
     return null;
   }
@@ -292,7 +292,7 @@ function getHeatmapBounds<TProperties>(heatmap: VizHeatmap<TProperties>): VizRen
   ];
 }
 
-function getCompactHeatmapBounds(heatmap: VizCompactHeatmap): VizRenderBounds | null {
+function getTypedHeatmapBounds(heatmap: VizTypedHeatmap): VizRenderBounds | null {
   if (!heatmap.pointCount.length) {
     return null;
   }
@@ -305,7 +305,7 @@ function getCompactHeatmapBounds(heatmap: VizCompactHeatmap): VizRenderBounds | 
   ];
 }
 
-function getCompactRollingBounds(series: VizCompactRollingSeries): VizRenderBounds | null {
+function getTypedRollingBounds(series: VizTypedRollingSeries): VizRenderBounds | null {
   let minX = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;

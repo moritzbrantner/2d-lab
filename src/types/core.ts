@@ -126,14 +126,14 @@ export type VizDensitySeries<TProperties = Record<string, unknown>> = {
   };
 };
 
-export type VizCompactMetricArrays = Record<string, Float64Array>;
+export type VizTypedMetricArrays = Record<string, Float64Array>;
 
-export type VizCompactDensitySeries = {
+export type VizTypedDensitySeries = {
   averageY: Float64Array;
   firstPointIndex: Int32Array;
   lastPointIndex: Int32Array;
   maxY: Float64Array;
-  metrics?: VizCompactMetricArrays;
+  metrics?: VizTypedMetricArrays;
   minY: Float64Array;
   pointCount: Uint32Array;
   sumY: Float64Array;
@@ -178,12 +178,12 @@ export type VizHistogram<TProperties = Record<string, unknown>> = {
   };
 };
 
-export type VizCompactHistogram = {
+export type VizTypedHistogram = {
   averageValue: Float64Array;
   firstPointIndex: Int32Array;
   lastPointIndex: Int32Array;
   maxValue: Float64Array;
-  metrics?: VizCompactMetricArrays;
+  metrics?: VizTypedMetricArrays;
   minValue: Float64Array;
   pointCount: Uint32Array;
   sumValue: Float64Array;
@@ -233,12 +233,12 @@ export type VizHeatmap<TProperties = Record<string, unknown>> = {
   };
 };
 
-export type VizCompactHeatmap = {
+export type VizTypedHeatmap = {
   averageValue: Float64Array;
   firstPointIndex: Int32Array;
   format?: "dense" | "sparse";
   lastPointIndex: Int32Array;
-  metrics?: VizCompactMetricArrays;
+  metrics?: VizTypedMetricArrays;
   pointCount: Uint32Array;
   sumValue: Float64Array;
   value: Float64Array;
@@ -286,7 +286,7 @@ export type VizRollingSeries<TProperties = Record<string, unknown>> = {
   };
 };
 
-export type VizCompactRollingSeries = {
+export type VizTypedRollingSeries = {
   ema: Float64Array;
   max: Float64Array;
   mean: Float64Array;
@@ -356,22 +356,22 @@ export type VizBackendCapabilities = {
 export type VizDensityIndex<TProperties = Record<string, unknown>> = {
   getBackendCapabilities(): VizBackendCapabilities;
   getBinnedSeries(query: VizBinnedSeriesQuery): { bins: Array<VizDensityBin<TProperties>> };
-  /** @deprecated Use getCompactChartSeries for render workloads, or hydrate typed frames for debugging. */
+  /** @deprecated Use getTypedBinnedSeries for render workloads, or hydrate typed frames for debugging. */
   getChartSeries(query: VizDensityQuery): VizDensitySeries<TProperties>;
-  getCompactChartSeries(query: VizDensityQuery): VizCompactDensitySeries;
-  getCompactHeatmap(query: VizHeatmapQuery): VizCompactHeatmap;
-  getCompactHistogram(query: VizHistogramQuery): VizCompactHistogram;
-  getCompactRollingSeries(query: VizRollingSeriesQuery): VizCompactRollingSeries;
-  /** @deprecated Use getCompactHeatmap for render workloads, or hydrate typed frames for debugging. */
+  getTypedBinnedSeries(query: VizDensityQuery): VizTypedDensitySeries;
+  getTypedHeatmap(query: VizHeatmapQuery): VizTypedHeatmap;
+  getTypedHistogram(query: VizHistogramQuery): VizTypedHistogram;
+  getTypedRollingSeries(query: VizRollingSeriesQuery): VizTypedRollingSeries;
+  /** @deprecated Use getTypedHeatmap for render workloads, or hydrate typed frames for debugging. */
   getHeatmap(query: VizHeatmapQuery): VizHeatmap<TProperties>;
-  /** @deprecated Use getCompactHistogram for render workloads, or hydrate typed frames for debugging. */
+  /** @deprecated Use getTypedHistogram for render workloads, or hydrate typed frames for debugging. */
   getHistogram(query: VizHistogramQuery): VizHistogram<TProperties>;
   getPointById(pointId: string): VizIndexedSeriesPoint<TProperties> | null;
-  preferCompactBackend?(context: {
+  preferTypedBackend?(context: {
     layerKind: "binned-series" | "heatmap" | "histogram" | "rolling-series";
     pointCount?: number;
   }): void;
-  /** @deprecated Use getCompactRollingSeries for render workloads, or hydrate typed frames for debugging. */
+  /** @deprecated Use getTypedRollingSeries for render workloads, or hydrate typed frames for debugging. */
   getRollingSeries(query: VizRollingSeriesQuery): VizRollingSeries<TProperties>;
   getSeriesBounds(): VizSeriesBounds | null;
 };

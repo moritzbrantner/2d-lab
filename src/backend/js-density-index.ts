@@ -2,10 +2,10 @@ import {
   collectMetricKeys,
   createBins,
   createChartSeries,
-  createCompactChartSeries,
-  createCompactHeatmap,
-  createCompactHistogram,
-  createCompactRollingSeries,
+  createTypedBinnedSeries,
+  createTypedHeatmap,
+  createTypedHistogram,
+  createTypedRollingSeries,
   createHeatmap,
   createHistogram,
   createPointLookup,
@@ -64,23 +64,23 @@ export class JsVizDensityIndex<
     });
   }
 
-  getCompactChartSeries(query: VizDensityQuery) {
-    return createCompactChartSeries(this.points, this.metricKeys, {
+  getTypedBinnedSeries(query: VizDensityQuery) {
+    return createTypedBinnedSeries(this.points, this.metricKeys, {
       ...query,
       includeEmptyBins: query.includeEmptyBins ?? false,
     });
   }
 
-  getCompactHeatmap(query: VizHeatmapQuery) {
-    return createCompactHeatmap(this.points, this.metricKeys, query);
+  getTypedHeatmap(query: VizHeatmapQuery) {
+    return createTypedHeatmap(this.points, this.metricKeys, query);
   }
 
-  getCompactHistogram(query: VizHistogramQuery) {
-    return createCompactHistogram(this.points, this.metricKeys, query);
+  getTypedHistogram(query: VizHistogramQuery) {
+    return createTypedHistogram(this.points, this.metricKeys, query);
   }
 
-  getCompactRollingSeries(query: VizRollingSeriesQuery) {
-    return createCompactRollingSeries(this.points, {
+  getTypedRollingSeries(query: VizRollingSeriesQuery) {
+    return createTypedRollingSeries(this.points, {
       ...query,
       statistic: query.statistic ?? "mean",
     });

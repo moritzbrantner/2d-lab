@@ -3,8 +3,8 @@ import { getFinanceIndex, isCartesianViewport, resolveFrameFormat } from "./util
 
 import type {
   VizComputeFrameOptions,
-  VizCompactFinanceReturns,
-  VizCompactOhlcvBars,
+  VizTypedFinanceReturns,
+  VizTypedOhlcvBars,
   VizEngineDatasetRecord,
   VizFrameDiagnostic,
   VizLayer,
@@ -34,13 +34,13 @@ export function computeFinanceRenderLayer<TProperties>(
         return null;
       }
       if (resolveFrameFormat(options) === "typed") {
-        const typedCandles = index.getCompactDownsampledBars({
+        const typedCandles = index.getTypedDownsampledBars({
           targetBarCount: layer.targetBarCount ?? 120,
           xDomain: layer.xDomain,
         });
 
         return {
-          bounds: getCompactFinanceCandleBounds(typedCandles),
+          bounds: getTypedFinanceCandleBounds(typedCandles),
           datasetId: layer.datasetId,
           instrument:
             datasetRecord.dataset.kind === "finance-ohlcv"
@@ -74,16 +74,16 @@ export function computeFinanceRenderLayer<TProperties>(
         return null;
       }
       if (resolveFrameFormat(options) === "typed") {
-        const compactBars = layer.targetPointCount
-          ? index.getCompactDownsampledBars({
+        const typedBars = layer.targetPointCount
+          ? index.getTypedDownsampledBars({
               targetBarCount: layer.targetPointCount,
               xDomain: layer.xDomain,
             })
-          : index.getCompactBars({ xDomain: layer.xDomain });
-        const typedFinanceLine = createCompactFinanceLine(compactBars, layer.value ?? "close");
+          : index.getTypedBars({ xDomain: layer.xDomain });
+        const typedFinanceLine = createTypedFinanceLine(typedBars, layer.value ?? "close");
 
         return {
-          bounds: getCompactFinanceRowsBounds(typedFinanceLine),
+          bounds: getTypedFinanceRowsBounds(typedFinanceLine),
           datasetId: layer.datasetId,
           kind: "finance-line",
           layerId,
@@ -111,7 +111,7 @@ export function computeFinanceRenderLayer<TProperties>(
       if (!index || !isCartesianViewport(options.viewport, layerId, diagnostics)) {
         return null;
       }
-      const returns = index.getCompactReturns({
+      const returns = index.getTypedReturns({
         method: layer.method,
         priceMode: layer.priceMode,
         targetPointCount: layer.targetPointCount,
@@ -119,7 +119,7 @@ export function computeFinanceRenderLayer<TProperties>(
       });
       if (resolveFrameFormat(options) === "typed") {
         return {
-          bounds: getCompactFinanceRowsBounds(returns),
+          bounds: getTypedFinanceRowsBounds(returns),
           datasetId: layer.datasetId,
           kind: "finance-returns",
           layerId,
@@ -139,7 +139,7 @@ export function computeFinanceRenderLayer<TProperties>(
   }
 }
 
-function getCompactFinanceCandleBounds(bars: VizCompactOhlcvBars): VizRenderBounds | null {
+function getTypedFinanceCandleBounds(bars: VizTypedOhlcvBars): VizRenderBounds | null {
   const barCount = bars.timestamp.length;
   if (barCount === 0) {
     return null;
@@ -226,7 +226,7 @@ function getFinanceRowsBounds<TProperties>(
   return hasRows ? [minX, minY, maxX, maxY] : null;
 }
 
-function getCompactFinanceRowsBounds(series: VizCompactFinanceReturns): VizRenderBounds | null {
+function getTypedFinanceRowsBounds(series: VizTypedFinanceReturns): VizRenderBounds | null {
   let minX = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
@@ -250,15 +250,15 @@ function getCompactFinanceRowsBounds(series: VizCompactFinanceReturns): VizRende
   return hasRows ? [minX, minY, maxX, maxY] : null;
 }
 
-function createCompactFinanceLine(
-  bars: VizCompactOhlcvBars,
+function createTypedFinanceLine(
+  bars: VizTypedOhlcvBars,
   value: "adjustedClose" | "close" | "high" | "low" | "open" | "volume",
-): VizCompactFinanceReturns {
+): VizTypedFinanceReturns {
   const y = new Float64Array(bars.timestamp.length);
   const pointCount = new Uint32Array(bars.timestamp.length);
 
   for (let index = 0; index < bars.timestamp.length; index += 1) {
-    const nextValue = compactPriceValue(bars, index, value);
+    const nextValue = typedPriceValue(bars, index, value);
     y[index] = Number.isFinite(nextValue) ? nextValue : Number.NaN;
     pointCount[index] = Number.isFinite(nextValue) ? 1 : 0;
   }
@@ -275,8 +275,8 @@ function createCompactFinanceLine(
   };
 }
 
-function compactPriceValue(
-  bars: VizCompactOhlcvBars,
+function typedPriceValue(
+  bars: VizTypedOhlcvBars,
   index: number,
   value: "adjustedClose" | "close" | "high" | "low" | "open" | "volume",
 ) {
@@ -297,7 +297,7 @@ function compactPriceValue(
 }
 
 function createFinanceReturnRows<TProperties>(
-  returns: VizCompactFinanceReturns,
+  returns: VizTypedFinanceReturns,
 ): Array<VizRenderDatum<TProperties>> {
   return Array.from({ length: returns.x.length }, (_, index) => {
     const y = returns.y[index];

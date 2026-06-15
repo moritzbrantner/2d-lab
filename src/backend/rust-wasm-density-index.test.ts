@@ -70,11 +70,11 @@ describe("RustWasmVizDensityIndex", () => {
     expect(publicResults(wasm)).toEqual(publicResults(js));
   });
 
-  test("matches JS compact density outputs", () => {
+  test("matches JS typed density outputs", () => {
     const js = new JsVizDensityIndex(points);
     const wasm = new RustWasmVizDensityIndex(points, embeddedVizWasmModule);
 
-    expect(compactResults(wasm)).toEqual(compactResults(js));
+    expect(typedResults(wasm)).toEqual(typedResults(js));
   });
 
   test("matches object input when constructed from typed xy arrays", () => {
@@ -104,7 +104,7 @@ describe("RustWasmVizDensityIndex", () => {
       embeddedVizWasmModule,
     );
 
-    expect(compactResults(typed)).toEqual(compactResults(object));
+    expect(typedResults(typed)).toEqual(typedResults(object));
   });
 
   test("handles empty input like the JS density index", () => {
@@ -239,25 +239,25 @@ function publicResults(index: VizDensityIndex) {
   };
 }
 
-function compactResults(index: VizDensityIndex) {
-  const chart = index.getCompactChartSeries({
+function typedResults(index: VizDensityIndex) {
+  const chart = index.getTypedBinnedSeries({
     includeEmptyBins: true,
     targetBinCount: 4,
     valueMode: "average",
     xDomain: [0, 40],
   });
-  const histogram = index.getCompactHistogram({
+  const histogram = index.getTypedHistogram({
     bucketCount: 4,
     includeEmptyBuckets: true,
     xDomain: [0, 40],
   });
-  const heatmap = index.getCompactHeatmap({
+  const heatmap = index.getTypedHeatmap({
     includeEmptyCells: false,
     xBinCount: 4,
     xDomain: [0, 40],
     yBinCount: 4,
   });
-  const rolling = index.getCompactRollingSeries({
+  const rolling = index.getTypedRollingSeries({
     alpha: 0.5,
     minPeriods: 2,
     statistic: "zScore",

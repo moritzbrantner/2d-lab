@@ -8,7 +8,7 @@ returns a render frame that SVG, Canvas, WebGL, React components, workers, or
 server renderers can consume.
 
 ```ts
-import { createVizEngine } from "@moritzbrantner/viz-engine/core";
+import { createVizEngine } from "@moritzbrantner/viz-engine";
 
 const engine = createVizEngine({ backend: "auto" });
 const datasetId = engine.addDataset({ kind: "xy", points });
@@ -38,8 +38,8 @@ const hydratedFrame = engine.hydrateFrame(typedFrame);
 
 | Import path                                | Use it for                                                         |
 | ------------------------------------------ | ------------------------------------------------------------------ |
-| `@moritzbrantner/viz-engine`               | Core data/frame engine APIs without React.                         |
-| `@moritzbrantner/viz-engine/core`          | Explicit core data/frame engine APIs without React.                |
+| `@moritzbrantner/viz-engine`               | Primary sync core data/frame engine APIs without React.            |
+| `@moritzbrantner/viz-engine/core`          | Explicit sync core alias without React.                            |
 | `@moritzbrantner/viz-engine/core/embedded` | Explicit embedded core alias.                                      |
 | `@moritzbrantner/viz-engine/core/lazy`     | Async core API with lazy WASM loading.                             |
 | `@moritzbrantner/viz-engine/worker`        | Worker client and host APIs for off-main-thread frame computation. |

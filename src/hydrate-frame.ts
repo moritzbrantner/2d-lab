@@ -3,12 +3,12 @@ import { createRollingRenderRows, createVizRenderRows } from "./render-frame/uti
 import type {
   VizAnyRenderFrame,
   VizAnyRenderLayer,
-  VizCompactDensitySeries,
-  VizCompactFinanceReturns,
-  VizCompactHeatmap,
-  VizCompactHistogram,
-  VizCompactOhlcvBars,
-  VizCompactRollingSeries,
+  VizTypedDensitySeries,
+  VizTypedFinanceReturns,
+  VizTypedHeatmap,
+  VizTypedHistogram,
+  VizTypedOhlcvBars,
+  VizTypedRollingSeries,
   VizDensityBin,
   VizDensitySample,
   VizGeoAggregationFeature,
@@ -51,8 +51,8 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
 
   if ("typedSeries" in record) {
     const typedLayer = layer as {
-      typedSeries: VizCompactDensitySeries;
-      valueMode: VizCompactDensitySeries["summary"]["valueMode"];
+      typedSeries: VizTypedDensitySeries;
+      valueMode: VizTypedDensitySeries["summary"]["valueMode"];
     };
     const series = densitySeriesFromTyped<TProperties>(typedLayer.typedSeries);
     return {
@@ -67,7 +67,7 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
 
   if ("typedHistogram" in record) {
     const typedLayer = layer as {
-      typedHistogram: VizCompactHistogram;
+      typedHistogram: VizTypedHistogram;
     };
     const histogram = histogramFromTyped<TProperties>(typedLayer.typedHistogram);
     return {
@@ -81,7 +81,7 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
 
   if ("typedHeatmap" in record) {
     const typedLayer = layer as {
-      typedHeatmap: VizCompactHeatmap;
+      typedHeatmap: VizTypedHeatmap;
     };
     const heatmap = heatmapFromTyped<TProperties>(typedLayer.typedHeatmap);
     return {
@@ -95,8 +95,8 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
 
   if ("typedRollingSeries" in record) {
     const typedLayer = layer as {
-      statistic: VizCompactRollingSeries["summary"]["statistic"];
-      typedRollingSeries: VizCompactRollingSeries;
+      statistic: VizTypedRollingSeries["summary"]["statistic"];
+      typedRollingSeries: VizTypedRollingSeries;
     };
     const series = rollingSeriesFromTyped<TProperties>(typedLayer.typedRollingSeries);
     return {
@@ -116,7 +116,7 @@ export function hydrateVizRenderLayer<TProperties = Record<string, unknown>>(
         VizAnyRenderLayer<TProperties>,
         { kind: "finance-candles" }
       >["instrument"];
-      typedCandles: VizCompactOhlcvBars;
+      typedCandles: VizTypedOhlcvBars;
     };
     return {
       bars: ohlcvBarsFromTyped<TProperties>(typedLayer.typedCandles),
@@ -289,7 +289,7 @@ function hydrateTableCellValue(value: unknown): VizTableCellValue | null {
   return String(value);
 }
 
-function densitySeriesFromTyped<TProperties>(series: VizCompactDensitySeries): {
+function densitySeriesFromTyped<TProperties>(series: VizTypedDensitySeries): {
   bins: Array<VizDensityBin<TProperties>>;
   samples: Array<VizDensitySample<TProperties>>;
   summary: {
@@ -297,7 +297,7 @@ function densitySeriesFromTyped<TProperties>(series: VizCompactDensitySeries): {
     metrics: Record<string, number>;
     pointCount: number;
     sampleCount: number;
-    valueMode: VizCompactDensitySeries["summary"]["valueMode"];
+    valueMode: VizTypedDensitySeries["summary"]["valueMode"];
     xDomain: [number, number];
   };
 } {
@@ -339,7 +339,7 @@ function densitySeriesFromTyped<TProperties>(series: VizCompactDensitySeries): {
   };
 }
 
-function histogramFromTyped<TProperties>(histogram: VizCompactHistogram) {
+function histogramFromTyped<TProperties>(histogram: VizTypedHistogram) {
   const buckets = Array.from({ length: histogram.value.length }, (_, index) => {
     const bucket: VizHistogramBucket<TProperties> = {
       averageValue: finiteOrNull(histogram.averageValue[index]),
@@ -370,7 +370,7 @@ function histogramFromTyped<TProperties>(histogram: VizCompactHistogram) {
   };
 }
 
-function heatmapFromTyped<TProperties>(heatmap: VizCompactHeatmap) {
+function heatmapFromTyped<TProperties>(heatmap: VizTypedHeatmap) {
   const xWidth =
     (heatmap.summary.xDomain[1] - heatmap.summary.xDomain[0]) / heatmap.summary.xBinCount;
   const yWidth =
@@ -413,7 +413,7 @@ function heatmapFromTyped<TProperties>(heatmap: VizCompactHeatmap) {
   };
 }
 
-function rollingSeriesFromTyped<TProperties>(series: VizCompactRollingSeries) {
+function rollingSeriesFromTyped<TProperties>(series: VizTypedRollingSeries) {
   const points = Array.from({ length: series.x.length }, (_, index) => ({
     ema: finiteOrNull(series.ema[index]),
     index,
@@ -438,9 +438,7 @@ function rollingSeriesFromTyped<TProperties>(series: VizCompactRollingSeries) {
   };
 }
 
-function ohlcvBarsFromTyped<TProperties>(
-  bars: VizCompactOhlcvBars,
-): Array<VizOhlcvBar<TProperties>> {
+function ohlcvBarsFromTyped<TProperties>(bars: VizTypedOhlcvBars): Array<VizOhlcvBar<TProperties>> {
   return Array.from({ length: bars.timestamp.length }, (_, index) => ({
     adjustedClose: finiteOrUndefined(bars.adjustedClose[index]),
     close: bars.close[index] ?? 0,
@@ -453,7 +451,7 @@ function ohlcvBarsFromTyped<TProperties>(
 }
 
 function rowsFromTypedFinance<TProperties>(
-  series: VizCompactFinanceReturns,
+  series: VizTypedFinanceReturns,
 ): Array<VizRenderDatum<TProperties>> {
   return Array.from({ length: series.x.length }, (_, index) => {
     const value = finiteOrNull(series.y[index]);

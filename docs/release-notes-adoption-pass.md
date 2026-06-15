@@ -9,7 +9,7 @@ published shape.
 
 ## Changes
 
-- Added `@moritzbrantner/viz-engine/core` for non-React engine APIs.
+- Kept `@moritzbrantner/viz-engine/core` as an explicit core alias.
 - Added `@moritzbrantner/viz-engine/react` for React provider and hooks.
 - Made `@moritzbrantner/viz-engine` core-only.
 - Marked React as an optional peer dependency.
@@ -28,10 +28,10 @@ published shape.
 
 ## Migration Notes
 
-New code should prefer explicit imports:
+New code should prefer the root import for synchronous core APIs:
 
 ```ts
-import { createVizEngine } from "@moritzbrantner/viz-engine/core";
+import { createVizEngine } from "@moritzbrantner/viz-engine";
 ```
 
 ```tsx
@@ -44,8 +44,10 @@ Root imports expose core APIs only:
 import { createVizEngine } from "@moritzbrantner/viz-engine";
 ```
 
-`outputMode: "compact"` and `compact*` frame aliases were removed. Use
-`frameFormat: "typed"` and the corresponding `typed*` fields.
+`outputMode: "compact"`, `compact*` frame aliases, `VizCompact*` exported type
+names, and public `getCompact*` index methods were removed. Use
+`frameFormat: "typed"`, the corresponding `typed*` fields, `VizTyped*` types,
+and public `getTyped*` index methods.
 
 ## Verification
 

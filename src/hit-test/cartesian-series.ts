@@ -1,8 +1,8 @@
 import type {
   VizCartesianHitTestResult,
-  VizCompactDensitySeries,
-  VizCompactFinanceReturns,
-  VizCompactRollingSeries,
+  VizTypedDensitySeries,
+  VizTypedFinanceReturns,
+  VizTypedRollingSeries,
   VizHitTestOptions,
   VizRenderDatum,
   VizViewport,
@@ -142,7 +142,7 @@ export function nearestRollingPoints<TProperties>(
 }
 
 export function nearestTypedBinnedSample<TProperties>(
-  series: VizCompactDensitySeries,
+  series: VizTypedDensitySeries,
   layer: HitLayerBase & { kind: "binned-series" },
   viewport: Extract<VizViewport, { kind?: "cartesian" }>,
   options: VizHitTestOptions<TProperties>,
@@ -171,7 +171,7 @@ export function nearestTypedBinnedSample<TProperties>(
 }
 
 export function nearestTypedRollingSample<TProperties>(
-  series: VizCompactRollingSeries,
+  series: VizTypedRollingSeries,
   layer: HitLayerBase & { kind: "rolling-series" },
   viewport: Extract<VizViewport, { kind?: "cartesian" }>,
   options: VizHitTestOptions<TProperties>,
@@ -200,7 +200,7 @@ export function nearestTypedRollingSample<TProperties>(
 }
 
 export function nearestTypedFinancePoint<TProperties>(
-  series: VizCompactFinanceReturns,
+  series: VizTypedFinanceReturns,
   layer: HitLayerBase & { kind: "finance-line" | "finance-returns" },
   viewport: Extract<VizViewport, { kind?: "cartesian" }>,
   options: VizHitTestOptions<TProperties>,

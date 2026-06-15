@@ -1,6 +1,6 @@
 import type {
   VizBackendCapabilities,
-  VizCompactMetricArrays,
+  VizTypedMetricArrays,
   VizGeoBounds,
   VizMetricRecord,
 } from "./core";
@@ -229,7 +229,7 @@ export type VizTypedGeoPoints = {
   label: readonly string[];
   latitude: Float64Array;
   longitude: Float64Array;
-  metrics?: VizCompactMetricArrays;
+  metrics?: VizTypedMetricArrays;
   sourceIndex: Uint32Array;
   summary: {
     bounds: VizGeoBounds | null;
@@ -260,7 +260,7 @@ export type VizTypedGeoFlows = {
   fromLongitude: Float64Array;
   id: readonly string[];
   label: readonly string[];
-  metrics?: VizCompactMetricArrays;
+  metrics?: VizTypedMetricArrays;
   rawWeight: Float64Array;
   sourceIndex: Uint32Array;
   summary: {
@@ -282,7 +282,7 @@ export type VizTypedGeoClusters = {
   label: readonly string[];
   latitude: Float64Array;
   longitude: Float64Array;
-  metrics?: VizCompactMetricArrays;
+  metrics?: VizTypedMetricArrays;
   pointCount: Uint32Array;
   sourceIndex: Int32Array;
   summary: {

@@ -8,11 +8,11 @@ import {
 
 import type {
   VizBinnedSeriesQuery,
-  VizCompactDensitySeries,
-  VizCompactHeatmap,
-  VizCompactHistogram,
-  VizCompactMetricArrays,
-  VizCompactRollingSeries,
+  VizTypedDensitySeries,
+  VizTypedHeatmap,
+  VizTypedHistogram,
+  VizTypedMetricArrays,
+  VizTypedRollingSeries,
   VizDensityBin,
   VizDensityIndex,
   VizDensityQuery,
@@ -155,31 +155,31 @@ export class RustWasmVizDensityIndex<
     };
   }
 
-  getCompactChartSeries(query: VizDensityQuery): VizCompactDensitySeries {
+  getTypedBinnedSeries(query: VizDensityQuery): VizTypedDensitySeries {
     const valueMode = query.valueMode ?? "average";
-    const compact = getOptionalWasmMethod(this.index, "getCompactChartSeries");
-    if (compact) {
-      return normalizeCompactDensitySeries(
-        compact(
+    const typedMethod = getOptionalWasmMethod(this.index, "getTypedBinnedSeries");
+    if (typedMethod) {
+      return normalizeTypedDensitySeries(
+        typedMethod(
           query.xDomain[0],
           query.xDomain[1],
           query.targetBinCount,
           query.includeEmptyBins ?? false,
           valueMode,
-        ) as VizCompactDensitySeries,
+        ) as VizTypedDensitySeries,
         valueMode,
         query.xDomain,
       );
     }
 
-    return compactDensityFromSeries(this.getChartSeries(query));
+    return typedDensityFromSeries(this.getChartSeries(query));
   }
 
-  getCompactHeatmap(query: VizHeatmapQuery): VizCompactHeatmap {
-    const compact = getOptionalWasmMethod(this.index, "getCompactHeatmap");
-    if (compact && (query.valueAccessor == null || query.valueAccessor === "y")) {
-      return normalizeCompactHeatmap(
-        compact(
+  getTypedHeatmap(query: VizHeatmapQuery): VizTypedHeatmap {
+    const typedMethod = getOptionalWasmMethod(this.index, "getTypedHeatmap");
+    if (typedMethod && (query.valueAccessor == null || query.valueAccessor === "y")) {
+      return normalizeTypedHeatmap(
+        typedMethod(
           query.xDomain[0],
           query.xDomain[1],
           query.xBinCount,
@@ -187,51 +187,51 @@ export class RustWasmVizDensityIndex<
           query.includeEmptyCells ?? false,
           query.yDomain?.[0] ?? Number.NaN,
           query.yDomain?.[1] ?? Number.NaN,
-        ) as VizCompactHeatmap,
+        ) as VizTypedHeatmap,
         query,
       );
     }
 
-    return compactHeatmapFromHeatmap(this.getHeatmap(query));
+    return typedHeatmapFromHeatmap(this.getHeatmap(query));
   }
 
-  getCompactHistogram(query: VizHistogramQuery): VizCompactHistogram {
-    const compact = getOptionalWasmMethod(this.index, "getCompactHistogram");
-    if (compact && (query.valueAccessor == null || query.valueAccessor === "y")) {
-      return normalizeCompactHistogram(
-        compact(
+  getTypedHistogram(query: VizHistogramQuery): VizTypedHistogram {
+    const typedMethod = getOptionalWasmMethod(this.index, "getTypedHistogram");
+    if (typedMethod && (query.valueAccessor == null || query.valueAccessor === "y")) {
+      return normalizeTypedHistogram(
+        typedMethod(
           query.bucketCount,
           query.includeEmptyBuckets ?? true,
           query.xDomain?.[0] ?? Number.NaN,
           query.xDomain?.[1] ?? Number.NaN,
           query.valueDomain?.[0] ?? Number.NaN,
           query.valueDomain?.[1] ?? Number.NaN,
-        ) as VizCompactHistogram,
+        ) as VizTypedHistogram,
         query,
       );
     }
 
-    return compactHistogramFromHistogram(this.getHistogram(query));
+    return typedHistogramFromHistogram(this.getHistogram(query));
   }
 
-  getCompactRollingSeries(query: VizRollingSeriesQuery): VizCompactRollingSeries {
-    const compact = getOptionalWasmMethod(this.index, "getCompactRollingSeries");
+  getTypedRollingSeries(query: VizRollingSeriesQuery): VizTypedRollingSeries {
+    const typedMethod = getOptionalWasmMethod(this.index, "getTypedRollingSeries");
     const statistic = query.statistic ?? "mean";
-    if (compact) {
-      return normalizeCompactRollingSeries(
-        compact(
+    if (typedMethod) {
+      return normalizeTypedRollingSeries(
+        typedMethod(
           query.xDomain[0],
           query.xDomain[1],
           query.windowSize,
           query.minPeriods ?? 0,
           query.alpha ?? Number.NaN,
           statistic,
-        ) as VizCompactRollingSeries,
+        ) as VizTypedRollingSeries,
         query,
       );
     }
 
-    return compactRollingFromSeries(this.getRollingSeries(query));
+    return typedRollingFromSeries(this.getRollingSeries(query));
   }
 
   getHeatmap(query: VizHeatmapQuery): VizHeatmap<TProperties> {
@@ -527,76 +527,73 @@ function getOptionalWasmMethod<T extends (...args: unknown[]) => unknown>(
   return typeof method === "function" ? (method.bind(index) as T) : null;
 }
 
-function normalizeCompactDensitySeries(
-  compact: VizCompactDensitySeries,
+function normalizeTypedDensitySeries(
+  typed: VizTypedDensitySeries,
   valueMode: VizDensityQuery["valueMode"],
   xDomain: [number, number],
-): VizCompactDensitySeries {
+): VizTypedDensitySeries {
   return {
-    ...compact,
-    metrics: normalizeCompactMetrics(compact.metrics),
+    ...typed,
+    metrics: normalizeTypedMetrics(typed.metrics),
     summary: {
-      ...compact.summary,
-      valueMode: valueMode ?? compact.summary.valueMode ?? "average",
-      xDomain: compact.summary.xDomain ?? xDomain,
+      ...typed.summary,
+      valueMode: valueMode ?? typed.summary.valueMode ?? "average",
+      xDomain: typed.summary.xDomain ?? xDomain,
     },
   };
 }
 
-function normalizeCompactHeatmap(
-  compact: VizCompactHeatmap,
-  query: VizHeatmapQuery,
-): VizCompactHeatmap {
+function normalizeTypedHeatmap(typed: VizTypedHeatmap, query: VizHeatmapQuery): VizTypedHeatmap {
   return {
-    ...compact,
-    format: compact.format ?? (query.includeEmptyCells === false ? "sparse" : "dense"),
-    metrics: normalizeCompactMetrics(compact.metrics),
+    ...typed,
+    format: typed.format ?? (query.includeEmptyCells === false ? "sparse" : "dense"),
+    metrics: normalizeTypedMetrics(typed.metrics),
     summary: {
-      ...compact.summary,
-      xDomain: compact.summary.xDomain ?? query.xDomain,
+      ...typed.summary,
+      xDomain: typed.summary.xDomain ?? query.xDomain,
     },
   };
 }
 
-function normalizeCompactHistogram(
-  compact: VizCompactHistogram,
+function normalizeTypedHistogram(
+  typed: VizTypedHistogram,
   query: VizHistogramQuery,
-): VizCompactHistogram {
+): VizTypedHistogram {
   return {
-    ...compact,
-    metrics: normalizeCompactMetrics(compact.metrics),
+    ...typed,
+    metrics: normalizeTypedMetrics(typed.metrics),
     summary: {
-      ...compact.summary,
-      xDomain: compact.summary.xDomain ?? query.xDomain ?? null,
+      ...typed.summary,
+      xDomain: typed.summary.xDomain ?? query.xDomain ?? null,
     },
   };
 }
 
-function normalizeCompactRollingSeries(
-  compact: VizCompactRollingSeries,
+function normalizeTypedRollingSeries(
+  typed: VizTypedRollingSeries,
   query: VizRollingSeriesQuery,
-): VizCompactRollingSeries {
+): VizTypedRollingSeries {
   return {
-    ...compact,
+    ...typed,
     summary: {
-      ...compact.summary,
-      statistic: query.statistic ?? compact.summary.statistic ?? "mean",
-      xDomain: compact.summary.xDomain ?? query.xDomain,
+      ...typed.summary,
+      statistic: query.statistic ?? typed.summary.statistic ?? "mean",
+      xDomain: typed.summary.xDomain ?? query.xDomain,
     },
   };
 }
 
-function normalizeCompactMetrics(
-  metrics: VizCompactMetricArrays | Map<string, Float64Array> | undefined,
+function normalizeTypedMetrics(
+  metrics: VizTypedMetricArrays | Map<string, Float64Array> | undefined,
 ) {
   return metrics instanceof Map ? Object.fromEntries(metrics) : metrics;
 }
 
-function compactDensityFromSeries<TProperties>(
+function typedDensityFromSeries<TProperties>(
   series: ReturnType<VizDensityIndex<TProperties>["getChartSeries"]>,
-): VizCompactDensitySeries {
+): VizTypedDensitySeries {
   const length = series.samples.length;
-  const output = createCompactDensityArrays(length);
+  const output = createTypedDensityArrays(length);
   const metricKeys = Object.keys(series.summary.metrics);
   const metrics = createMetricArrays(metricKeys, length);
 
@@ -630,11 +627,9 @@ function compactDensityFromSeries<TProperties>(
   };
 }
 
-function compactHeatmapFromHeatmap<TProperties>(
-  heatmap: VizHeatmap<TProperties>,
-): VizCompactHeatmap {
+function typedHeatmapFromHeatmap<TProperties>(heatmap: VizHeatmap<TProperties>): VizTypedHeatmap {
   const length = heatmap.cells.length;
-  const output = createCompactHeatmapArrays(length);
+  const output = createTypedHeatmapArrays(length);
   const metricKeys = Object.keys(heatmap.summary.metrics);
   const metrics = createMetricArrays(metricKeys, length);
 
@@ -666,11 +661,11 @@ function compactHeatmapFromHeatmap<TProperties>(
   };
 }
 
-function compactHistogramFromHistogram<TProperties>(
+function typedHistogramFromHistogram<TProperties>(
   histogram: VizHistogram<TProperties>,
-): VizCompactHistogram {
+): VizTypedHistogram {
   const length = histogram.buckets.length;
-  const output = createCompactHistogramArrays(length);
+  const output = createTypedHistogramArrays(length);
   const metricKeys = Object.keys(histogram.summary.metrics);
   const metrics = createMetricArrays(metricKeys, length);
 
@@ -700,11 +695,11 @@ function compactHistogramFromHistogram<TProperties>(
   };
 }
 
-function compactRollingFromSeries<TProperties>(
+function typedRollingFromSeries<TProperties>(
   series: VizRollingSeries<TProperties>,
-): VizCompactRollingSeries {
+): VizTypedRollingSeries {
   const length = series.points.length;
-  const output = createCompactRollingArrays(length);
+  const output = createTypedRollingArrays(length);
 
   for (const [index, point] of series.points.entries()) {
     output.ema[index] = point.ema ?? Number.NaN;
@@ -726,7 +721,7 @@ function compactRollingFromSeries<TProperties>(
   };
 }
 
-function createCompactDensityArrays(length: number) {
+function createTypedDensityArrays(length: number) {
   return {
     averageY: filledFloat64Array(length, Number.NaN),
     firstPointIndex: filledInt32Array(length, -1),
@@ -741,7 +736,7 @@ function createCompactDensityArrays(length: number) {
   };
 }
 
-function createCompactHeatmapArrays(length: number) {
+function createTypedHeatmapArrays(length: number) {
   return {
     averageValue: filledFloat64Array(length, Number.NaN),
     firstPointIndex: filledInt32Array(length, -1),
@@ -754,7 +749,7 @@ function createCompactHeatmapArrays(length: number) {
   };
 }
 
-function createCompactHistogramArrays(length: number) {
+function createTypedHistogramArrays(length: number) {
   return {
     averageValue: filledFloat64Array(length, Number.NaN),
     firstPointIndex: filledInt32Array(length, -1),
@@ -769,7 +764,7 @@ function createCompactHistogramArrays(length: number) {
   };
 }
 
-function createCompactRollingArrays(length: number) {
+function createTypedRollingArrays(length: number) {
   return {
     ema: filledFloat64Array(length, Number.NaN),
     max: filledFloat64Array(length, Number.NaN),
@@ -785,8 +780,8 @@ function createCompactRollingArrays(length: number) {
   };
 }
 
-function createMetricArrays(metricKeys: readonly string[], length: number): VizCompactMetricArrays {
-  const arrays: VizCompactMetricArrays = {};
+function createMetricArrays(metricKeys: readonly string[], length: number): VizTypedMetricArrays {
+  const arrays: VizTypedMetricArrays = {};
   for (const metricKey of metricKeys) {
     arrays[metricKey] = new Float64Array(length);
   }

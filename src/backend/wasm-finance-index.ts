@@ -1,5 +1,5 @@
 import {
-  downsampleOhlcvBarsCompactInRange,
+  downsampleOhlcvBarsTypedInRange,
   lowerBoundTimestamp,
   normalizeFinanceInstrument,
   normalizeOhlcvBars,
@@ -7,7 +7,7 @@ import {
 } from "./finance-utils";
 
 import type {
-  VizCompactFinanceReturns,
+  VizTypedFinanceReturns,
   VizFinanceBarsQuery,
   VizFinanceDataset,
   VizFinanceDownsampleQuery,
@@ -25,7 +25,7 @@ type FinanceDataSeriesIndex = {
   free?: () => void;
   getBars(query: unknown): unknown;
   getBounds(): unknown;
-  getCompactReturns(query: unknown): unknown;
+  getTypedReturns(query: unknown): unknown;
   getDownsampledBars(query: unknown): unknown;
   getRiskSummary(query: unknown): unknown;
 };
@@ -48,7 +48,7 @@ type RustOhlcvBar = {
   volume?: number;
 };
 
-type RustCompactReturns = {
+type RustTypedReturns = {
   pointCount: number[];
   summary: {
     pointCount: number;
@@ -129,8 +129,8 @@ export class WasmVizFinanceIndex<
     return bounds ? [bounds.startMs, bounds.minPrice, bounds.endMs, bounds.maxPrice] : null;
   }
 
-  getCompactBars(query: VizFinanceBarsQuery) {
-    return downsampleOhlcvBarsCompactInRange(
+  getTypedBars(query: VizFinanceBarsQuery) {
+    return downsampleOhlcvBarsTypedInRange(
       this.bars,
       {
         targetBarCount: Number.MAX_SAFE_INTEGER,
@@ -143,21 +143,21 @@ export class WasmVizFinanceIndex<
     );
   }
 
-  getCompactDownsampledBars(query: VizFinanceDownsampleQuery) {
-    return downsampleOhlcvBarsCompactInRange(this.bars, query, {
+  getTypedDownsampledBars(query: VizFinanceDownsampleQuery) {
+    return downsampleOhlcvBarsTypedInRange(this.bars, query, {
       end: upperBoundTimestamp(this.bars, query.xDomain[1]),
       start: lowerBoundTimestamp(this.bars, query.xDomain[0]),
     });
   }
 
-  getCompactReturns(query: VizFinanceReturnsQuery): VizCompactFinanceReturns {
-    const returns = this.rustIndex.getCompactReturns({
+  getTypedReturns(query: VizFinanceReturnsQuery): VizTypedFinanceReturns {
+    const returns = this.rustIndex.getTypedReturns({
       adjusted: query.priceMode === "adjusted",
       endMs: query.xDomain[1],
       method: query.method ?? "simple",
       startMs: query.xDomain[0],
       targetCount: query.targetPointCount,
-    }) as RustCompactReturns;
+    }) as RustTypedReturns;
 
     return {
       pointCount: Uint32Array.from(returns.pointCount),
@@ -182,11 +182,11 @@ export class WasmVizFinanceIndex<
   }
 
   getReturns(query: VizFinanceReturnsQuery) {
-    const compact = this.getCompactReturns(query);
-    const bins = Array.from({ length: compact.x.length }, (_, index) => {
-      const y = finiteOrNull(compact.y[index]);
-      const pointCount = compact.pointCount[index] ?? 0;
-      const x = compact.x[index] ?? 0;
+    const typedReturns = this.getTypedReturns(query);
+    const bins = Array.from({ length: typedReturns.x.length }, (_, index) => {
+      const y = finiteOrNull(typedReturns.y[index]);
+      const pointCount = typedReturns.pointCount[index] ?? 0;
+      const x = typedReturns.x[index] ?? 0;
       const sourceIndex = this.timestampIndexLookup.get(x) ?? index + 1;
       const point =
         y == null || pointCount === 0
@@ -228,7 +228,7 @@ export class WasmVizFinanceIndex<
       summary: {
         binCount: bins.length,
         metrics: {},
-        pointCount: compact.summary.pointCount,
+        pointCount: typedReturns.summary.pointCount,
         sampleCount: samples.length,
         valueMode: "average" as const,
         xDomain: query.xDomain,

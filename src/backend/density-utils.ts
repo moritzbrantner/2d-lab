@@ -1,10 +1,10 @@
 import type {
   VizBinnedSeriesQuery,
-  VizCompactDensitySeries,
-  VizCompactHeatmap,
-  VizCompactHistogram,
-  VizCompactMetricArrays,
-  VizCompactRollingSeries,
+  VizTypedDensitySeries,
+  VizTypedHeatmap,
+  VizTypedHistogram,
+  VizTypedMetricArrays,
+  VizTypedRollingSeries,
   VizDensityBin,
   VizDensityQuery,
   VizDensitySample,
@@ -241,15 +241,15 @@ export function createChartSeries<TProperties>(
   };
 }
 
-export function createCompactChartSeries<TProperties>(
+export function createTypedBinnedSeries<TProperties>(
   points: readonly NormalizedSeriesPoint<TProperties>[],
   metricKeys: readonly string[],
   query: VizDensityQuery,
-): VizCompactDensitySeries {
+): VizTypedDensitySeries {
   const valueMode = query.valueMode ?? "average";
   const percentiles = resolveRequestedPercentiles(query.percentiles, valueMode);
   if (percentiles.length > 0) {
-    return compactFromDensitySeries(createChartSeries(points, metricKeys, query), metricKeys);
+    return typedFromDensitySeries(createChartSeries(points, metricKeys, query), metricKeys);
   }
 
   const xDomain = normalizeDomain(query.xDomain);
@@ -283,7 +283,7 @@ export function createCompactChartSeries<TProperties>(
   const visibleIndexes = query.includeEmptyBins
     ? Array.from({ length: binCount }, (_, index) => index)
     : indexesWhere(counts, (count) => count > 0);
-  const output = createCompactDensityArrays(visibleIndexes.length);
+  const output = createTypedDensityArrays(visibleIndexes.length);
   const outputMetrics = createMetricArrays(metricKeys, visibleIndexes.length);
 
   for (const [outputIndex, sourceIndex] of visibleIndexes.entries()) {
@@ -301,7 +301,7 @@ export function createCompactChartSeries<TProperties>(
     output.minY[outputIndex] = minY[sourceIndex]!;
     output.pointCount[outputIndex] = count;
     output.sumY[outputIndex] = sums[sourceIndex]!;
-    output.y[outputIndex] = compactDensityY(valueMode, {
+    output.y[outputIndex] = typedDensityY(valueMode, {
       averageY,
       count,
       maxY: maxY[sourceIndex]!,
@@ -378,11 +378,11 @@ export function createHistogram<TProperties>(
   };
 }
 
-export function createCompactHistogram<TProperties>(
+export function createTypedHistogram<TProperties>(
   points: readonly NormalizedSeriesPoint<TProperties>[],
   metricKeys: readonly string[],
   query: VizHistogramQuery,
-): VizCompactHistogram {
+): VizTypedHistogram {
   const bucketCount = clampCount(query.bucketCount);
   const xDomain = query.xDomain ? normalizeDomain(query.xDomain) : null;
   const valueAccessor = query.valueAccessor ?? "y";
@@ -423,7 +423,7 @@ export function createCompactHistogram<TProperties>(
     query.includeEmptyBuckets === false
       ? indexesWhere(counts, (count) => count > 0)
       : Array.from({ length: bucketCount }, (_, index) => index);
-  const output = createCompactHistogramArrays(visibleIndexes.length);
+  const output = createTypedHistogramArrays(visibleIndexes.length);
   const outputMetrics = createMetricArrays(metricKeys, visibleIndexes.length);
 
   for (const [outputIndex, sourceIndex] of visibleIndexes.entries()) {
@@ -564,11 +564,11 @@ export function createHeatmap<TProperties>(
   };
 }
 
-export function createCompactHeatmap<TProperties>(
+export function createTypedHeatmap<TProperties>(
   points: readonly NormalizedSeriesPoint<TProperties>[],
   metricKeys: readonly string[],
   query: VizHeatmapQuery,
-): VizCompactHeatmap {
+): VizTypedHeatmap {
   const xBinCount = clampCount(query.xBinCount);
   const yBinCount = clampCount(query.yBinCount);
   const xDomain = normalizeDomain(query.xDomain);
@@ -610,7 +610,7 @@ export function createCompactHeatmap<TProperties>(
 
   const output =
     query.includeEmptyCells === false
-      ? createSparseCompactHeatmapOutput(
+      ? createSparseTypedHeatmapOutput(
           counts,
           sums,
           firstPointIndex,
@@ -620,7 +620,7 @@ export function createCompactHeatmap<TProperties>(
           xBinCount,
           maxCellCount,
         )
-      : createFullCompactHeatmapOutput(
+      : createFullTypedHeatmapOutput(
           counts,
           sums,
           firstPointIndex,
@@ -748,10 +748,10 @@ export function createRollingSeries<TProperties>(
   };
 }
 
-export function createCompactRollingSeries<TProperties>(
+export function createTypedRollingSeries<TProperties>(
   points: readonly NormalizedSeriesPoint<TProperties>[],
   query: VizRollingSeriesQuery,
-): VizCompactRollingSeries {
+): VizTypedRollingSeries {
   const xDomain = normalizeDomain(query.xDomain);
   const windowSize = clampCount(query.windowSize);
   const minPeriods = Math.min(windowSize, Math.max(1, Math.floor(query.minPeriods ?? windowSize)));
@@ -760,7 +760,7 @@ export function createCompactRollingSeries<TProperties>(
   const start = lowerBoundX(points, xDomain[0]);
   const end = upperBoundX(points, xDomain[1]);
   const length = end - start;
-  const output = createCompactRollingArrays(length);
+  const output = createTypedRollingArrays(length);
   const minQueueIndexes = new Int32Array(length);
   const minQueueValues = new Float64Array(length);
   const maxQueueIndexes = new Int32Array(length);
@@ -1285,11 +1285,11 @@ function sumMetricRecords(records: readonly VizMetricRecord[]) {
   return result;
 }
 
-function compactFromDensitySeries<TProperties>(
+function typedFromDensitySeries<TProperties>(
   series: ReturnType<typeof createChartSeries<TProperties>>,
   metricKeys: readonly string[],
-): VizCompactDensitySeries {
-  const output = createCompactDensityArrays(series.samples.length);
+): VizTypedDensitySeries {
+  const output = createTypedDensityArrays(series.samples.length);
   const metrics = createMetricArrays(metricKeys, series.samples.length);
 
   for (const [index, sample] of series.samples.entries()) {
@@ -1322,7 +1322,7 @@ function compactFromDensitySeries<TProperties>(
   };
 }
 
-function createCompactDensityArrays(length: number) {
+function createTypedDensityArrays(length: number) {
   return {
     averageY: filledFloat64Array(length, Number.NaN),
     firstPointIndex: filledInt32Array(length, -1),
@@ -1337,7 +1337,7 @@ function createCompactDensityArrays(length: number) {
   };
 }
 
-function createCompactHistogramArrays(length: number) {
+function createTypedHistogramArrays(length: number) {
   return {
     averageValue: filledFloat64Array(length, Number.NaN),
     firstPointIndex: filledInt32Array(length, -1),
@@ -1352,7 +1352,7 @@ function createCompactHistogramArrays(length: number) {
   };
 }
 
-function createCompactHeatmapArrays(length: number) {
+function createTypedHeatmapArrays(length: number) {
   return {
     averageValue: filledFloat64Array(length, Number.NaN),
     firstPointIndex: filledInt32Array(length, -1),
@@ -1365,22 +1365,22 @@ function createCompactHeatmapArrays(length: number) {
   };
 }
 
-function createFullCompactHeatmapOutput(
+function createFullTypedHeatmapOutput(
   counts: Uint32Array,
   sums: Float64Array,
   firstPointIndex: Int32Array,
   lastPointIndex: Int32Array,
-  metricArrays: VizCompactMetricArrays,
+  metricArrays: VizTypedMetricArrays,
   metricKeys: readonly string[],
   xBinCount: number,
   maxCellCount: number,
 ) {
   const length = counts.length;
-  const output = createCompactHeatmapArrays(length);
+  const output = createTypedHeatmapArrays(length);
   const outputMetrics = createMetricArrays(metricKeys, length);
 
   for (let sourceIndex = 0; sourceIndex < length; sourceIndex += 1) {
-    writeCompactHeatmapCell(
+    writeTypedHeatmapCell(
       output,
       outputMetrics,
       sourceIndex,
@@ -1399,12 +1399,12 @@ function createFullCompactHeatmapOutput(
   return { ...output, format: "dense" as const, metrics: outputMetrics };
 }
 
-function createSparseCompactHeatmapOutput(
+function createSparseTypedHeatmapOutput(
   counts: Uint32Array,
   sums: Float64Array,
   firstPointIndex: Int32Array,
   lastPointIndex: Int32Array,
-  metricArrays: VizCompactMetricArrays,
+  metricArrays: VizTypedMetricArrays,
   metricKeys: readonly string[],
   xBinCount: number,
   maxCellCount: number,
@@ -1416,7 +1416,7 @@ function createSparseCompactHeatmapOutput(
     }
   }
 
-  const output = createCompactHeatmapArrays(length);
+  const output = createTypedHeatmapArrays(length);
   const outputMetrics = createMetricArrays(metricKeys, length);
   let outputIndex = 0;
 
@@ -1425,7 +1425,7 @@ function createSparseCompactHeatmapOutput(
       continue;
     }
 
-    writeCompactHeatmapCell(
+    writeTypedHeatmapCell(
       output,
       outputMetrics,
       outputIndex,
@@ -1445,16 +1445,16 @@ function createSparseCompactHeatmapOutput(
   return { ...output, format: "sparse" as const, metrics: outputMetrics };
 }
 
-function writeCompactHeatmapCell(
-  output: ReturnType<typeof createCompactHeatmapArrays>,
-  outputMetrics: VizCompactMetricArrays,
+function writeTypedHeatmapCell(
+  output: ReturnType<typeof createTypedHeatmapArrays>,
+  outputMetrics: VizTypedMetricArrays,
   outputIndex: number,
   sourceIndex: number,
   counts: Uint32Array,
   sums: Float64Array,
   firstPointIndex: Int32Array,
   lastPointIndex: Int32Array,
-  metricArrays: VizCompactMetricArrays,
+  metricArrays: VizTypedMetricArrays,
   metricKeys: readonly string[],
   xBinCount: number,
   maxCellCount: number,
@@ -1475,7 +1475,7 @@ function writeCompactHeatmapCell(
   }
 }
 
-function createCompactRollingArrays(length: number) {
+function createTypedRollingArrays(length: number) {
   return {
     ema: new Float64Array(length),
     max: new Float64Array(length),
@@ -1491,8 +1491,8 @@ function createCompactRollingArrays(length: number) {
   };
 }
 
-function createMetricArrays(metricKeys: readonly string[], length: number): VizCompactMetricArrays {
-  const arrays: VizCompactMetricArrays = {};
+function createMetricArrays(metricKeys: readonly string[], length: number): VizTypedMetricArrays {
+  const arrays: VizTypedMetricArrays = {};
   for (const metricKey of metricKeys) {
     arrays[metricKey] = new Float64Array(length);
   }
@@ -1500,7 +1500,7 @@ function createMetricArrays(metricKeys: readonly string[], length: number): VizC
 }
 
 function addMetricArrays(
-  arrays: VizCompactMetricArrays,
+  arrays: VizTypedMetricArrays,
   metricKeys: readonly string[],
   metrics: VizMetricRecord | undefined,
   index: number,
@@ -1510,7 +1510,7 @@ function addMetricArrays(
   }
 }
 
-function compactDensityY(
+function typedDensityY(
   valueMode: VizValueMode,
   values: { averageY: number; count: number; maxY: number; minY: number; sumY: number },
 ) {

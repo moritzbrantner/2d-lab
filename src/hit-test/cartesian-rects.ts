@@ -1,8 +1,8 @@
 import type {
   VizCartesianHitTestResult,
-  VizCompactHeatmap,
-  VizCompactHistogram,
-  VizCompactOhlcvBars,
+  VizTypedHeatmap,
+  VizTypedHistogram,
+  VizTypedOhlcvBars,
   VizHitTestOptions,
   VizRenderBounds,
 } from "../types";
@@ -43,7 +43,7 @@ export function hitTestObjectHistogram<TProperties>(
 }
 
 export function hitTestTypedHistogram<TProperties>(
-  histogram: VizCompactHistogram,
+  histogram: VizTypedHistogram,
   layer: HitLayerBase & { kind: "histogram" },
   options: VizHitTestOptions<TProperties>,
 ) {
@@ -94,7 +94,7 @@ export function hitTestObjectHeatmap<TProperties>(
 }
 
 export function hitTestTypedHeatmap<TProperties>(
-  heatmap: VizCompactHeatmap,
+  heatmap: VizTypedHeatmap,
   layer: HitLayerBase & { kind: "heatmap" },
   options: VizHitTestOptions<TProperties>,
 ) {
@@ -153,7 +153,7 @@ export function hitTestObjectCandles<TProperties>(
 }
 
 export function hitTestTypedCandles<TProperties>(
-  bars: VizCompactOhlcvBars,
+  bars: VizTypedOhlcvBars,
   layer: HitLayerBase & { kind: "finance-candles" },
   options: VizHitTestOptions<TProperties>,
 ) {

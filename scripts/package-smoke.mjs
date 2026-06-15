@@ -43,6 +43,30 @@ for (const file of distChunkFiles) {
   assert(existsSync(path.join(rootDir, file)), `Missing package chunk artifact: ${file}`);
 }
 
+const embeddedWasmTypes = readFileSync(
+  path.join(rootDir, "src/wasm/pkg/moritzbrantner_viz_engine_wasm_embedded.d.ts"),
+  "utf8",
+);
+for (const name of [
+  "getTypedBinnedSeries",
+  "getTypedHistogram",
+  "getTypedHeatmap",
+  "getTypedRollingSeries",
+  "getTypedReturns",
+]) {
+  assert(embeddedWasmTypes.includes(name), `Embedded WASM types missing ${name}.`);
+}
+const oldBridgePrefix = "get" + "Com" + "pact";
+for (const name of [
+  `${oldBridgePrefix}ChartSeries`,
+  `${oldBridgePrefix}Histogram`,
+  `${oldBridgePrefix}Heatmap`,
+  `${oldBridgePrefix}RollingSeries`,
+  `${oldBridgePrefix}Returns`,
+]) {
+  assert(!embeddedWasmTypes.includes(name), `Embedded WASM types must not include ${name}.`);
+}
+
 const packageJson = JSON.parse(readFileSync(path.join(rootDir, "package.json"), "utf8"));
 assert(packageJson.exports?.["./core"]?.import === "./dist/core.js", "Missing ./core export.");
 assert(
@@ -110,6 +134,8 @@ assert(typeof react.useVizFrame === "function", "react export missing useVizFram
 
 const root = await import(pathToFileURL(path.join(rootDir, "dist/index.js")).href);
 assert(typeof root.createVizEngine === "function", "root export missing createVizEngine.");
+assert(typeof root.getVizFrameTransferables === "function", "root export missing transfer helper.");
+assert(typeof root.VizEngineError === "function", "root export missing VizEngineError.");
 assert(!("VizEngineProvider" in root), "root export must not include React bindings.");
 
 const packOutput = execFileSync("bun", ["pm", "pack", "--dry-run", "--ignore-scripts"], {

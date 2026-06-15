@@ -6,16 +6,16 @@ import type {
   VizFinanceRiskQuery,
   VizFinanceRiskSummary,
   VizFinancialInstrument,
-  VizCompactFinanceReturns,
-  VizCompactOhlcvBars,
+  VizTypedFinanceReturns,
+  VizTypedOhlcvBars,
   VizIndexedSeriesPoint,
   VizOhlcvBar,
   VizRenderBounds,
 } from "../types";
 
 export type NormalizedOhlcvBar<TProperties = Record<string, unknown>> = VizOhlcvBar<TProperties>;
-export type CompactOhlcvColumns = Pick<
-  VizCompactOhlcvBars,
+export type TypedOhlcvColumns = Pick<
+  VizTypedOhlcvBars,
   "adjustedClose" | "close" | "high" | "low" | "open" | "timestamp" | "volume"
 >;
 
@@ -185,16 +185,16 @@ export function downsampleOhlcvBarsInRange<TProperties>(
   return downsampled;
 }
 
-export function compactOhlcvBars<TProperties>(
+export function typedOhlcvBars<TProperties>(
   bars: readonly VizOhlcvBar<TProperties>[],
   xDomain: [number, number],
-): VizCompactOhlcvBars {
-  return sliceCompactOhlcvColumns(createCompactOhlcvColumns(bars), xDomain, 0, bars.length);
+): VizTypedOhlcvBars {
+  return sliceTypedOhlcvColumns(createTypedOhlcvColumns(bars), xDomain, 0, bars.length);
 }
 
-export function createCompactOhlcvColumns<TProperties>(
+export function createTypedOhlcvColumns<TProperties>(
   bars: readonly VizOhlcvBar<TProperties>[],
-): CompactOhlcvColumns {
+): TypedOhlcvColumns {
   const adjustedClose = filledFloat64Array(bars.length, Number.NaN);
   const close = new Float64Array(bars.length);
   const high = new Float64Array(bars.length);
@@ -224,12 +224,12 @@ export function createCompactOhlcvColumns<TProperties>(
   };
 }
 
-export function sliceCompactOhlcvColumns(
-  columns: CompactOhlcvColumns,
+export function sliceTypedOhlcvColumns(
+  columns: TypedOhlcvColumns,
   xDomain: [number, number],
   start: number,
   end: number,
-): VizCompactOhlcvBars {
+): VizTypedOhlcvBars {
   const normalizedStart = Math.max(0, Math.min(columns.timestamp.length, start));
   const normalizedEnd = Math.max(normalizedStart, Math.min(columns.timestamp.length, end));
 
@@ -248,21 +248,21 @@ export function sliceCompactOhlcvColumns(
   };
 }
 
-export function downsampleOhlcvBarsCompact<TProperties>(
+export function downsampleOhlcvBarsTyped<TProperties>(
   bars: readonly VizOhlcvBar<TProperties>[],
   query: { targetBarCount: number; xDomain: [number, number] },
-): VizCompactOhlcvBars {
-  return downsampleOhlcvBarsCompactInRange(bars, query);
+): VizTypedOhlcvBars {
+  return downsampleOhlcvBarsTypedInRange(bars, query);
 }
 
-export function downsampleOhlcvBarsCompactInRange<TProperties>(
+export function downsampleOhlcvBarsTypedInRange<TProperties>(
   bars: readonly VizOhlcvBar<TProperties>[],
   query: { targetBarCount: number; xDomain: [number, number] },
   range: { end: number; start: number } = {
     end: upperBoundTimestamp(bars, query.xDomain[1]),
     start: lowerBoundTimestamp(bars, query.xDomain[0]),
   },
-): VizCompactOhlcvBars {
+): VizTypedOhlcvBars {
   if (!Number.isFinite(query.targetBarCount) || query.targetBarCount <= 0) {
     throw new TypeError("targetBarCount must be greater than zero");
   }
@@ -273,7 +273,7 @@ export function downsampleOhlcvBarsCompactInRange<TProperties>(
   const target = Math.floor(query.targetBarCount);
 
   if (length <= target) {
-    return compactOhlcvBarsRange(bars, query.xDomain, start, end);
+    return typedOhlcvBarsRange(bars, query.xDomain, start, end);
   }
 
   const bucketCount = Math.min(target, length);
@@ -293,7 +293,7 @@ export function downsampleOhlcvBarsCompactInRange<TProperties>(
         Math.floor((bucketIndex * length) / bucketCount) + 1,
         Math.floor(((bucketIndex + 1) * length) / bucketCount),
       );
-    writeCompactOhlcvBucket(
+    writeTypedOhlcvBucket(
       bars,
       bucketStart,
       bucketEnd,
@@ -374,14 +374,14 @@ export function createFinanceReturnSeries<TProperties>(
   };
 }
 
-export function createCompactFinanceReturnSeries<TProperties>(
+export function createTypedFinanceReturnSeries<TProperties>(
   bars: readonly VizOhlcvBar<TProperties>[],
   query: VizFinanceReturnsQuery,
   range: { end: number; start: number } = {
     end: upperBoundTimestamp(bars, query.xDomain[1]),
     start: lowerBoundTimestamp(bars, query.xDomain[0]),
   },
-): VizCompactFinanceReturns {
+): VizTypedFinanceReturns {
   const method = query.method ?? "simple";
   const priceMode = query.priceMode ?? "raw";
   const start = Math.max(0, Math.min(bars.length, range.start));
@@ -429,11 +429,11 @@ export function createCompactFinanceReturnSeries<TProperties>(
   };
 }
 
-export function createCompactFinanceReturnSeriesFromColumns(
-  columns: CompactOhlcvColumns,
+export function createTypedFinanceReturnSeriesFromColumns(
+  columns: TypedOhlcvColumns,
   query: VizFinanceReturnsQuery,
   range: { end: number; start: number },
-): VizCompactFinanceReturns {
+): VizTypedFinanceReturns {
   const method = query.method ?? "simple";
   const priceMode = query.priceMode ?? "raw";
   const start = Math.max(0, Math.min(columns.close.length, range.start));
@@ -449,8 +449,8 @@ export function createCompactFinanceReturnSeriesFromColumns(
   let bucketEnd = returnBucketEnd(bucketIndex, returnCount, bucketCount);
 
   for (let returnIndex = 0; returnIndex < returnCount; returnIndex++) {
-    const previous = compactFinanceReturnPrice(columns, start + returnIndex, priceMode);
-    const current = compactFinanceReturnPrice(columns, start + returnIndex + 1, priceMode);
+    const previous = typedFinanceReturnPrice(columns, start + returnIndex, priceMode);
+    const current = typedFinanceReturnPrice(columns, start + returnIndex + 1, priceMode);
     const value = method === "log" ? Math.log(current / previous) : current / previous - 1;
 
     while (returnIndex >= bucketEnd && bucketIndex < bucketCount - 1) {
@@ -610,12 +610,12 @@ function aggregateOhlcvRange<TProperties>(
   };
 }
 
-function compactOhlcvBarsRange<TProperties>(
+function typedOhlcvBarsRange<TProperties>(
   bars: readonly VizOhlcvBar<TProperties>[],
   xDomain: [number, number],
   start: number,
   end: number,
-): VizCompactOhlcvBars {
+): VizTypedOhlcvBars {
   const length = end - start;
   const adjustedClose = filledFloat64Array(length, Number.NaN);
   const close = new Float64Array(length);
@@ -651,12 +651,12 @@ function compactOhlcvBarsRange<TProperties>(
   };
 }
 
-function writeCompactOhlcvBucket<TProperties>(
+function writeTypedOhlcvBucket<TProperties>(
   bars: readonly VizOhlcvBar<TProperties>[],
   start: number,
   end: number,
   output: Pick<
-    VizCompactOhlcvBars,
+    VizTypedOhlcvBars,
     "adjustedClose" | "close" | "high" | "low" | "open" | "timestamp" | "volume"
   >,
   outputIndex: number,
@@ -835,8 +835,8 @@ function financeReturnPrice<TProperties>(
   return priceMode === "adjusted" ? (bar.adjustedClose ?? bar.close) : bar.close;
 }
 
-function compactFinanceReturnPrice(
-  columns: CompactOhlcvColumns,
+function typedFinanceReturnPrice(
+  columns: TypedOhlcvColumns,
   index: number,
   priceMode: "adjusted" | "raw",
 ) {

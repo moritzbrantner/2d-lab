@@ -4,8 +4,8 @@ import {
   collectMetricKeys,
   createBins,
   createChartSeries,
-  createCompactHeatmap,
-  createCompactRollingSeries,
+  createTypedHeatmap,
+  createTypedRollingSeries,
   createHeatmap,
   createHistogram,
   createPointLookup,
@@ -217,7 +217,7 @@ describe("density utils", () => {
     ).toEqual([3, 1]);
   });
 
-  test("creates compact heatmaps with full and sparse cell shapes", () => {
+  test("creates typed heatmaps with full and sparse cell shapes", () => {
     const points: NormalizedSeriesPoint<Record<string, unknown>>[] = normalizeSeriesPoints([
       { id: "a", x: 0, y: 0, metrics: { demand: 2 } },
       { id: "b", x: 4, y: 4, metrics: { demand: 3 } },
@@ -225,7 +225,7 @@ describe("density utils", () => {
       { id: "d", x: 10, y: 10, metrics: { demand: 7 } },
     ]);
     const metricKeys = collectMetricKeys(points);
-    const full = createCompactHeatmap(points, metricKeys, {
+    const full = createTypedHeatmap(points, metricKeys, {
       includeEmptyCells: true,
       xBinCount: 2,
       xDomain: [0, 10],
@@ -249,7 +249,7 @@ describe("density utils", () => {
     expect([...full.sumValue]).toEqual([8, 0, 0, 10]);
     expect([...(full.metrics?.demand ?? [])]).toEqual([10, 0, 0, 7]);
 
-    const sparse = createCompactHeatmap(points, metricKeys, {
+    const sparse = createTypedHeatmap(points, metricKeys, {
       includeEmptyCells: false,
       xBinCount: 2,
       xDomain: [0, 10],
@@ -277,7 +277,7 @@ describe("density utils", () => {
     );
   });
 
-  test("matches compact rolling output to object rolling output", () => {
+  test("matches typed rolling output to object rolling output", () => {
     const points: NormalizedSeriesPoint<Record<string, unknown>>[] = normalizeSeriesPoints<
       Record<string, unknown>
     >([
@@ -289,7 +289,7 @@ describe("density utils", () => {
     ]);
 
     for (const statistic of ["mean", "stdDev", "zScore"] as const) {
-      expectCompactRollingParity(points, {
+      expectTypedRollingParity(points, {
         minPeriods: 1,
         statistic,
         windowSize: 3,
@@ -297,7 +297,7 @@ describe("density utils", () => {
       });
     }
 
-    expectCompactRollingParity(points, {
+    expectTypedRollingParity(points, {
       minPeriods: 3,
       statistic: "mean",
       windowSize: 3,
@@ -306,35 +306,33 @@ describe("density utils", () => {
   });
 });
 
-function expectCompactRollingParity(
+function expectTypedRollingParity(
   points: readonly NormalizedSeriesPoint<Record<string, unknown>>[],
   query: Parameters<typeof createRollingSeries>[1],
 ) {
   const objectSeries = createRollingSeries(points, query);
-  const compactSeries = createCompactRollingSeries(points, query);
+  const typedSeries = createTypedRollingSeries(points, query);
 
-  expect(compactSeries.summary).toEqual(objectSeries.summary);
-  expect([...compactSeries.pointCount]).toEqual(
-    objectSeries.points.map((point) => point.pointCount),
-  );
-  expect([...compactSeries.sourcePointIndex]).toEqual(
+  expect(typedSeries.summary).toEqual(objectSeries.summary);
+  expect([...typedSeries.pointCount]).toEqual(objectSeries.points.map((point) => point.pointCount));
+  expect([...typedSeries.sourcePointIndex]).toEqual(
     objectSeries.points.map((point) => point.sourcePointIndex),
   );
 
   for (const [index, point] of objectSeries.points.entries()) {
-    expect(compactSeries.x[index]).toBe(point.x);
-    expectCompactNumber(compactSeries.y[index], point.y);
-    expectCompactNumber(compactSeries.ema[index], point.ema);
-    expectCompactNumber(compactSeries.max[index], point.max);
-    expectCompactNumber(compactSeries.mean[index], point.mean);
-    expectCompactNumber(compactSeries.min[index], point.min);
-    expectCompactNumber(compactSeries.stdDev[index], point.stdDev);
-    expectCompactNumber(compactSeries.zScore[index], point.zScore);
-    expectCompactNumber(compactSeries.sum[index], point.sum);
+    expect(typedSeries.x[index]).toBe(point.x);
+    expectTypedNumber(typedSeries.y[index], point.y);
+    expectTypedNumber(typedSeries.ema[index], point.ema);
+    expectTypedNumber(typedSeries.max[index], point.max);
+    expectTypedNumber(typedSeries.mean[index], point.mean);
+    expectTypedNumber(typedSeries.min[index], point.min);
+    expectTypedNumber(typedSeries.stdDev[index], point.stdDev);
+    expectTypedNumber(typedSeries.zScore[index], point.zScore);
+    expectTypedNumber(typedSeries.sum[index], point.sum);
   }
 }
 
-function expectCompactNumber(actual: number | undefined, expected: number | null) {
+function expectTypedNumber(actual: number | undefined, expected: number | null) {
   if (expected === null) {
     expect(actual).toBe(Number.NaN);
     return;

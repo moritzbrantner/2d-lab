@@ -6,15 +6,15 @@
 bun add @moritzbrantner/viz-engine
 ```
 
-React is optional. Use the core entrypoint when you are building a renderer,
+React is optional. Use the root entrypoint when you are building a renderer,
 worker, or server integration that does not need React hooks.
 
 ## Choose An Entrypoint
 
 | Import path                            | What it includes                                                                                            |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `@moritzbrantner/viz-engine`           | Core data/frame engine APIs without React.                                                                  |
-| `@moritzbrantner/viz-engine/core`      | Explicit core engine creation, frame hydration, transfer helpers, density index helpers, and types.         |
+| `@moritzbrantner/viz-engine`           | Primary sync core data/frame engine APIs without React.                                                     |
+| `@moritzbrantner/viz-engine/core`      | Explicit sync core alias without React.                                                                     |
 | `@moritzbrantner/viz-engine/core/lazy` | Async engine creation with lazy WASM loading.                                                               |
 | `@moritzbrantner/viz-engine/worker`    | Worker client and host APIs.                                                                                |
 | `@moritzbrantner/viz-engine/react`     | `VizEngineProvider`, `useVizEngine`, `useVizDataset`, `useVizLayer`, `useVizFrame`, and `useVizTypedFrame`. |
@@ -22,7 +22,7 @@ worker, or server integration that does not need React hooks.
 ## Compute A Frame
 
 ```ts
-import { createVizEngine } from "@moritzbrantner/viz-engine/core";
+import { createVizEngine } from "@moritzbrantner/viz-engine";
 
 const points = [
   { id: "a", x: 0, y: 2 },

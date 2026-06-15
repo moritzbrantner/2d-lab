@@ -9,11 +9,7 @@ Public errors extend `VizEngineError` and expose a stable `code` plus optional
 `details`.
 
 ```ts
-import {
-  VizDisposedError,
-  isVizEngineError,
-  serializeVizError,
-} from "@moritzbrantner/viz-engine/core";
+import { VizDisposedError, isVizEngineError, serializeVizError } from "@moritzbrantner/viz-engine";
 
 try {
   engine.computeFrame({ viewport });

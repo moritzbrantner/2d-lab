@@ -57,11 +57,11 @@ describe("JsVizFinanceIndex", () => {
     expect(index.getRiskSummary({ priceMode: "adjusted" }).annualizedVolatility).toBeGreaterThan(0);
   });
 
-  test("computes compact returns and compact downsampled bars", () => {
+  test("computes typed returns and typed downsampled bars", () => {
     const index = new JsVizFinanceIndex(dataset);
-    const compactBars = index.getCompactDownsampledBars({ targetBarCount: 2, xDomain: [1, 4] });
+    const typedBars = index.getTypedDownsampledBars({ targetBarCount: 2, xDomain: [1, 4] });
     const objectBars = index.getDownsampledBars({ targetBarCount: 2, xDomain: [1, 4] });
-    const compactReturns = index.getCompactReturns({
+    const typedReturns = index.getTypedReturns({
       method: "simple",
       targetPointCount: 2,
       xDomain: [1, 4],
@@ -72,40 +72,40 @@ describe("JsVizFinanceIndex", () => {
       xDomain: [1, 4],
     });
 
-    expect([...compactBars.open]).toEqual(objectBars.map((bar) => bar.open));
-    expect([...compactBars.high]).toEqual(objectBars.map((bar) => bar.high));
-    expect([...compactBars.low]).toEqual(objectBars.map((bar) => bar.low));
-    expect([...compactBars.close]).toEqual(objectBars.map((bar) => bar.close));
-    expect(compactBars.summary.barCount).toBe(objectBars.length);
-    expect([...compactReturns.pointCount]).toEqual(
+    expect([...typedBars.open]).toEqual(objectBars.map((bar) => bar.open));
+    expect([...typedBars.high]).toEqual(objectBars.map((bar) => bar.high));
+    expect([...typedBars.low]).toEqual(objectBars.map((bar) => bar.low));
+    expect([...typedBars.close]).toEqual(objectBars.map((bar) => bar.close));
+    expect(typedBars.summary.barCount).toBe(objectBars.length);
+    expect([...typedReturns.pointCount]).toEqual(
       objectReturns.samples.map((sample) => sample.pointCount),
     );
-    expect([...compactReturns.x]).toEqual(objectReturns.samples.map((sample) => sample.x));
-    expect([...compactReturns.y]).toEqual(objectReturns.samples.map((sample) => sample.y));
+    expect([...typedReturns.x]).toEqual(objectReturns.samples.map((sample) => sample.x));
+    expect([...typedReturns.y]).toEqual(objectReturns.samples.map((sample) => sample.y));
   });
 
-  test("matches compact bars to object bars for full, viewport, and no-downsample ranges", () => {
+  test("matches typed bars to object bars for full, viewport, and no-downsample ranges", () => {
     const index = new JsVizFinanceIndex(dataset);
 
-    expectCompactBarsMatchObjects(
-      index.getCompactBars({ xDomain: [1, 4] }),
+    expectTypedBarsMatchObjects(
+      index.getTypedBars({ xDomain: [1, 4] }),
       index.getBars({
         xDomain: [1, 4],
       }),
     );
-    expectCompactBarsMatchObjects(
-      index.getCompactBars({ xDomain: [2, 3] }),
+    expectTypedBarsMatchObjects(
+      index.getTypedBars({ xDomain: [2, 3] }),
       index.getBars({
         xDomain: [2, 3],
       }),
     );
-    expectCompactBarsMatchObjects(
-      index.getCompactDownsampledBars({ targetBarCount: 10, xDomain: [3, 4] }),
+    expectTypedBarsMatchObjects(
+      index.getTypedDownsampledBars({ targetBarCount: 10, xDomain: [3, 4] }),
       index.getDownsampledBars({ targetBarCount: 10, xDomain: [3, 4] }),
     );
   });
 
-  test("matches compact returns to object returns for full, viewport, and last-window ranges", () => {
+  test("matches typed returns to object returns for full, viewport, and last-window ranges", () => {
     const index = new JsVizFinanceIndex(dataset);
 
     const domains: Array<[number, number]> = [
@@ -115,13 +115,13 @@ describe("JsVizFinanceIndex", () => {
     ];
 
     for (const xDomain of domains) {
-      const compact = index.getCompactReturns({ method: "simple", xDomain });
+      const typed = index.getTypedReturns({ method: "simple", xDomain });
       const object = index.getReturns({ method: "simple", xDomain });
 
-      expect([...compact.pointCount]).toEqual(object.samples.map((sample) => sample.pointCount));
-      expect([...compact.x]).toEqual(object.samples.map((sample) => sample.x));
-      expect([...compact.y]).toEqual(object.samples.map((sample) => sample.y));
-      expect(compact.summary).toMatchObject({
+      expect([...typed.pointCount]).toEqual(object.samples.map((sample) => sample.pointCount));
+      expect([...typed.x]).toEqual(object.samples.map((sample) => sample.x));
+      expect([...typed.y]).toEqual(object.samples.map((sample) => sample.y));
+      expect(typed.summary).toMatchObject({
         pointCount: object.summary.pointCount,
         sampleCount: object.summary.sampleCount,
         xDomain,
@@ -170,18 +170,18 @@ describe("JsVizFinanceIndex", () => {
   });
 });
 
-function expectCompactBarsMatchObjects(
-  compact: ReturnType<JsVizFinanceIndex["getCompactBars"]>,
+function expectTypedBarsMatchObjects(
+  typed: ReturnType<JsVizFinanceIndex["getTypedBars"]>,
   objectBars: ReturnType<JsVizFinanceIndex["getBars"]>,
 ) {
-  expect([...compact.adjustedClose]).toEqual(
+  expect([...typed.adjustedClose]).toEqual(
     objectBars.map((bar) => bar.adjustedClose ?? Number.NaN),
   );
-  expect([...compact.close]).toEqual(objectBars.map((bar) => bar.close));
-  expect([...compact.high]).toEqual(objectBars.map((bar) => bar.high));
-  expect([...compact.low]).toEqual(objectBars.map((bar) => bar.low));
-  expect([...compact.open]).toEqual(objectBars.map((bar) => bar.open));
-  expect([...compact.timestamp]).toEqual(objectBars.map((bar) => bar.timestamp));
-  expect([...compact.volume]).toEqual(objectBars.map((bar) => bar.volume ?? Number.NaN));
-  expect(compact.summary.barCount).toBe(objectBars.length);
+  expect([...typed.close]).toEqual(objectBars.map((bar) => bar.close));
+  expect([...typed.high]).toEqual(objectBars.map((bar) => bar.high));
+  expect([...typed.low]).toEqual(objectBars.map((bar) => bar.low));
+  expect([...typed.open]).toEqual(objectBars.map((bar) => bar.open));
+  expect([...typed.timestamp]).toEqual(objectBars.map((bar) => bar.timestamp));
+  expect([...typed.volume]).toEqual(objectBars.map((bar) => bar.volume ?? Number.NaN));
+  expect(typed.summary.barCount).toBe(objectBars.length);
 }
