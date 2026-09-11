@@ -28,7 +28,7 @@ export default defineConfig({
   root: "examples",
   server: {
     fs: {
-      allow: [projectRoot, resolve(projectRoot, "../rust-packages")],
+      allow: [projectRoot],
     },
   },
 });
