@@ -11,33 +11,113 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  performance-validation:
-    name: Performance validation
+  resolve-package:
+    name: Reuse compiled package
     permissions:
+      actions: read
       contents: read
       packages: read
-    uses: moritzbrantner/reusable-workflows/.github/workflows/performance-validation.yml@workflow-standard-v1.2
+    uses: moritzbrantner/reusable-workflows/.github/workflows/build-artifact.yml@544af51c921b09b4452b7346347ec9effa58f179
+    secrets: inherit
     with:
-      bun_version: 1.3.14
+      source_sha: ${{ github.sha }}
+      artifact_key: viz-engine-compiled-package-v1
+      node_version: "24"
+      bun_version: "1.3.14"
+      rust_toolchain: stable
+      rust_targets: wasm32-unknown-unknown
+      cache_bun: true
       bun_cache_dependency_path: bun.lock
       cache_cargo: true
       cargo_cache_dependency_path: Cargo.lock
+      use_environment_v1: false
+      setup_command: |
+        bun install --frozen-lockfile
+        cargo install wasm-pack --version 0.14.0 --locked
       build_command: bun run build
-      benchmark_command: |
-        bun run bench:quick
-        bun run bench:table:supported
-        bun run bench:gate
-      pre_command: |
-        rustup toolchain install stable --profile minimal
-        rustup default stable
-        if ! command -v wasm-pack >/dev/null 2>&1; then
-          cargo install wasm-pack --version 0.14.0 --locked
-        fi
       artifact_paths: |
-        bench/results
-      summary_paths: |
-        bench/results/latest.md
-        bench/results/performance-gate.md
-      upload_artifacts_on: always
-      artifact_retention_days: 30
-      timeout_minutes: 60
+        dist
+        src/wasm/pkg
+      reuse_across_runs: true
+      artifact_retention_days: 14
+
+  performance-validation:
+    name: Performance validation
+    needs: resolve-package
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve-package.outputs.source_sha }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Cache Bun
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Consume verified compiled package
+        uses: moritzbrantner/reusable-workflows/.github/actions/consume-build-artifact@544af51c921b09b4452b7346347ec9effa58f179
+        with:
+          producer_run_id: ${{ needs.resolve-package.outputs.producer_run_id }}
+          receipt_artifact_name: ${{ needs.resolve-package.outputs.receipt_artifact_name }}
+          artifact_name: ${{ needs.resolve-package.outputs.artifact_name }}
+          artifact_digest: ${{ needs.resolve-package.outputs.artifact_digest }}
+          source_sha: ${{ needs.resolve-package.outputs.source_sha }}
+          artifact_key: ${{ needs.resolve-package.outputs.artifact_key }}
+          identity_digest: ${{ needs.resolve-package.outputs.identity_digest }}
+          destination_path: .artifacts/viz-engine-build
+          github_token: ${{ github.token }}
+
+      - name: Stage compiled package
+        run: |
+          rm -rf dist src/wasm/pkg
+          cp -R .artifacts/viz-engine-build/dist ./dist
+          mkdir -p src/wasm
+          cp -R .artifacts/viz-engine-build/src/wasm/pkg src/wasm/pkg
+
+      - name: Run benchmarks
+        run: |
+          bun run bench:quick
+          bun run bench:table:supported
+          bun run bench:gate
+
+      - name: Publish benchmark summary
+        if: always()
+        run: |
+          for file in bench/results/latest.md bench/results/performance-gate.md; do
+            if [ -f "$file" ]; then
+              cat "$file" >> "$GITHUB_STEP_SUMMARY"
+              printf '\n' >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: viz-engine-performance-${{ github.sha }}
+          path: bench/results
+          if-no-files-found: warn
+          retention-days: 30
