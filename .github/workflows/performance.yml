@@ -17,7 +17,7 @@ jobs:
       actions: read
       contents: read
       packages: read
-    uses: moritzbrantner/reusable-workflows/.github/workflows/build-artifact.yml@544af51c921b09b4452b7346347ec9effa58f179
+    uses: moritzbrantner/reusable-workflows/.github/workflows/build-artifact.yml@5291d5162b128faca9dd83edba24e7342730e604
     secrets: inherit
     with:
       source_sha: ${{ github.sha }}
@@ -78,7 +78,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Consume verified compiled package
-        uses: moritzbrantner/reusable-workflows/.github/actions/consume-build-artifact@544af51c921b09b4452b7346347ec9effa58f179
+        uses: moritzbrantner/reusable-workflows/.github/actions/consume-build-artifact@5291d5162b128faca9dd83edba24e7342730e604
         with:
           producer_run_id: ${{ needs.resolve-package.outputs.producer_run_id }}
           receipt_artifact_name: ${{ needs.resolve-package.outputs.receipt_artifact_name }}
