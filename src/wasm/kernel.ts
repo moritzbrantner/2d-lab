@@ -8,8 +8,26 @@ export interface VizRenderKernel {
   ): Float32Array;
 }
 
-interface VizRenderKernelModule extends VizRenderKernel {
+export interface WgpuPolygonRendererWasm {
+  free?: () => void;
+  isDeviceLost(): boolean;
+  resize(width: number, height: number): void;
+  render(
+    points: Float32Array,
+    spans: Uint32Array,
+    transforms: Float32Array,
+    colors: Float32Array,
+    background: Float32Array,
+    width: number,
+    height: number,
+  ): Float64Array;
+}
+
+export interface VizRenderModule extends VizRenderKernel {
   default(): Promise<unknown>;
+  createWgpuPolygonRenderer?: (
+    canvas: HTMLCanvasElement,
+  ) => Promise<WgpuPolygonRendererWasm>;
 }
 
 function verifyAffineAbi(kernel: VizRenderKernel): void {
@@ -43,10 +61,10 @@ function verifyAffineAbi(kernel: VizRenderKernel): void {
   }
 }
 
-let kernelPromise: Promise<VizRenderKernel> | undefined;
+let modulePromise: Promise<VizRenderModule> | undefined;
 
-export function loadVizRenderKernel(): Promise<VizRenderKernel> {
-  kernelPromise ??= (async () => {
+export function loadVizRenderModule(): Promise<VizRenderModule> {
+  modulePromise ??= (async () => {
     const moduleUrl = new URL(
       `${import.meta.env.BASE_URL}wasm/viz_render_kernel.js`,
       window.location.origin,
@@ -54,11 +72,15 @@ export function loadVizRenderKernel(): Promise<VizRenderKernel> {
 
     const module = (await import(
       /* @vite-ignore */ moduleUrl
-    )) as VizRenderKernelModule;
+    )) as VizRenderModule;
     await module.default();
     verifyAffineAbi(module);
     return module;
   })();
 
-  return kernelPromise;
+  return modulePromise;
+}
+
+export async function loadVizRenderKernel(): Promise<VizRenderKernel> {
+  return loadVizRenderModule();
 }

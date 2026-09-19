@@ -5,12 +5,22 @@ import { validateDisplayList } from "./core/display-list";
 import { canvas2dRenderer } from "./renderers/canvas2d";
 import type { Renderer } from "./renderers/types";
 import { wasmCanvas2dRenderer } from "./renderers/wasm-canvas2d";
+import { wgpuPolygonRenderer } from "./renderers/wgpu";
+import { filledPolygonScene } from "./scenes/filled-polygons";
 import { mapLikeScene } from "./scenes/map-like";
 import type { SceneFixture } from "./scenes/types";
 import { vectorAnimationScene } from "./scenes/vector-animation";
 
-const fixtures: readonly SceneFixture[] = [mapLikeScene, vectorAnimationScene];
-const renderers: readonly Renderer[] = [canvas2dRenderer, wasmCanvas2dRenderer];
+const fixtures: readonly SceneFixture[] = [
+  filledPolygonScene,
+  mapLikeScene,
+  vectorAnimationScene,
+];
+const renderers: readonly Renderer[] = [
+  canvas2dRenderer,
+  wasmCanvas2dRenderer,
+  wgpuPolygonRenderer,
+];
 
 function requiredElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -20,19 +30,7 @@ function requiredElement<T extends Element>(selector: string): T {
   return element;
 }
 
-function requiredCanvas2DContext(
-  canvas: HTMLCanvasElement,
-): CanvasRenderingContext2D {
-  const context = canvas.getContext("2d");
-  if (!context) {
-    throw new Error("Canvas 2D is unavailable");
-  }
-  return context;
-}
-
-const canvas = requiredElement<HTMLCanvasElement>("#surface");
-const context = requiredCanvas2DContext(canvas);
-
+let canvas = requiredElement<HTMLCanvasElement>("#surface");
 const sceneSelect = requiredElement<HTMLSelectElement>("#scene");
 const rendererSelect = requiredElement<HTMLSelectElement>("#renderer");
 const animateInput = requiredElement<HTMLInputElement>("#animate");
@@ -51,11 +49,36 @@ for (const renderer of renderers) {
 }
 
 function selectedFixture(): SceneFixture {
-  return fixtures.find((fixture) => fixture.id === sceneSelect.value) ?? fixtures[0]!;
+  return (
+    fixtures.find((fixture) => fixture.id === sceneSelect.value) ?? fixtures[0]!
+  );
 }
 
 function selectedRenderer(): Renderer {
-  return renderers.find((renderer) => renderer.id === rendererSelect.value) ?? renderers[0]!;
+  return (
+    renderers.find((renderer) => renderer.id === rendererSelect.value) ??
+    renderers[0]!
+  );
+}
+
+function replaceSurfaceCanvas(): void {
+  const previous = canvas;
+  const next = document.createElement("canvas");
+  next.id = "surface";
+  next.setAttribute("aria-label", "Rendering experiment canvas");
+  previous.replaceWith(next);
+  canvas = next;
+
+  for (const renderer of renderers) {
+    void renderer.dispose?.(previous);
+  }
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024) {
+    return `${value} B`;
+  }
+  return `${(value / 1024).toFixed(1)} KiB`;
 }
 
 let startTime = performance.now();
@@ -70,36 +93,39 @@ async function drawFrame(timestamp: number): Promise<void> {
   try {
     const fixture = selectedFixture();
     const renderer = selectedRenderer();
+    const options = { debugBounds: debugBoundsInput.checked };
     const timeSeconds = animateInput.checked
       ? (timestamp - startTime) / 1000
       : 0;
     const displayList = fixture.create(timeSeconds);
     validateDisplayList(displayList);
 
-    if (canvas.width !== displayList.width || canvas.height !== displayList.height) {
-      canvas.width = displayList.width;
-      canvas.height = displayList.height;
-    }
-
     sceneDescription.textContent = fixture.description;
 
-    const stats = await renderer.render(context, displayList, {
-      debugBounds: debugBoundsInput.checked,
-    });
+    const supportError = renderer.support(displayList, options);
+    if (supportError) {
+      throw new Error(supportError);
+    }
+
+    const stats = await renderer.render(canvas, displayList, options);
 
     frameStats.textContent = [
-      `renderer     ${renderer.name}`,
-      `commands     ${stats.commandCount}`,
-      `points       ${stats.pointCount}`,
-      `prepare      ${stats.prepareMs.toFixed(3)} ms`,
-      `draw         ${stats.drawMs.toFixed(3)} ms`,
-      `WASM calls   ${stats.wasmCalls}`,
+      `renderer       ${renderer.name}`,
+      `commands       ${stats.commandCount}`,
+      `source points  ${stats.pointCount}`,
+      `prepare        ${stats.prepareMs.toFixed(3)} ms`,
+      `upload         ${stats.uploadMs.toFixed(3)} ms`,
+      `render/submit  ${stats.renderMs.toFixed(3)} ms`,
+      `draw calls     ${stats.drawCalls}`,
+      `GPU vertices   ${stats.vertexCount}`,
+      `upload bytes   ${formatBytes(stats.uploadBytes)}`,
+      `WASM calls     ${stats.wasmCalls}`,
     ].join("\n");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     frameStats.textContent =
-      `Renderer unavailable or failed:\n${message}\n\n` +
-      "Build the WASM package with `bun run build:wasm` before selecting the Rust/WASM path locally.";
+      `Renderer unavailable or unsupported:\n${message}\n\n` +
+      "The Rust renderers require `bun run build:wasm`; WebGPU also requires browser WebGPU support in a secure context.";
   } finally {
     frameInFlight = false;
   }
@@ -117,6 +143,8 @@ sceneSelect.addEventListener("change", () => {
 });
 
 rendererSelect.addEventListener("change", () => {
+  replaceSurfaceCanvas();
+  startTime = performance.now();
   benchmarkStats.textContent = "Not run yet.";
 });
 
@@ -128,21 +156,18 @@ benchmarkButton.addEventListener("click", async () => {
   benchmarkButton.disabled = true;
   benchmarkStats.textContent = "Running deterministic 90-frame benchmark…";
 
+  const renderer = selectedRenderer();
+  const fixture = selectedFixture();
+  const benchmarkCanvas = document.createElement("canvas");
+
   try {
-    const renderer = selectedRenderer();
-    const fixture = selectedFixture();
     const firstDisplayList = fixture.create(0);
-    const benchmarkCanvas = document.createElement("canvas");
     benchmarkCanvas.width = firstDisplayList.width;
     benchmarkCanvas.height = firstDisplayList.height;
-    const benchmarkContext = benchmarkCanvas.getContext("2d");
-    if (!benchmarkContext) {
-      throw new Error("Canvas 2D is unavailable for the benchmark");
-    }
 
     const result = await runRendererBenchmark(
       renderer,
-      benchmarkContext,
+      benchmarkCanvas,
       fixture,
       debugBoundsInput.checked,
     );
@@ -155,15 +180,20 @@ benchmarkButton.addEventListener("click", async () => {
       `p50               ${result.p50Ms.toFixed(3)} ms`,
       `p95               ${result.p95Ms.toFixed(3)} ms`,
       `prepare average   ${result.averagePrepareMs.toFixed(3)} ms`,
-      `draw average      ${result.averageDrawMs.toFixed(3)} ms`,
+      `upload average    ${result.averageUploadMs.toFixed(3)} ms`,
+      `render average    ${result.averageRenderMs.toFixed(3)} ms`,
       `commands/frame    ${result.commandCount}`,
       `points/frame      ${result.pointCount}`,
+      `draw calls/frame  ${result.drawCallsPerFrame}`,
+      `GPU vertices      ${result.vertexCount}`,
+      `upload/frame      ${formatBytes(result.uploadBytesPerFrame)}`,
       `WASM calls/frame  ${result.wasmCallsPerFrame}`,
     ].join("\n");
   } catch (error) {
     benchmarkStats.textContent =
       error instanceof Error ? error.message : String(error);
   } finally {
+    await renderer.dispose?.(benchmarkCanvas);
     benchmarkButton.disabled = false;
   }
 });

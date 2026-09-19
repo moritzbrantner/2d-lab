@@ -6,18 +6,27 @@ export interface RenderOptions {
 
 export interface FrameStats {
   readonly prepareMs: number;
-  readonly drawMs: number;
+  readonly uploadMs: number;
+  readonly renderMs: number;
   readonly commandCount: number;
   readonly pointCount: number;
   readonly wasmCalls: number;
+  readonly drawCalls: number;
+  readonly vertexCount: number;
+  readonly uploadBytes: number;
 }
 
 export interface Renderer {
   readonly id: string;
   readonly name: string;
+  support(
+    displayList: DisplayList,
+    options: RenderOptions,
+  ): string | null;
   render(
-    context: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
     displayList: DisplayList,
     options: RenderOptions,
   ): Promise<FrameStats>;
+  dispose?(canvas: HTMLCanvasElement): Promise<void> | void;
 }

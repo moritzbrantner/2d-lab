@@ -1,4 +1,4 @@
-import type { Renderer } from "./renderers/types";
+import type { FrameStats, Renderer } from "./renderers/types";
 import type { SceneFixture } from "./scenes/types";
 
 export interface BenchmarkResult {
@@ -7,10 +7,14 @@ export interface BenchmarkResult {
   readonly p95Ms: number;
   readonly averageMs: number;
   readonly averagePrepareMs: number;
-  readonly averageDrawMs: number;
+  readonly averageUploadMs: number;
+  readonly averageRenderMs: number;
   readonly commandCount: number;
   readonly pointCount: number;
   readonly wasmCallsPerFrame: number;
+  readonly drawCallsPerFrame: number;
+  readonly vertexCount: number;
+  readonly uploadBytesPerFrame: number;
 }
 
 function percentile(
@@ -29,32 +33,45 @@ function percentile(
 
 export async function runRendererBenchmark(
   renderer: Renderer,
-  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
   fixture: SceneFixture,
   debugBounds: boolean,
   frames = 90,
 ): Promise<BenchmarkResult> {
+  if (frames <= 0) {
+    throw new Error("benchmark frame count must be positive");
+  }
+
+  const options = { debugBounds };
   const displayLists = Array.from({ length: frames }, (_, index) =>
     fixture.create(index / 30),
   );
+  const supportError = renderer.support(displayLists[0]!, options);
+  if (supportError) {
+    throw new Error(supportError);
+  }
 
   for (let index = 0; index < Math.min(8, frames); index += 1) {
-    await renderer.render(context, displayLists[index]!, { debugBounds });
+    await renderer.render(canvas, displayLists[index]!, options);
   }
 
   const frameTimes: number[] = [];
   let prepareTotal = 0;
-  let drawTotal = 0;
-  let finalStats = await renderer.render(context, displayLists[0]!, {
-    debugBounds,
-  });
+  let uploadTotal = 0;
+  let renderTotal = 0;
+  let finalStats: FrameStats | undefined;
 
   for (const displayList of displayLists) {
     const start = performance.now();
-    finalStats = await renderer.render(context, displayList, { debugBounds });
+    finalStats = await renderer.render(canvas, displayList, options);
     frameTimes.push(performance.now() - start);
     prepareTotal += finalStats.prepareMs;
-    drawTotal += finalStats.drawMs;
+    uploadTotal += finalStats.uploadMs;
+    renderTotal += finalStats.renderMs;
+  }
+
+  if (!finalStats) {
+    throw new Error("benchmark produced no frame statistics");
   }
 
   const sorted = [...frameTimes].sort((left, right) => left - right);
@@ -66,9 +83,13 @@ export async function runRendererBenchmark(
     p95Ms: percentile(sorted, 0.95),
     averageMs: total / frames,
     averagePrepareMs: prepareTotal / frames,
-    averageDrawMs: drawTotal / frames,
+    averageUploadMs: uploadTotal / frames,
+    averageRenderMs: renderTotal / frames,
     commandCount: finalStats.commandCount,
     pointCount: finalStats.pointCount,
     wasmCallsPerFrame: finalStats.wasmCalls,
+    drawCallsPerFrame: finalStats.drawCalls,
+    vertexCount: finalStats.vertexCount,
+    uploadBytesPerFrame: finalStats.uploadBytes,
   };
 }

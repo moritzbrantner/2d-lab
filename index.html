@@ -30,7 +30,7 @@
       <section class="notes">
         <h2>Current experiment</h2>
         <p id="scene-description"></p>
-        <p>Both current renderers rasterize the same prepared screen-space geometry. The experiment isolates TypeScript versus a single batched Rust/WASM transform call before introducing a wgpu/WebGPU backend.</p>
+        <p>The first WebGPU slice deliberately supports only closed convex fill-only polygons. Canvas remains the semantic reference; strokes, concave-path tessellation, text, clipping and retained GPU geometry are separate measured slices.</p>
       </section>
     </main>
     <script type="module" src="/src/main.ts"></script>

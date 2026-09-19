@@ -14,16 +14,20 @@ The roadmap is evidence-driven. A later renderer is not promoted merely because 
 
 ## 2. WebGPU baseline
 
-- [ ] Add a minimal wgpu/WebGPU backend for solid polygons and stroked polylines.
-- [ ] Keep the display-list input identical where semantics overlap.
-- [ ] Record CPU prepare, upload, draw/submit and end-to-end frame timings separately.
-- [ ] Track draw calls, vertices, indices and bytes uploaded per frame.
+- [x] Add the first wgpu/WebGPU backend for closed convex solid polygons.
+- [ ] Add stroked polyline tessellation without changing display-list semantics.
+- [x] Keep the display-list input identical where semantics overlap.
+- [x] Record CPU prepare, upload-call, submit/present and end-to-end frame timings separately.
+- [x] Track draw calls, generated vertices and bytes uploaded per frame.
+- [x] Add a fill-only parity workload supported by both Canvas and WebGPU.
+- [ ] Add GPU timestamp-query evidence where browser/device support makes it reliable.
 - [ ] Exercise static geometry reuse versus per-frame rebuilds.
 
 ## 3. Vector tessellation
 
 - [ ] Add curves to the display-list test vocabulary.
 - [ ] Evaluate lyon tessellation in Rust.
+- [ ] Replace the convex-only triangle fan with measured general-path tessellation where required.
 - [ ] Separate path preparation/tessellation from GPU submission.
 - [ ] Cache immutable geometry and measure invalidation cost.
 - [ ] Compare CPU tessellation against any GPU-oriented alternative that is practical on the web.
