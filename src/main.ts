@@ -54,8 +54,8 @@ const comparisonStats =
 const sceneDescription =
   requiredElement<HTMLParagraphElement>("#scene-description");
 
-for (const fixture of workloads) {
-  sceneSelect.add(new Option(workload.name, fixture.id));
+for (const workload of workloads) {
+  sceneSelect.add(new Option(workload.name, workload.id));
 }
 for (const renderer of renderers) {
   rendererSelect.add(new Option(renderer.name, renderer.id));
@@ -63,7 +63,7 @@ for (const renderer of renderers) {
 
 function selectedWorkload(): BenchmarkWorkload {
   return (
-    workloads.find((fixture) => fixture.id === sceneSelect.value) ?? workloads[0]!
+    workloads.find((workload) => workload.id === sceneSelect.value) ?? workloads[0]!
   );
 }
 
