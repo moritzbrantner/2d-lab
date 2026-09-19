@@ -69,11 +69,11 @@
         <h2>Experiment boundary</h2>
         <p id="scene-description"></p>
         <p>
-          The custom retained backend is intentionally map-shaped: it requires
-          one shared frame transform and keeps verified-stable local geometry on
-          the GPU. Vello is the general vector competitor and owns path/stroke
-          preprocessing. Unsupported semantics are reported rather than silently
-          approximated.
+          The 2d-lab custom renderer always runs through Rust/WASM + wgpu.
+          It selects retained or immediate mode only when that mode preserves the
+          workload semantics; it never falls back to Canvas under the custom
+          identity. Vello remains the independent general-vector competitor.
+          Unsupported semantics are reported rather than silently approximated.
         </p>
       </section>
     </main>
