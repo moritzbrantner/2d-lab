@@ -26,6 +26,12 @@ If the lab later gains durable preferences such as persistent accessibility or a
 
 No current `rust-kernels` component matches the renderer-specific affine batching, convex polygon preparation, or GPU-resource responsibilities used here. Keep those experiments local until a genuinely domain-neutral kernel is proven by multiple consumers. If such a kernel appears, consume it from Rust rather than duplicating it.
 
+### rust-packages / math-geometry-2d
+
+`moenarch-math-geometry-2d` is relevant as the shared owner for validated 2D points, affines, bounds, line intersections, and polygon summaries. It is not currently a good dependency for the renderer hot path: 2d-lab's WASM ABI uses zero-copy flat numeric buffers, the custom pipeline needs convexity/tessellation-specific preparation that the crate does not own, and the crate intentionally composes shared media/runtime/serde contracts.
+
+Do not wrap every render vertex in shared domain structs merely to claim reuse. Re-evaluate this seam if a small zero-copy geometry kernel (for example convexity, tessellation, or affine batch primitives) is promoted from the shared Rust foundations; at that point 2d-lab should consume it instead of maintaining duplicate correctness logic.
+
 ### 3d-lab
 
 2d-lab has no 3D mesh, 3D camera, animation, or spatial-authority requirement. Do not create a dependency merely because both repositories use GPU rendering.
