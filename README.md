@@ -79,13 +79,16 @@ The page supports:
 - live scene/renderer switching;
 - one-renderer 90-frame benchmark;
 - a 45-frame **compatible renderer comparison** for the selected scene;
+- a dedicated 90-frame-per-renderer **Canvas 2D ↔ Vello decision matrix** across every shared workload;
 - fresh-surface initialization timing plus prepare, upload-call and render/submit timing;
 - end-to-end average, p50 and p95;
 - draw calls, generated vertices and upload bytes when the backend exposes them.
 
+The Canvas/Vello matrix pauses the live preview while measuring and alternates renderer order by scene so one backend is not systematically measured first. Debug bounds are disabled for this comparison because they are lab instrumentation rather than shared renderer semantics.
+
 Vello does not expose equivalent low-level vertex/upload accounting through this adapter, so those fields are shown as `n/a` rather than invented.
 
-Timing categories are CPU-side observations. They are not GPU timestamp-query measurements.
+Timing categories are CPU-side observations. They are not GPU timestamp-query measurements. Fresh-surface timing includes per-canvas setup, but shared browser/WASM module caches may already be warm; it is not a full cold-browser startup measurement.
 
 ## Run
 
