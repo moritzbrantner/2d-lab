@@ -1,6 +1,6 @@
 import { countPoints } from "../core/display-list";
 import {
-  loadVizRenderModule,
+  loadCustomWgpuModule,
   type WgpuPolygonRendererWasm,
 } from "../wasm/kernel";
 import { ensureCanvasSize } from "./canvas-surface";
