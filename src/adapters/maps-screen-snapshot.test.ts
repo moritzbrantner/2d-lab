@@ -15,6 +15,10 @@ describe("Maps screen snapshot adapter", () => {
       height: 720,
       width: 1200,
     });
+    expect(mapsE2eStyleSnapshot.provenance).toMatchObject({
+      sourceRepository: "moritzbrantner/maps",
+    });
+    expect(mapsE2eStyleSnapshot.provenance.sourceRevision).toMatch(/^[0-9a-f]{40}$/);
     expect(displayList.commands).toHaveLength(13);
     expect(displayList.commands.filter((command) => command.closed)).toHaveLength(5);
   });
@@ -22,6 +26,12 @@ describe("Maps screen snapshot adapter", () => {
   it("fails closed for polygon holes instead of changing Maps semantics", () => {
     const snapshot: MapsScreenSnapshot = {
       background: "#000",
+      provenance: {
+        generatedBy: "test",
+        sourceFixture: "test",
+        sourceRepository: "moritzbrantner/maps",
+        sourceRevision: "0000000000000000000000000000000000000000",
+      },
       height: 100,
       schema: "maps-2d-lab-screen-frame/v1",
       width: 100,
@@ -48,9 +58,27 @@ describe("Maps screen snapshot adapter", () => {
     expect(() => mapsScreenSnapshotToDisplayList(snapshot)).toThrow(/holes are unsupported/);
   });
 
+  it("fails closed when provenance is not pinned to an exact Maps revision", () => {
+    const snapshot = {
+      ...mapsE2eStyleSnapshot,
+      provenance: {
+        ...mapsE2eStyleSnapshot.provenance,
+        sourceRevision: "main",
+      },
+    } as unknown as MapsScreenSnapshot;
+
+    expect(() => mapsScreenSnapshotToDisplayList(snapshot)).toThrow(/exact Maps source revision/);
+  });
+
   it("fails closed for Maps primitives the lab cannot preserve", () => {
     const snapshot: MapsScreenSnapshot = {
       background: "#000",
+      provenance: {
+        generatedBy: "test",
+        sourceFixture: "test",
+        sourceRepository: "moritzbrantner/maps",
+        sourceRevision: "0000000000000000000000000000000000000000",
+      },
       height: 100,
       schema: "maps-2d-lab-screen-frame/v1",
       width: 100,

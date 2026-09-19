@@ -36,6 +36,12 @@ export type MapsScreenSnapshotPrimitive =
     };
 
 export type MapsScreenSnapshot = {
+  readonly provenance: {
+    readonly generatedBy: string;
+    readonly sourceFixture: string;
+    readonly sourceRepository: "moritzbrantner/maps";
+    readonly sourceRevision: string;
+  };
   readonly background: string;
   readonly height: number;
   readonly primitives: readonly MapsScreenSnapshotPrimitive[];
@@ -46,6 +52,12 @@ export type MapsScreenSnapshot = {
 export function mapsScreenSnapshotToDisplayList(snapshot: MapsScreenSnapshot): DisplayList {
   if (snapshot.schema !== "maps-2d-lab-screen-frame/v1") {
     throw new Error("unsupported Maps 2d-lab snapshot schema");
+  }
+  if (
+    snapshot.provenance.sourceRepository !== "moritzbrantner/maps" ||
+    !/^[0-9a-f]{40}$/.test(snapshot.provenance.sourceRevision)
+  ) {
+    throw new Error("Maps 2d-lab snapshot must pin an exact Maps source revision");
   }
 
   const commands = snapshot.primitives.map(toCommand);
