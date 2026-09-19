@@ -10,9 +10,9 @@ The roadmap is evidence-driven. A later renderer is not promoted merely because 
 - [x] Add batched Rust/WASM affine preparation.
 - [x] Keep product/domain authority outside this repository.
 
-## 2. Custom WebGPU baseline
+## 2. Custom Rust/WASM + wgpu baseline
 
-- [x] Add immediate wgpu/WebGPU rendering for closed convex solid polygons.
+- [x] Add immediate Rust/WASM rendering through `wgpu`/WebGPU for closed convex solid polygons.
 - [x] Track preparation, upload, submit, draw count, generated vertices and bytes.
 - [x] Preserve sRGB color semantics.
 - [x] Fail closed for unsupported strokes, concavity and debug overlays.
@@ -22,7 +22,7 @@ The roadmap is evidence-driven. A later renderer is not promoted merely because 
 ## 3. Map-specific retained geometry
 
 - [x] Add a map-shaped workload with static local geometry and one changing pan/zoom transform.
-- [x] Add a retained custom WebGPU backend.
+- [x] Add a retained Rust/WASM + `wgpu` backend.
 - [x] Keep triangulated geometry resident and upload only a frame uniform in steady state.
 - [x] Verify geometry values before reuse rather than assuming identity means immutability.
 - [ ] Let a future Maps adapter supply an authoritative geometry revision and measure the removed scan cost.
