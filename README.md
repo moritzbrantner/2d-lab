@@ -1,4 +1,4 @@
-# viz-engine
+# 2d-lab
 
 An experimental 2D rendering laboratory for Rust/WASM in the browser.
 
@@ -6,7 +6,7 @@ This repository exists to answer rendering questions with representative workloa
 
 ## Scope
 
-`viz-engine` owns rendering experiments and evidence:
+`2d-lab` owns rendering experiments and evidence:
 
 - low-level display-list and renderer boundaries;
 - Canvas 2D reference rendering;
@@ -29,7 +29,7 @@ All current paths consume the same low-level display list where their semantics 
 2. **Canvas 2D / Rust-WASM prepared** — the same Canvas rasterization after one batched Rust affine pass.
 3. **Custom WebGPU / immediate** — Rust transforms and triangle-fans convex fill-only polygons, uploads the generated vertices every frame, then submits one draw.
 4. **Custom WebGPU / retained map geometry** — for scenes with stable local fill geometry and one shared frame transform, triangulates/uploads geometry once and updates only a small frame uniform during steady-state frames. It conservatively verifies geometry values each frame; a real Maps adapter could replace that scan with a Maps-owned geometry revision.
-5. **Vello GPU / pinned upstream** — general vector competitor. Vello owns path/stroke preprocessing and GPU rasterization/compositing instead of viz-engine growing those facilities itself.
+5. **Vello GPU / pinned upstream** — general vector competitor. Vello owns path/stroke preprocessing and GPU rasterization/compositing instead of 2d-lab growing those facilities itself.
 
 ### Vello pin
 
@@ -134,7 +134,7 @@ Flat Stories
   -> Vello candidate for general vector rendering
   -> Flat Stories keeps document/rig/animation semantics
 
-viz-engine
+2d-lab
   -> benchmark and decision laboratory
   -> no consumer-owned semantics
 ```

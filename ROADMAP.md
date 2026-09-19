@@ -74,7 +74,7 @@ A rendering primitive moves into a stable shared package only after multiple rea
 
 ## 8. Promotion gate
 
-`viz-engine` remains a lab until a separate promotion decision is justified.
+`2d-lab` remains a lab until a separate promotion decision is justified.
 
 A shared 2D rendering contract must not be extracted merely because the lab has a useful display list. Promotion requires all of the following:
 
@@ -83,6 +83,6 @@ A shared 2D rendering contract must not be extracted merely because the lab has 
 - the candidate contract contains no map, editor, story, chart, or other product semantics;
 - each product's existing reference renderer remains the correctness oracle during adoption;
 - representative product-shaped benchmarks show a concrete reason to share the implementation rather than simply share ideas;
-- the promoted package receives a production-oriented name and ownership boundary instead of making `viz-engine` itself the authority.
+- the promoted package receives a production-oriented name and ownership boundary instead of making `2d-lab` itself the authority.
 
 Until that gate is met, reusable findings move outward as techniques, benchmark evidence, or deliberately copied small algorithms—not as a universal scene model.

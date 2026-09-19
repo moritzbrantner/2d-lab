@@ -10,7 +10,7 @@ This repository is a rendering decision laboratory, not a generic application fr
 - Do not force custom WebGPU and Vello behind one abstraction merely because both draw pixels.
 - Product-owned revision/caching knowledge stays with the product; the lab may model it explicitly for experiments.
 - Treat `BenchmarkWorkload` and `DisplayList` as lab-internal experiment contracts, not product APIs.
-- Products should normally consume findings, not add `viz-engine` as a runtime authority dependency.
+- Products should normally consume findings, not add `2d-lab` as a runtime authority dependency.
 - Promote reusable 2D rendering behavior only through a separately named production boundary after at least two real consumers prove the same semantics.
 
 ## Experiment discipline
