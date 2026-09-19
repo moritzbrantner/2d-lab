@@ -20,11 +20,18 @@ function requiredElement<T extends Element>(selector: string): T {
   return element;
 }
 
-const canvas = requiredElement<HTMLCanvasElement>("#surface");
-const context = canvas.getContext("2d");
-if (!context) {
-  throw new Error("Canvas 2D is unavailable");
+function requiredCanvas2DContext(
+  canvas: HTMLCanvasElement,
+): CanvasRenderingContext2D {
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Canvas 2D is unavailable");
+  }
+  return context;
 }
+
+const canvas = requiredElement<HTMLCanvasElement>("#surface");
+const context = requiredCanvas2DContext(canvas);
 
 const sceneSelect = requiredElement<HTMLSelectElement>("#scene");
 const rendererSelect = requiredElement<HTMLSelectElement>("#renderer");
