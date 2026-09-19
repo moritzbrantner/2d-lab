@@ -11,7 +11,7 @@ This repository exists to answer rendering questions with representative workloa
 - low-level display-list and renderer boundaries;
 - Canvas 2D reference rendering;
 - Rust/WASM preparation;
-- custom wgpu/WebGPU pipelines;
+- custom Rust/WASM rendering through wgpu/WebGPU;
 - retained-geometry experiments;
 - general vector renderer comparisons;
 - deterministic product-shaped fixtures;
@@ -84,7 +84,7 @@ The page supports:
 - end-to-end average, p50 and p95;
 - draw calls, generated vertices and upload bytes when the backend exposes them.
 
-The three-engine matrix pauses the live preview while measuring and rotates engine order by scene so one engine is not systematically measured first. Debug bounds are disabled for this comparison because they are lab instrumentation rather than shared renderer semantics. The custom contender chooses the most specialized semantics-preserving 2d-lab backend: retained WebGPU when its retained-geometry contract applies, otherwise immediate custom WebGPU. If neither custom path can preserve the workload, the custom row remains visible and reports the unsupported semantics; that missing coverage is part of the evidence.
+The three-engine matrix pauses the live preview while measuring and rotates engine order by scene so one engine is not systematically measured first. Debug bounds are disabled for this comparison because they are lab instrumentation rather than shared renderer semantics. The custom contender is one explicit `2d-lab custom · Rust/WASM + wgpu` renderer. TypeScript may choose retained versus immediate mode from workload semantics, but all custom rasterization, GPU resource management, command encoding and submission stay in the Rust/WASM kernel through `wgpu`; there is no Canvas fallback. If neither custom mode can preserve the workload, the custom row remains visible and reports the unsupported semantics; that missing coverage is part of the evidence.
 
 Vello does not expose equivalent low-level vertex/upload accounting through this adapter, so those fields are shown as `n/a` rather than invented.
 
