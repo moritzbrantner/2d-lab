@@ -142,4 +142,16 @@ Flat Stories
   -> no consumer-owned semantics
 ```
 
-See [ROADMAP.md](ROADMAP.md) for the next experiments.
+## Ecosystem reuse
+
+The lab reuses shared infrastructure at explicit seams:
+
+- `reusable-workflows` deploys GitHub Pages;
+- `github-pages-template` augments the lab with standardized `/stats/` and `/evidence/` routes;
+- `coding-tooling` discovers the repository's deterministic validation and benchmark-smoke capabilities;
+- `runtime-profiler` is the authority for representative runtime capture, with Moonlight owning baseline/candidate evaluation;
+- Maps and Flat Stories remain authoritative for the consumer workloads that shape lab experiments.
+
+The root lab remains repository-owned. Product models are not imported as scene authority, and missing runtime evidence is shown as unavailable rather than synthesized.
+
+See [docs/ecosystem.md](docs/ecosystem.md) for the exact pins and dependency decisions, and [ROADMAP.md](ROADMAP.md) for the next experiments.
