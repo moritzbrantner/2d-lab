@@ -45,7 +45,7 @@ The roadmap is evidence-driven. A later renderer is not promoted merely because 
 
 - [x] Add a retained-map workload that tests the main custom-renderer hypothesis.
 - [x] Formalize the animated figure scene as the Flat Stories-style redraw workload.
-- [ ] Import a representative Maps-derived fixture through a disposable adapter.
+- [x] Import a representative Maps-derived fixture through a disposable adapter.
 - [ ] Import the Flat Stories Nova fixture through a disposable adapter.
 - [ ] Preserve each product's own reference renderer as the semantic oracle.
 - [ ] Add screenshot/pixel-difference evidence where rasterizer differences make exact pixels inappropriate.

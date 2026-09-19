@@ -13,11 +13,13 @@ import { wasmCanvas2dRenderer } from "./renderers/wasm-canvas2d";
 import { wgpuPolygonRenderer } from "./renderers/wgpu";
 import { filledPolygonScene } from "./scenes/filled-polygons";
 import { mapLikeScene } from "./scenes/map-like";
+import { mapsE2eStyleWorkload } from "./scenes/maps-e2e-style";
 import { retainedMapScene } from "./scenes/retained-map";
 import type { BenchmarkWorkload } from "./scenes/types";
 import { vectorAnimationScene } from "./scenes/vector-animation";
 
 const workloads: readonly BenchmarkWorkload[] = [
+  mapsE2eStyleWorkload,
   retainedMapScene,
   vectorAnimationScene,
   filledPolygonScene,
