@@ -6,11 +6,12 @@ import {
 } from "./benchmark";
 import { validateDisplayList } from "./core/display-list";
 import { canvas2dRenderer } from "./renderers/canvas2d";
-import { retainedWgpuRenderer } from "./renderers/retained-wgpu";
+import {
+  customWgpuRenderer,
+  resolveCustomWgpuBackend,
+} from "./renderers/custom-wgpu";
 import type { FrameStats, Renderer } from "./renderers/types";
 import { velloGpuRenderer } from "./renderers/vello";
-import { wasmCanvas2dRenderer } from "./renderers/wasm-canvas2d";
-import { wgpuPolygonRenderer } from "./renderers/wgpu";
 import { filledPolygonScene } from "./scenes/filled-polygons";
 import { mapLikeScene } from "./scenes/map-like";
 import { retainedMapScene } from "./scenes/retained-map";
@@ -26,10 +27,8 @@ const workloads: readonly BenchmarkWorkload[] = [
 
 const renderers: readonly Renderer[] = [
   canvas2dRenderer,
-  wasmCanvas2dRenderer,
-  wgpuPolygonRenderer,
-  retainedWgpuRenderer,
   velloGpuRenderer,
+  customWgpuRenderer,
 ];
 
 interface DecisionCandidate {
@@ -71,27 +70,15 @@ function resolveDecisionRenderer(
         };
   }
 
-  const retainedError = retainedWgpuRenderer.support(displayList, options);
-  if (!retainedError) {
-    return {
-      renderer: retainedWgpuRenderer,
-      label: "2d-lab custom · retained WebGPU",
-    };
+  const customBackend = resolveCustomWgpuBackend(displayList, options);
+  if (typeof customBackend === "string") {
+    return customBackend;
   }
 
-  const immediateError = wgpuPolygonRenderer.support(displayList, options);
-  if (!immediateError) {
-    return {
-      renderer: wgpuPolygonRenderer,
-      label: "2d-lab custom · immediate WebGPU",
-    };
-  }
-
-  return [
-    "No current custom backend preserves this workload's semantics.",
-    `retained: ${retainedError}`,
-    `immediate: ${immediateError}`,
-  ].join(" ");
+  return {
+    renderer: customWgpuRenderer,
+    label: `2d-lab custom · Rust/WASM + wgpu · ${customBackend.label}`,
+  };
 }
 
 function requiredElement<T extends Element>(selector: string): T {
@@ -423,7 +410,7 @@ compareDecisionMatrixButton.addEventListener("click", async () => {
     "90 deterministic frames per engine; live rendering paused",
     "fresh-surface timing includes per-canvas setup; shared module caches may already be warm",
     "engine order rotates by scene to reduce systematic order bias",
-    "custom selects the most specialized semantics-preserving 2d-lab backend and reports which one ran",
+    "custom rendering always runs in Rust/WASM through wgpu; TypeScript only selects the semantics-preserving custom mode",
     "",
   ];
   const coverage = new Map<DecisionCandidate["id"], number>(
