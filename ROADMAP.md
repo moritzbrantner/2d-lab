@@ -21,6 +21,7 @@ The roadmap is evidence-driven. A later renderer is not promoted merely because 
 - [x] Track draw calls, generated vertices and bytes uploaded per frame.
 - [x] Add a fill-only parity workload supported by both Canvas and WebGPU.
 - [ ] Add GPU timestamp-query evidence where browser/device support makes it reliable.
+- [ ] Evaluate MSAA/edge anti-aliasing against the Canvas reference on rotated geometry.
 - [ ] Exercise static geometry reuse versus per-frame rebuilds.
 
 ## 3. Vector tessellation

@@ -18,8 +18,12 @@ export function polygonRendererSupportError(
   if (options.debugBounds) {
     return "The first WebGPU slice does not render debug bounds yet.";
   }
-  if (!parseHexColor(displayList.background)) {
+  const background = parseHexColor(displayList.background);
+  if (!background) {
     return "The first WebGPU slice requires a hex background color.";
+  }
+  if (background[3] !== 1) {
+    return "The first WebGPU slice requires an opaque background.";
   }
 
   for (const [index, command] of displayList.commands.entries()) {

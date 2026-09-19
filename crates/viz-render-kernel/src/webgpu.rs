@@ -31,9 +31,21 @@ fn vs_main(input: VertexInput) -> VertexOutput {
   return output;
 }
 
+fn srgb_to_linear(value: f32) -> f32 {
+  if value <= 0.04045 {
+    return value / 12.92;
+  }
+  return pow((value + 0.055) / 1.055, 2.4);
+}
+
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-  return vec4<f32>(input.color.rgb * input.color.a, input.color.a);
+  let linear = vec3<f32>(
+    srgb_to_linear(input.color.r),
+    srgb_to_linear(input.color.g),
+    srgb_to_linear(input.color.b)
+  );
+  return vec4<f32>(linear * input.color.a, input.color.a);
 }
 "#;
 
@@ -233,13 +245,13 @@ impl WgpuPolygonRenderer {
 
         self.resize(width, height);
 
-        let prepare_start = Date::now();
+        let prepare_start = now_ms();
         let vertices = build_convex_polygon_vertices(
             points, spans, transforms, colors, width, height,
         )
         .map_err(|message| JsValue::from_str(&message))?;
         let vertex_bytes = vertex_bytes(&vertices);
-        let prepare_ms = Date::now() - prepare_start;
+        let prepare_ms = now_ms() - prepare_start;
 
         let required = vertex_bytes.len() as u64;
         if required > self.vertex_capacity {
@@ -250,19 +262,19 @@ impl WgpuPolygonRenderer {
             self.vertex_capacity = capacity;
         }
 
-        let upload_start = Date::now();
+        let upload_start = now_ms();
         if !vertex_bytes.is_empty() {
             self.queue
                 .write_buffer(&self.vertex_buffer, 0, &vertex_bytes);
         }
-        let upload_ms = Date::now() - upload_start;
+        let upload_ms = now_ms() - upload_start;
 
-        let submit_start = Date::now();
+        let submit_start = now_ms();
         let Some(surface_frame) = self.acquire_surface_frame()? else {
             return Ok(metrics(
                 prepare_ms,
                 upload_ms,
-                Date::now() - submit_start,
+                now_ms() - submit_start,
                 vertices.len() / 6,
                 required,
                 0,
@@ -285,9 +297,9 @@ impl WgpuPolygonRenderer {
             resolve_target: None,
             ops: wgpu::Operations {
                 load: wgpu::LoadOp::Clear(wgpu::Color {
-                    r: background[0] as f64,
-                    g: background[1] as f64,
-                    b: background[2] as f64,
+                    r: srgb_to_linear(background[0]) as f64,
+                    g: srgb_to_linear(background[1]) as f64,
+                    b: srgb_to_linear(background[2]) as f64,
                     a: background[3] as f64,
                 }),
                 store: wgpu::StoreOp::Store,
@@ -295,7 +307,7 @@ impl WgpuPolygonRenderer {
         })];
 
         let vertex_count = (vertices.len() / 6) as u32;
-        let draw_calls = u32::from(vertex_count > 0);
+        let draw_calls = if vertex_count > 0 { 1 } else { 0 };
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("viz-engine convex polygon render pass"),
@@ -314,7 +326,7 @@ impl WgpuPolygonRenderer {
 
         self.queue.submit([encoder.finish()]);
         self.queue.present(surface_frame);
-        let submit_ms = Date::now() - submit_start;
+        let submit_ms = now_ms() - submit_start;
 
         Ok(metrics(
             prepare_ms,
@@ -355,6 +367,21 @@ impl WgpuPolygonRenderer {
                 Err(JsValue::from_str("wgpu surface validation failure"))
             }
         }
+    }
+}
+
+fn now_ms() -> f64 {
+    web_sys::window()
+        .and_then(|window| window.performance())
+        .map(|performance| performance.now())
+        .unwrap_or_else(Date::now)
+}
+
+fn srgb_to_linear(value: f32) -> f32 {
+    if value <= 0.04045 {
+        value / 12.92
+    } else {
+        ((value + 0.055) / 1.055).powf(2.4)
     }
 }
 

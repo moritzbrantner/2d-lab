@@ -26,7 +26,7 @@ All current paths consume the same low-level display list:
 2. **Canvas 2D / Rust-WASM prepared** — the same flattened buffers cross into Rust once per frame, Rust applies the transforms, then the same Canvas drawing code rasterizes them.
 3. **WebGPU / Rust-WASM convex polygons** — Rust applies affine transforms, triangle-fans closed convex fill-only polygons, packs position/color vertices, uploads one vertex buffer and submits one triangle-list draw call.
 
-The WebGPU path deliberately rejects open paths, strokes, concave polygons, non-hex paint and debug bounds. Those features should arrive through measured tessellation/rendering slices rather than silent approximation.
+The WebGPU path deliberately rejects open paths, strokes, concave polygons, non-hex paint, translucent backgrounds and debug bounds. Those features should arrive through measured tessellation/rendering slices rather than silent approximation. It currently uses a single-sample surface, so Canvas and WebGPU are expected to agree on geometry and color semantics rather than on edge pixels until an anti-aliasing slice is measured.
 
 ## Scenes
 

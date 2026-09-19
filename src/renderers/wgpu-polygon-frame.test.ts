@@ -36,7 +36,18 @@ describe("wgpu polygon frame", () => {
     expect(packed.colors[3]).toBe(1);
   });
 
-  it("fails closed for strokes and concave polygons", () => {
+  it("fails closed for unsupported paint and geometry semantics", () => {
+    const translucentBackground: DisplayList = {
+      ...convexScene,
+      background: "#ffffff80",
+    };
+    expect(
+      polygonRendererSupportError(translucentBackground, {
+        debugBounds: false,
+      }),
+    ).toMatch(/opaque background/);
+
+
     const stroked: DisplayList = {
       ...convexScene,
       commands: [
