@@ -2,7 +2,7 @@ import type { DisplayList, PathCommand } from "../core/display-list";
 import { countPoints } from "../core/display-list";
 import { parseHexColor } from "../geometry/color";
 import {
-  loadVizRenderModule,
+  loadCustomWgpuModule,
   type RetainedWgpuPolygonRendererWasm,
 } from "../wasm/kernel";
 import { ensureCanvasSize } from "./canvas-surface";
