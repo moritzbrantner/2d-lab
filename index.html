@@ -7,12 +7,12 @@
       name="description"
       content="Rust/WASM 2D rendering experiments for browser projects."
     />
-    <title>viz-engine rendering lab</title>
+    <title>2d-lab rendering lab</title>
   </head>
   <body>
     <main class="shell">
       <header>
-        <p class="eyebrow">viz-engine</p>
+        <p class="eyebrow">2d-lab</p>
         <h1>Rust/WASM 2D rendering lab</h1>
         <p class="lede">
           Compare Canvas, custom WebGPU, retained map geometry, and a pinned
@@ -39,6 +39,7 @@
         </label>
         <button id="benchmark" type="button">Run benchmark</button>
         <button id="compare" type="button">Compare compatible</button>
+        <button id="compare-vello-canvas" type="button">Canvas 2D vs Vello</button>
       </section>
 
       <section class="viewport">
@@ -57,6 +58,10 @@
         <div class="comparison">
           <h2>Compatible renderer comparison</h2>
           <pre id="comparison-stats">Not run yet.</pre>
+        </div>
+        <div class="comparison">
+          <h2>Canvas 2D ↔ Vello decision matrix</h2>
+          <pre id="vello-canvas-stats">Not run yet.</pre>
         </div>
       </section>
 
