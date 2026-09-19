@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:rust": "cargo test --workspace",
-    "check": "bun run typecheck && bun run test && bun run test:rust && bun run build"
+    "check": "bun run typecheck && bun run test && bun run test:rust && bun run build",
+    "benchmark:smoke": "vitest run src/benchmark-smoke.test.ts"
   },
   "devDependencies": {
     "typescript": "^6.0.0",
