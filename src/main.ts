@@ -321,6 +321,7 @@ compareButton.addEventListener("click", async () => {
         sections.push(
           [
             renderer.name,
+            `  fresh    ${result.freshSurfaceMs.toFixed(3)} ms`,
             `  average  ${result.averageMs.toFixed(3)} ms`,
             `  p95      ${result.p95Ms.toFixed(3)} ms`,
             `  prepare  ${result.averagePrepareMs.toFixed(3)} ms`,

@@ -79,7 +79,7 @@ The page supports:
 - live scene/renderer switching;
 - one-renderer 90-frame benchmark;
 - a 45-frame **compatible renderer comparison** for the selected scene;
-- prepare, upload-call and render/submit timing;
+- fresh-surface initialization timing plus prepare, upload-call and render/submit timing;
 - end-to-end average, p50 and p95;
 - draw calls, generated vertices and upload bytes when the backend exposes them.
 
