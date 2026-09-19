@@ -214,14 +214,14 @@ impl VelloGpuRenderer {
         };
 
         let view = surface_frame.texture.create_view(&wgpu::TextureViewDescriptor {
-            label: Some("viz-engine Vello sRGB surface view"),
+            label: Some("2d-lab Vello sRGB surface view"),
             format: Some(self.surface_view_format),
             ..Default::default()
         });
         let mut encoder =
             self.device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("viz-engine Vello command encoder"),
+                    label: Some("2d-lab Vello command encoder"),
                 });
 
         let clear_color = color_from_f32(background)?;
