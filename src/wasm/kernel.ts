@@ -69,6 +69,15 @@ export interface VizRenderModule extends VizRenderKernel {
   ) => Promise<VelloGpuRendererWasm>;
 }
 
+export interface CustomWgpuModule extends VizRenderModule {
+  createWgpuPolygonRenderer(
+    canvas: HTMLCanvasElement,
+  ): Promise<WgpuPolygonRendererWasm>;
+  createRetainedWgpuPolygonRenderer(
+    canvas: HTMLCanvasElement,
+  ): Promise<RetainedWgpuPolygonRendererWasm>;
+}
+
 function verifyAffineAbi(kernel: VizRenderKernel): void {
   const geometry = {
     points: new Float32Array([0, 0, 2, 1, -3, 4, 5, -2]),
@@ -122,4 +131,17 @@ export function loadVizRenderModule(): Promise<VizRenderModule> {
 
 export async function loadVizRenderKernel(): Promise<VizRenderKernel> {
   return loadVizRenderModule();
+}
+
+export async function loadCustomWgpuModule(): Promise<CustomWgpuModule> {
+  const module = await loadVizRenderModule();
+  if (
+    !module.createWgpuPolygonRenderer ||
+    !module.createRetainedWgpuPolygonRenderer
+  ) {
+    throw new Error(
+      "2d-lab custom rendering requires the Rust/WASM kernel with both wgpu backends.",
+    );
+  }
+  return module as CustomWgpuModule;
 }
