@@ -20,7 +20,7 @@ jobs:
       install_command: bun install --frozen-lockfile
       pre_command: |
         rustup target add wasm32-unknown-unknown
-        cargo install wasm-pack --locked
+        cargo install wasm-pack --locked --version 0.14.0
         rm -rf .github-pages-template
         git init .github-pages-template
         git -C .github-pages-template remote add origin https://github.com/moritzbrantner/github-pages-template.git
