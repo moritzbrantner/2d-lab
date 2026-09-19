@@ -118,7 +118,7 @@ low-level render list
        |
        +--> Canvas reference
        |
-       +--> custom map-oriented GPU experiments
+       +--> custom Rust/WASM + wgpu experiments
        |
        +--> Vello general-vector experiment
 ```
