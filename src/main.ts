@@ -32,6 +32,11 @@ const renderers: readonly Renderer[] = [
   velloGpuRenderer,
 ];
 
+const velloCanvasRenderers: readonly Renderer[] = [
+  canvas2dRenderer,
+  velloGpuRenderer,
+];
+
 function requiredElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
   if (!element) {
@@ -47,10 +52,14 @@ const animateInput = requiredElement<HTMLInputElement>("#animate");
 const debugBoundsInput = requiredElement<HTMLInputElement>("#debug-bounds");
 const benchmarkButton = requiredElement<HTMLButtonElement>("#benchmark");
 const compareButton = requiredElement<HTMLButtonElement>("#compare");
+const compareVelloCanvasButton =
+  requiredElement<HTMLButtonElement>("#compare-vello-canvas");
 const frameStats = requiredElement<HTMLPreElement>("#frame-stats");
 const benchmarkStats = requiredElement<HTMLPreElement>("#benchmark-stats");
 const comparisonStats =
   requiredElement<HTMLPreElement>("#comparison-stats");
+const velloCanvasStats =
+  requiredElement<HTMLPreElement>("#vello-canvas-stats");
 const sceneDescription =
   requiredElement<HTMLParagraphElement>("#scene-description");
 
@@ -128,6 +137,7 @@ function formatBenchmark(
     `renderer          ${renderer.name}`,
     `scene             ${workload.name}`,
     `frames            ${result.frames}`,
+    `fresh surface     ${result.freshSurfaceMs.toFixed(3)} ms`,
     `average           ${result.averageMs.toFixed(3)} ms`,
     `p50               ${result.p50Ms.toFixed(3)} ms`,
     `p95               ${result.p95Ms.toFixed(3)} ms`,
@@ -143,11 +153,42 @@ function formatBenchmark(
   ].join("\n");
 }
 
+function formatDecisionResult(
+  renderer: Renderer,
+  result: BenchmarkResult,
+): string {
+  return [
+    renderer.name,
+    `  fresh surface  ${result.freshSurfaceMs.toFixed(3)} ms`,
+    `  p50            ${result.p50Ms.toFixed(3)} ms`,
+    `  p95            ${result.p95Ms.toFixed(3)} ms`,
+    `  prepare avg    ${result.averagePrepareMs.toFixed(3)} ms`,
+    `  render avg     ${result.averageRenderMs.toFixed(3)} ms`,
+  ].join("\n");
+}
+
+function formatRatio(numerator: number, denominator: number): string {
+  return denominator > 0 ? `${(numerator / denominator).toFixed(2)}×` : "n/a";
+}
+
 let startTime = performance.now();
 let frameInFlight = false;
+let benchmarkInProgress = false;
+
+async function pauseLiveRendering(): Promise<void> {
+  benchmarkInProgress = true;
+  while (frameInFlight) {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
+}
+
+function resumeLiveRendering(): void {
+  benchmarkInProgress = false;
+  startTime = performance.now();
+}
 
 async function drawFrame(timestamp: number): Promise<void> {
-  if (frameInFlight) {
+  if (frameInFlight || benchmarkInProgress) {
     return;
   }
   frameInFlight = true;
@@ -206,7 +247,9 @@ animateInput.addEventListener("change", () => {
 benchmarkButton.addEventListener("click", async () => {
   benchmarkButton.disabled = true;
   compareButton.disabled = true;
+  compareVelloCanvasButton.disabled = true;
   benchmarkStats.textContent = "Running deterministic 90-frame benchmark…";
+  await pauseLiveRendering();
 
   const renderer = selectedRenderer();
   const workload = selectedWorkload();
@@ -230,15 +273,19 @@ benchmarkButton.addEventListener("click", async () => {
       error instanceof Error ? error.message : String(error);
   } finally {
     await renderer.dispose?.(benchmarkCanvas);
+    resumeLiveRendering();
     benchmarkButton.disabled = false;
     compareButton.disabled = false;
+    compareVelloCanvasButton.disabled = false;
   }
 });
 
 compareButton.addEventListener("click", async () => {
   benchmarkButton.disabled = true;
   compareButton.disabled = true;
+  compareVelloCanvasButton.disabled = true;
   comparisonStats.textContent = "Running compatible renderer comparison…";
+  await pauseLiveRendering();
 
   const workload = selectedWorkload();
   const options = { debugBounds: debugBoundsInput.checked };
@@ -298,7 +345,99 @@ compareButton.addEventListener("click", async () => {
     }
   } finally {
     comparisonStats.textContent = sections.join("\n");
+    resumeLiveRendering();
     benchmarkButton.disabled = false;
     compareButton.disabled = false;
+    compareVelloCanvasButton.disabled = false;
+  }
+});
+
+compareVelloCanvasButton.addEventListener("click", async () => {
+  benchmarkButton.disabled = true;
+  compareButton.disabled = true;
+  compareVelloCanvasButton.disabled = true;
+  velloCanvasStats.textContent = "Running Canvas 2D ↔ Vello benchmark matrix…";
+  await pauseLiveRendering();
+
+  const options = { debugBounds: false };
+  const sections: string[] = [
+    "Canvas 2D ↔ Vello decision matrix",
+    "90 deterministic frames per renderer; live rendering paused",
+    "fresh-surface timing includes per-canvas setup; shared module caches may already be warm",
+    "renderer order alternates by scene to reduce systematic order bias",
+    "",
+  ];
+
+  try {
+    for (const [workloadIndex, workload] of workloads.entries()) {
+      const firstDisplayList = workload.create(0);
+      const results = new Map<string, BenchmarkResult>();
+      const errors = new Map<string, string>();
+      const runOrder =
+        workloadIndex % 2 === 0
+          ? velloCanvasRenderers
+          : ([velloGpuRenderer, canvas2dRenderer] as const);
+
+      for (const renderer of runOrder) {
+        const supportError = renderer.support(firstDisplayList, options);
+        if (supportError) {
+          errors.set(renderer.id, supportError);
+          continue;
+        }
+
+        const benchmarkCanvas = document.createElement("canvas");
+        benchmarkCanvas.width = firstDisplayList.width;
+        benchmarkCanvas.height = firstDisplayList.height;
+
+        try {
+          results.set(
+            renderer.id,
+            await runRendererBenchmark(
+              renderer,
+              benchmarkCanvas,
+              workload,
+              false,
+              90,
+            ),
+          );
+        } catch (error) {
+          errors.set(
+            renderer.id,
+            error instanceof Error ? error.message : String(error),
+          );
+        } finally {
+          await renderer.dispose?.(benchmarkCanvas);
+        }
+      }
+
+      sections.push(workload.name);
+      for (const renderer of velloCanvasRenderers) {
+        const result = results.get(renderer.id);
+        if (result) {
+          sections.push(formatDecisionResult(renderer, result));
+        } else {
+          sections.push(
+            `${renderer.name}\n  unavailable: ${errors.get(renderer.id) ?? "unknown error"}`,
+          );
+        }
+      }
+
+      const canvasResult = results.get(canvas2dRenderer.id);
+      const velloResult = results.get(velloGpuRenderer.id);
+      if (canvasResult && velloResult) {
+        sections.push(
+          `  Vello / Canvas p50  ${formatRatio(velloResult.p50Ms, canvasResult.p50Ms)}`,
+          `  Vello / Canvas p95  ${formatRatio(velloResult.p95Ms, canvasResult.p95Ms)}`,
+        );
+      }
+      sections.push("");
+      velloCanvasStats.textContent = sections.join("\n");
+    }
+  } finally {
+    velloCanvasStats.textContent = sections.join("\n");
+    resumeLiveRendering();
+    benchmarkButton.disabled = false;
+    compareButton.disabled = false;
+    compareVelloCanvasButton.disabled = false;
   }
 });
