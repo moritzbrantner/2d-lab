@@ -22,17 +22,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - run: bun install
+      - run: npm install --no-audit --no-fund
+      - run: rustup target add wasm32-unknown-unknown
       - name: Install wasm-pack
         run: cargo install wasm-pack --locked
-      - run: bun run build:wasm
-      - run: bun run build
+      - run: bash scripts/build-wasm.sh
+      - run: npm exec vite -- build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
