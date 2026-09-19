@@ -11,9 +11,9 @@ export interface FrameStats {
   readonly commandCount: number;
   readonly pointCount: number;
   readonly wasmCalls: number;
-  readonly drawCalls: number;
-  readonly vertexCount: number;
-  readonly uploadBytes: number;
+  readonly drawCalls: number | null;
+  readonly vertexCount: number | null;
+  readonly uploadBytes: number | null;
 }
 
 export interface Renderer {

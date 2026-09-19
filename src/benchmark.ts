@@ -12,9 +12,9 @@ export interface BenchmarkResult {
   readonly commandCount: number;
   readonly pointCount: number;
   readonly wasmCallsPerFrame: number;
-  readonly drawCallsPerFrame: number;
-  readonly vertexCount: number;
-  readonly uploadBytesPerFrame: number;
+  readonly drawCallsPerFrame: number | null;
+  readonly vertexCount: number | null;
+  readonly uploadBytesPerFrame: number | null;
 }
 
 function percentile(

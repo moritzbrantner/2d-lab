@@ -23,11 +23,50 @@ export interface WgpuPolygonRendererWasm {
   ): Float64Array;
 }
 
+export interface RetainedWgpuPolygonRendererWasm {
+  free?: () => void;
+  isDeviceLost(): boolean;
+  uploadGeometry(
+    points: Float32Array,
+    spans: Uint32Array,
+    colors: Float32Array,
+  ): Float64Array;
+  render(
+    transform: Float32Array,
+    background: Float32Array,
+    width: number,
+    height: number,
+  ): Float64Array;
+}
+
+export interface VelloGpuRendererWasm {
+  free?: () => void;
+  isDeviceLost(): boolean;
+  render(
+    points: Float32Array,
+    spans: Uint32Array,
+    transforms: Float32Array,
+    fillColors: Float32Array,
+    strokeColors: Float32Array,
+    strokeWidths: Float32Array,
+    flags: Uint32Array,
+    background: Float32Array,
+    width: number,
+    height: number,
+  ): Float64Array;
+}
+
 export interface VizRenderModule extends VizRenderKernel {
   default(): Promise<unknown>;
   createWgpuPolygonRenderer?: (
     canvas: HTMLCanvasElement,
   ) => Promise<WgpuPolygonRendererWasm>;
+  createRetainedWgpuPolygonRenderer?: (
+    canvas: HTMLCanvasElement,
+  ) => Promise<RetainedWgpuPolygonRendererWasm>;
+  createVelloGpuRenderer?: (
+    canvas: HTMLCanvasElement,
+  ) => Promise<VelloGpuRendererWasm>;
 }
 
 function verifyAffineAbi(kernel: VizRenderKernel): void {

@@ -107,8 +107,8 @@ function createVectorAnimationScene(timeSeconds: number): DisplayList {
 
 export const vectorAnimationScene: SceneFixture = {
   id: "vector-animation",
-  name: "Vector animation",
+  name: "Flat Stories · vector animation",
   description:
-    "Forty-five articulated vector figures represented by transformed polygons. This is a transform-heavy stand-in for Flat Stories-style animation without importing its document model.",
+    "Forty-five animated vector figures with independently changing affine transforms, fills and strokes. This is the Flat Stories-shaped redraw workload: general vector semantics matter more than map-specific retained geometry.",
   create: createVectorAnimationScene,
 };

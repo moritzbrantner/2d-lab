@@ -3,7 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Rust/WASM 2D rendering experiments for browser projects." />
+    <meta
+      name="description"
+      content="Rust/WASM 2D rendering experiments for browser projects."
+    />
     <title>viz-engine rendering lab</title>
   </head>
   <body>
@@ -11,26 +14,62 @@
       <header>
         <p class="eyebrow">viz-engine</p>
         <h1>Rust/WASM 2D rendering lab</h1>
-        <p class="lede">Compare low-level browser rendering paths on deterministic map-like and vector-animation workloads.</p>
+        <p class="lede">
+          Compare Canvas, custom WebGPU, retained map geometry, and a pinned
+          Vello GPU backend on the same low-level scenes.
+        </p>
       </header>
+
       <section class="controls" aria-label="Rendering controls">
-        <label>Scene<select id="scene"></select></label>
-        <label>Renderer<select id="renderer"></select></label>
-        <label class="check"><input id="animate" type="checkbox" checked />Animate</label>
-        <label class="check"><input id="debug-bounds" type="checkbox" />Debug bounds</label>
+        <label>
+          Scene
+          <select id="scene"></select>
+        </label>
+        <label>
+          Renderer
+          <select id="renderer"></select>
+        </label>
+        <label class="check">
+          <input id="animate" type="checkbox" checked />
+          Animate
+        </label>
+        <label class="check">
+          <input id="debug-bounds" type="checkbox" />
+          Debug bounds
+        </label>
         <button id="benchmark" type="button">Run benchmark</button>
+        <button id="compare" type="button">Compare compatible</button>
       </section>
+
       <section class="viewport">
         <canvas id="surface" aria-label="Rendering experiment canvas"></canvas>
       </section>
+
       <section class="readout" aria-live="polite">
-        <div><h2>Frame</h2><pre id="frame-stats">Waiting for first frame…</pre></div>
-        <div><h2>Benchmark</h2><pre id="benchmark-stats">Not run yet.</pre></div>
+        <div>
+          <h2>Frame</h2>
+          <pre id="frame-stats">Waiting for first frame…</pre>
+        </div>
+        <div>
+          <h2>Selected benchmark</h2>
+          <pre id="benchmark-stats">Not run yet.</pre>
+        </div>
+        <div class="comparison">
+          <h2>Compatible renderer comparison</h2>
+          <pre id="comparison-stats">Not run yet.</pre>
+        </div>
       </section>
+
       <section class="notes">
-        <h2>Current experiment</h2>
+        <h2>Experiment boundary</h2>
         <p id="scene-description"></p>
-        <p>The first WebGPU slice deliberately supports only closed convex fill-only polygons. Canvas remains the semantic reference; strokes, concave-path tessellation, text, clipping and retained GPU geometry are separate measured slices.</p>
+        <p>
+          The custom retained backend is intentionally map-shaped: it requires
+          one shared frame transform and keeps verified-stable local geometry on
+          the GPU. Vello is the general vector competitor and owns path/stroke
+          preprocessing. Unsupported semantics are reported rather than silently
+          approximated.
+        </p>
       </section>
     </main>
     <script type="module" src="/src/main.ts"></script>

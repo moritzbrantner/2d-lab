@@ -6,57 +6,67 @@ The roadmap is evidence-driven. A later renderer is not promoted merely because 
 
 - [x] Remove the former generic dataset/layer/frame engine.
 - [x] Establish a low-level path display list with affine transforms and paint.
-- [x] Add a deterministic Canvas 2D reference renderer.
-- [x] Add one-batch Rust/WASM geometry transformation.
-- [x] Add map-like and vector-animation fixtures.
-- [x] Add browser benchmark and debug-bounds controls.
+- [x] Add deterministic Canvas 2D reference paths.
+- [x] Add batched Rust/WASM affine preparation.
 - [x] Keep product/domain authority outside this repository.
 
-## 2. WebGPU baseline
+## 2. Custom WebGPU baseline
 
-- [x] Add the first wgpu/WebGPU backend for closed convex solid polygons.
-- [ ] Add stroked polyline tessellation without changing display-list semantics.
-- [x] Keep the display-list input identical where semantics overlap.
-- [x] Record CPU prepare, upload-call, submit/present and end-to-end frame timings separately.
-- [x] Track draw calls, generated vertices and bytes uploaded per frame.
-- [x] Add a fill-only parity workload supported by both Canvas and WebGPU.
+- [x] Add immediate wgpu/WebGPU rendering for closed convex solid polygons.
+- [x] Track preparation, upload, submit, draw count, generated vertices and bytes.
+- [x] Preserve sRGB color semantics.
+- [x] Fail closed for unsupported strokes, concavity and debug overlays.
 - [ ] Add GPU timestamp-query evidence where browser/device support makes it reliable.
-- [ ] Evaluate MSAA/edge anti-aliasing against the Canvas reference on rotated geometry.
-- [ ] Exercise static geometry reuse versus per-frame rebuilds.
+- [ ] Evaluate MSAA/edge antialiasing against the Canvas reference.
 
-## 3. Vector tessellation
+## 3. Map-specific retained geometry
 
-- [ ] Add curves to the display-list test vocabulary.
-- [ ] Evaluate lyon tessellation in Rust.
-- [ ] Replace the convex-only triangle fan with measured general-path tessellation where required.
-- [ ] Separate path preparation/tessellation from GPU submission.
-- [ ] Cache immutable geometry and measure invalidation cost.
-- [ ] Compare CPU tessellation against any GPU-oriented alternative that is practical on the web.
+- [x] Add a map-shaped workload with static local geometry and one changing pan/zoom transform.
+- [x] Add a retained custom WebGPU backend.
+- [x] Keep triangulated geometry resident and upload only a frame uniform in steady state.
+- [x] Verify geometry values before reuse rather than assuming identity means immutability.
+- [ ] Let a future Maps adapter supply an authoritative geometry revision and measure the removed scan cost.
+- [ ] Add tile-level independent invalidation rather than one monolithic retained buffer.
+- [ ] Add map-specific line/stroke geometry and compare retained road buffers.
+- [ ] Add culling/visible-tile updates.
+- [ ] Add GPU picking only when a Maps workload needs it.
 
-## 4. Real product-shaped fixtures
+## 4. Vello comparison
 
-- [ ] Add an adapter fixture derived from a representative Maps scene.
-- [ ] Add an adapter fixture derived from the Flat Stories renderer lab.
-- [ ] Keep those adapters disposable: no product domain types in the rendering core.
+- [x] Pin one exact upstream Vello GPU revision for reproducible experiments.
+- [x] Adapt the same low-level path list into Vello without making Vello state authoritative.
+- [x] Support current fill/stroke workloads through Vello.
+- [x] Add Vello to the compatible-renderer benchmark.
+- [x] Treat internal Vello draw/upload metrics as unavailable rather than fabricating equivalents.
+- [ ] Add Vello CPU as a software-rendering/fallback comparison if that decision becomes relevant.
+- [ ] Revisit the git pin when Vello GPU has an appropriate published release.
+
+## 5. Product-shaped evidence
+
+- [x] Add a retained-map workload that tests the main custom-renderer hypothesis.
+- [x] Formalize the animated figure scene as the Flat Stories-style redraw workload.
+- [ ] Import a representative Maps-derived fixture through a disposable adapter.
+- [ ] Import the Flat Stories Nova fixture through a disposable adapter.
 - [ ] Preserve each product's own reference renderer as the semantic oracle.
+- [ ] Add screenshot/pixel-difference evidence where rasterizer differences make exact pixels inappropriate.
 
-## 5. Text and symbols
+## 6. General vector features
 
-- [ ] Measure Canvas text separately from GPU text.
-- [ ] Evaluate glyphon/cosmic-text for shaping and atlas-backed GPU rendering.
-- [ ] Add map-label workloads with many repeated glyphs.
-- [ ] Add vector-editor text workloads with transforms and opacity.
+Do not implement these merely to make the custom renderer look complete.
 
-## 6. Clipping, compositing and images
+- [ ] Curves.
+- [ ] General fill tessellation.
+- [ ] Strokes/joins/caps/dashes.
+- [ ] Text.
+- [ ] Clipping and opacity groups.
+- [ ] Images and gradients.
 
-- [ ] Nested clips.
-- [ ] Opacity groups.
-- [ ] Image/icon atlases.
-- [ ] Blend modes required by real consumers.
-- [ ] Explicit overdraw/debug visualization.
+For each item, first ask whether Vello or another specialized library already solves the generic problem well enough. Implement custom machinery only when a product-specific benchmark demonstrates leverage.
 
-## 7. Promotion criteria
+## 7. Decision criteria
 
-A renderer primitive can move into a stable shared package only after at least two independent consumers need the same semantics.
+For **Maps**, keep custom GPU work only where domain structure produces an end-to-end advantage such as retained tile geometry, cheaper camera-only frames, map-specific culling, picking or specialized shaders.
 
-A backend can become a production recommendation only after deterministic correctness checks pass, representative product-shaped fixtures exist, the improvement is visible in end-to-end browser evidence rather than only a microbenchmark, and startup cost, memory, and bundle/WASM size remain acceptable.
+For **Flat Stories**, prefer Vello if representative vector scenes meet correctness, browser compatibility, bundle/startup and frame-time requirements. Flat Stories should not grow a general renderer simply because a custom map pipeline exists elsewhere.
+
+A rendering primitive moves into a stable shared package only after multiple real consumers demonstrate the same semantic contract.
