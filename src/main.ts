@@ -6,16 +6,18 @@ import {
 } from "./benchmark";
 import { validateDisplayList } from "./core/display-list";
 import { canvas2dRenderer } from "./renderers/canvas2d";
-import { retainedWgpuRenderer } from "./renderers/retained-wgpu";
+import {
+  customWgpuRenderer,
+  resolveCustomWgpuBackend,
+} from "./renderers/custom-wgpu";
 import type { FrameStats, Renderer } from "./renderers/types";
 import { velloGpuRenderer } from "./renderers/vello";
-import { wasmCanvas2dRenderer } from "./renderers/wasm-canvas2d";
-import { wgpuPolygonRenderer } from "./renderers/wgpu";
 import { filledPolygonScene } from "./scenes/filled-polygons";
 import { mapLikeScene } from "./scenes/map-like";
 import { retainedMapScene } from "./scenes/retained-map";
 import type { BenchmarkWorkload } from "./scenes/types";
 import { vectorAnimationScene } from "./scenes/vector-animation";
+import { workloadProvenance } from "./scenes/provenance";
 
 const workloads: readonly BenchmarkWorkload[] = [
   retainedMapScene,
@@ -26,16 +28,59 @@ const workloads: readonly BenchmarkWorkload[] = [
 
 const renderers: readonly Renderer[] = [
   canvas2dRenderer,
-  wasmCanvas2dRenderer,
-  wgpuPolygonRenderer,
-  retainedWgpuRenderer,
   velloGpuRenderer,
+  customWgpuRenderer,
 ];
 
-const velloCanvasRenderers: readonly Renderer[] = [
-  canvas2dRenderer,
-  velloGpuRenderer,
+interface DecisionCandidate {
+  readonly id: "canvas" | "vello" | "custom";
+  readonly name: string;
+}
+
+interface ResolvedDecisionRenderer {
+  readonly renderer: Renderer;
+  readonly label: string;
+}
+
+const decisionCandidates: readonly DecisionCandidate[] = [
+  { id: "canvas", name: "Canvas 2D" },
+  { id: "vello", name: "Vello" },
+  { id: "custom", name: "2d-lab custom" },
 ];
+
+function resolveDecisionRenderer(
+  candidate: DecisionCandidate,
+  displayList: ReturnType<BenchmarkWorkload["create"]>,
+): ResolvedDecisionRenderer | string {
+  const options = { debugBounds: false };
+
+  if (candidate.id === "canvas") {
+    return {
+      renderer: canvas2dRenderer,
+      label: "Canvas 2D · TypeScript prepared geometry",
+    };
+  }
+
+  if (candidate.id === "vello") {
+    const supportError = velloGpuRenderer.support(displayList, options);
+    return supportError
+      ? supportError
+      : {
+          renderer: velloGpuRenderer,
+          label: "Vello GPU · pinned upstream",
+        };
+  }
+
+  const customBackend = resolveCustomWgpuBackend(displayList, options);
+  if (typeof customBackend === "string") {
+    return customBackend;
+  }
+
+  return {
+    renderer: customBackend.renderer,
+    label: `2d-lab custom · Rust/WASM + wgpu · ${customBackend.label}`,
+  };
+}
 
 function requiredElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -52,16 +97,18 @@ const animateInput = requiredElement<HTMLInputElement>("#animate");
 const debugBoundsInput = requiredElement<HTMLInputElement>("#debug-bounds");
 const benchmarkButton = requiredElement<HTMLButtonElement>("#benchmark");
 const compareButton = requiredElement<HTMLButtonElement>("#compare");
-const compareVelloCanvasButton =
-  requiredElement<HTMLButtonElement>("#compare-vello-canvas");
+const compareDecisionMatrixButton =
+  requiredElement<HTMLButtonElement>("#compare-decision-matrix");
 const frameStats = requiredElement<HTMLPreElement>("#frame-stats");
 const benchmarkStats = requiredElement<HTMLPreElement>("#benchmark-stats");
 const comparisonStats =
   requiredElement<HTMLPreElement>("#comparison-stats");
-const velloCanvasStats =
-  requiredElement<HTMLPreElement>("#vello-canvas-stats");
+const decisionMatrixStats =
+  requiredElement<HTMLPreElement>("#decision-matrix-stats");
 const sceneDescription =
   requiredElement<HTMLParagraphElement>("#scene-description");
+const sceneProvenance =
+  requiredElement<HTMLParagraphElement>("#scene-provenance");
 
 for (const workload of workloads) {
   sceneSelect.add(new Option(workload.name, workload.id));
@@ -154,11 +201,11 @@ function formatBenchmark(
 }
 
 function formatDecisionResult(
-  renderer: Renderer,
+  label: string,
   result: BenchmarkResult,
 ): string {
   return [
-    renderer.name,
+    label,
     `  fresh surface  ${result.freshSurfaceMs.toFixed(3)} ms`,
     `  p50            ${result.p50Ms.toFixed(3)} ms`,
     `  p95            ${result.p95Ms.toFixed(3)} ms`,
@@ -203,6 +250,21 @@ async function drawFrame(timestamp: number): Promise<void> {
     const displayList = workload.create(timeSeconds);
     validateDisplayList(displayList);
     sceneDescription.textContent = workload.description;
+    const provenance = workloadProvenance[workload.id];
+    sceneProvenance.textContent = provenance
+      ? [
+          provenance.kind === "consumer-shaped"
+            ? "Consumer-shaped workload"
+            : "Lab-owned synthetic workload",
+          provenance.sourceRepository
+            ? `${provenance.sourceRepository}@${provenance.sourceRevision ?? "unpinned"}`
+            : null,
+          provenance.sourceIdentity ?? null,
+          provenance.note,
+        ]
+          .filter((value): value is string => Boolean(value))
+          .join(" · ")
+      : "No workload provenance declared.";
 
     const supportError = renderer.support(displayList, options);
     if (supportError) {
@@ -247,7 +309,7 @@ animateInput.addEventListener("change", () => {
 benchmarkButton.addEventListener("click", async () => {
   benchmarkButton.disabled = true;
   compareButton.disabled = true;
-  compareVelloCanvasButton.disabled = true;
+  compareDecisionMatrixButton.disabled = true;
   benchmarkStats.textContent = "Running deterministic 90-frame benchmark…";
   await pauseLiveRendering();
 
@@ -276,14 +338,14 @@ benchmarkButton.addEventListener("click", async () => {
     resumeLiveRendering();
     benchmarkButton.disabled = false;
     compareButton.disabled = false;
-    compareVelloCanvasButton.disabled = false;
+    compareDecisionMatrixButton.disabled = false;
   }
 });
 
 compareButton.addEventListener("click", async () => {
   benchmarkButton.disabled = true;
   compareButton.disabled = true;
-  compareVelloCanvasButton.disabled = true;
+  compareDecisionMatrixButton.disabled = true;
   comparisonStats.textContent = "Running compatible renderer comparison…";
   await pauseLiveRendering();
 
@@ -349,40 +411,48 @@ compareButton.addEventListener("click", async () => {
     resumeLiveRendering();
     benchmarkButton.disabled = false;
     compareButton.disabled = false;
-    compareVelloCanvasButton.disabled = false;
+    compareDecisionMatrixButton.disabled = false;
   }
 });
 
-compareVelloCanvasButton.addEventListener("click", async () => {
+compareDecisionMatrixButton.addEventListener("click", async () => {
   benchmarkButton.disabled = true;
   compareButton.disabled = true;
-  compareVelloCanvasButton.disabled = true;
-  velloCanvasStats.textContent = "Running Canvas 2D ↔ Vello benchmark matrix…";
+  compareDecisionMatrixButton.disabled = true;
+  decisionMatrixStats.textContent =
+    "Running Canvas 2D ↔ Vello ↔ custom benchmark matrix…";
   await pauseLiveRendering();
 
-  const options = { debugBounds: false };
   const sections: string[] = [
-    "Canvas 2D ↔ Vello decision matrix",
-    "90 deterministic frames per renderer; live rendering paused",
+    "Canvas 2D ↔ Vello ↔ 2d-lab custom decision matrix",
+    "90 deterministic frames per engine; live rendering paused",
     "fresh-surface timing includes per-canvas setup; shared module caches may already be warm",
-    "renderer order alternates by scene to reduce systematic order bias",
+    "engine order rotates by scene to reduce systematic order bias",
+    "custom rendering always runs in Rust/WASM through wgpu; TypeScript only selects the semantics-preserving custom mode",
     "",
   ];
+  const coverage = new Map<DecisionCandidate["id"], number>(
+    decisionCandidates.map((candidate) => [candidate.id, 0]),
+  );
 
   try {
     for (const [workloadIndex, workload] of workloads.entries()) {
       const firstDisplayList = workload.create(0);
-      const results = new Map<string, BenchmarkResult>();
-      const errors = new Map<string, string>();
-      const runOrder =
-        workloadIndex % 2 === 0
-          ? velloCanvasRenderers
-          : ([velloGpuRenderer, canvas2dRenderer] as const);
+      const results = new Map<
+        DecisionCandidate["id"],
+        { readonly label: string; readonly result: BenchmarkResult }
+      >();
+      const errors = new Map<DecisionCandidate["id"], string>();
+      const offset = workloadIndex % decisionCandidates.length;
+      const runOrder = [
+        ...decisionCandidates.slice(offset),
+        ...decisionCandidates.slice(0, offset),
+      ];
 
-      for (const renderer of runOrder) {
-        const supportError = renderer.support(firstDisplayList, options);
-        if (supportError) {
-          errors.set(renderer.id, supportError);
+      for (const candidate of runOrder) {
+        const resolved = resolveDecisionRenderer(candidate, firstDisplayList);
+        if (typeof resolved === "string") {
+          errors.set(candidate.id, resolved);
           continue;
         }
 
@@ -391,54 +461,72 @@ compareVelloCanvasButton.addEventListener("click", async () => {
         benchmarkCanvas.height = firstDisplayList.height;
 
         try {
-          results.set(
-            renderer.id,
-            await runRendererBenchmark(
-              renderer,
-              benchmarkCanvas,
-              workload,
-              false,
-              90,
-            ),
+          const result = await runRendererBenchmark(
+            resolved.renderer,
+            benchmarkCanvas,
+            workload,
+            false,
+            90,
           );
+          results.set(candidate.id, { label: resolved.label, result });
+          coverage.set(candidate.id, (coverage.get(candidate.id) ?? 0) + 1);
         } catch (error) {
           errors.set(
-            renderer.id,
+            candidate.id,
             error instanceof Error ? error.message : String(error),
           );
         } finally {
-          await renderer.dispose?.(benchmarkCanvas);
+          await resolved.renderer.dispose?.(benchmarkCanvas);
         }
       }
 
       sections.push(workload.name);
-      for (const renderer of velloCanvasRenderers) {
-        const result = results.get(renderer.id);
-        if (result) {
-          sections.push(formatDecisionResult(renderer, result));
+      for (const candidate of decisionCandidates) {
+        const measured = results.get(candidate.id);
+        if (measured) {
+          sections.push(
+            formatDecisionResult(measured.label, measured.result),
+          );
         } else {
           sections.push(
-            `${renderer.name}\n  unavailable: ${errors.get(renderer.id) ?? "unknown error"}`,
+            `${candidate.name}\n  unsupported/unavailable: ${errors.get(candidate.id) ?? "unknown error"}`,
           );
         }
       }
 
-      const canvasResult = results.get(canvas2dRenderer.id);
-      const velloResult = results.get(velloGpuRenderer.id);
+      const canvasResult = results.get("canvas")?.result;
+      const velloResult = results.get("vello")?.result;
+      const customResult = results.get("custom")?.result;
       if (canvasResult && velloResult) {
         sections.push(
-          `  Vello / Canvas p50  ${formatRatio(velloResult.p50Ms, canvasResult.p50Ms)}`,
-          `  Vello / Canvas p95  ${formatRatio(velloResult.p95Ms, canvasResult.p95Ms)}`,
+          `  Vello / Canvas p50   ${formatRatio(velloResult.p50Ms, canvasResult.p50Ms)}`,
+          `  Vello / Canvas p95   ${formatRatio(velloResult.p95Ms, canvasResult.p95Ms)}`,
+        );
+      }
+      if (canvasResult && customResult) {
+        sections.push(
+          `  Custom / Canvas p50  ${formatRatio(customResult.p50Ms, canvasResult.p50Ms)}`,
+          `  Custom / Canvas p95  ${formatRatio(customResult.p95Ms, canvasResult.p95Ms)}`,
         );
       }
       sections.push("");
-      velloCanvasStats.textContent = sections.join("\n");
+      decisionMatrixStats.textContent = sections.join("\n");
     }
+
+    sections.push(
+      "Semantic coverage",
+      ...decisionCandidates.map(
+        (candidate) =>
+          `  ${candidate.name.padEnd(14)} ${coverage.get(candidate.id) ?? 0}/${workloads.length} workloads`,
+      ),
+      "",
+      "An unsupported custom row is evidence of a capability gap, not a failed benchmark.",
+    );
   } finally {
-    velloCanvasStats.textContent = sections.join("\n");
+    decisionMatrixStats.textContent = sections.join("\n");
     resumeLiveRendering();
     benchmarkButton.disabled = false;
     compareButton.disabled = false;
-    compareVelloCanvasButton.disabled = false;
+    compareDecisionMatrixButton.disabled = false;
   }
 });

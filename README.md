@@ -11,7 +11,7 @@ This repository exists to answer rendering questions with representative workloa
 - low-level display-list and renderer boundaries;
 - Canvas 2D reference rendering;
 - Rust/WASM preparation;
-- custom wgpu/WebGPU pipelines;
+- custom Rust/WASM rendering through wgpu/WebGPU;
 - retained-geometry experiments;
 - general vector renderer comparisons;
 - deterministic product-shaped fixtures;
@@ -79,12 +79,12 @@ The page supports:
 - live scene/renderer switching;
 - one-renderer 90-frame benchmark;
 - a 45-frame **compatible renderer comparison** for the selected scene;
-- a dedicated 90-frame-per-renderer **Canvas 2D ↔ Vello decision matrix** across every shared workload;
+- a dedicated 90-frame-per-engine **Canvas 2D ↔ Vello ↔ 2d-lab custom decision matrix** across every workload;
 - fresh-surface initialization timing plus prepare, upload-call and render/submit timing;
 - end-to-end average, p50 and p95;
 - draw calls, generated vertices and upload bytes when the backend exposes them.
 
-The Canvas/Vello matrix pauses the live preview while measuring and alternates renderer order by scene so one backend is not systematically measured first. Debug bounds are disabled for this comparison because they are lab instrumentation rather than shared renderer semantics.
+The three-engine matrix pauses the live preview while measuring and rotates engine order by scene so one engine is not systematically measured first. Debug bounds are disabled for this comparison because they are lab instrumentation rather than shared renderer semantics. The custom contender is one explicit `2d-lab custom · Rust/WASM + wgpu` renderer. TypeScript may choose retained versus immediate mode from workload semantics, but all custom rasterization, GPU resource management, command encoding and submission stay in the Rust/WASM kernel through `wgpu`; there is no Canvas fallback. If neither custom mode can preserve the workload, the custom row remains visible and reports the unsupported semantics; that missing coverage is part of the evidence.
 
 Vello does not expose equivalent low-level vertex/upload accounting through this adapter, so those fields are shown as `n/a` rather than invented.
 
@@ -118,7 +118,7 @@ low-level render list
        |
        +--> Canvas reference
        |
-       +--> custom map-oriented GPU experiments
+       +--> custom Rust/WASM + wgpu experiments
        |
        +--> Vello general-vector experiment
 ```
@@ -142,4 +142,16 @@ Flat Stories
   -> no consumer-owned semantics
 ```
 
-See [ROADMAP.md](ROADMAP.md) for the next experiments.
+## Ecosystem reuse
+
+The lab reuses shared infrastructure at explicit seams:
+
+- `reusable-workflows` deploys GitHub Pages;
+- `github-pages-template` augments the lab with standardized `/stats/` and `/evidence/` routes;
+- `coding-tooling` discovers the repository's deterministic validation and benchmark-smoke capabilities;
+- `runtime-profiler` is the authority for representative runtime capture, with Moonlight owning baseline/candidate evaluation;
+- Maps and Flat Stories remain authoritative for the consumer workloads that shape lab experiments.
+
+The root lab remains repository-owned. Product models are not imported as scene authority, and missing runtime evidence is shown as unavailable rather than synthesized.
+
+See [docs/ecosystem.md](docs/ecosystem.md) for the exact pins and dependency decisions, and [ROADMAP.md](ROADMAP.md) for the next experiments.

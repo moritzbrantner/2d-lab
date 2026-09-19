@@ -23,7 +23,7 @@ export function velloSupportError(
   options: RenderOptions,
 ): string | null {
   if (options.debugBounds) {
-    return "The Vello comparison does not render viz-engine debug bounds.";
+    return "The Vello comparison does not render 2d-lab debug bounds.";
   }
 
   const background = parseHexColor(displayList.background);

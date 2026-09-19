@@ -2,7 +2,7 @@ import type { DisplayList, PathCommand } from "../core/display-list";
 import { countPoints } from "../core/display-list";
 import { parseHexColor } from "../geometry/color";
 import {
-  loadVizRenderModule,
+  loadCustomWgpuModule,
   type RetainedWgpuPolygonRendererWasm,
 } from "../wasm/kernel";
 import { ensureCanvasSize } from "./canvas-surface";
@@ -29,12 +29,7 @@ function stateFor(canvas: HTMLCanvasElement): RetainedState {
   let state = stateByCanvas.get(canvas);
   if (!state) {
     const renderer = (async () => {
-      const module = await loadVizRenderModule();
-      if (!module.createRetainedWgpuPolygonRenderer) {
-        throw new Error(
-          "This WASM package does not expose the retained WebGPU renderer.",
-        );
-      }
+      const module = await loadCustomWgpuModule();
       return module.createRetainedWgpuPolygonRenderer(canvas);
     })().catch((error: unknown) => {
       stateByCanvas.delete(canvas);

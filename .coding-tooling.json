@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "profile": "repository-foundation-v1",
+  "tiers": {
+    "fast": ["typecheck", "build", "test:unit", "benchmark:smoke"],
+    "full": ["typecheck", "build", "test:unit", "benchmark:smoke"]
+  },
+  "requiredCapabilities": [
+    "typecheck",
+    "build",
+    "test:unit",
+    "benchmark:smoke"
+  ],
+  "optionalCapabilities": [],
+  "capabilityCommands": {
+    "2d-lab": {
+      "typecheck": ["bun", "run", "typecheck"],
+      "build": ["bun", "run", "build"],
+      "test:unit": ["bun", "run", "test"],
+      "benchmark:smoke": ["bun", "run", "benchmark:smoke"]
+    }
+  },
+  "merge": {
+    "authority": "hosted",
+    "requiredChecks": ["CI / validate"]
+  }
+}
