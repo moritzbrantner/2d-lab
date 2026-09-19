@@ -50,7 +50,17 @@ The roadmap is evidence-driven. A later renderer is not promoted merely because 
 - [x] Report unsupported custom semantics as coverage evidence instead of silently approximating or omitting the custom contender.
 - [ ] Track coverage over time so custom features are added only when a representative workload justifies them.
 
-## 6. Product-shaped evidence
+## 6. Shared evidence and repository setup
+
+- [x] Declare deterministic capabilities through `.coding-tooling.json`.
+- [x] Reuse `reusable-workflows` for Pages deployment.
+- [x] Reuse `github-pages-template` for shared stats/evidence presentation.
+- [x] Declare coding-tooling and runtime/Moonlight evidence sources on Pages.
+- [x] Pin consumer-shaped workload provenance to exact Maps and Flat Stories revisions.
+- [ ] Add a runtime-profiler scenario only once CI/manual capture can exercise representative browser/WebGPU behavior rather than measuring a test runner or fallback path.
+- [ ] Publish normalized `project-evidence-v1` runtime/Moonlight evidence after that scenario is stable.
+
+## 7. Product-shaped evidence
 
 - [x] Add a retained-map workload that tests the main custom-renderer hypothesis.
 - [x] Formalize the animated figure scene as the Flat Stories-style redraw workload.
@@ -59,7 +69,7 @@ The roadmap is evidence-driven. A later renderer is not promoted merely because 
 - [ ] Preserve each product's own reference renderer as the semantic oracle.
 - [ ] Add screenshot/pixel-difference evidence where rasterizer differences make exact pixels inappropriate.
 
-## 7. General vector features
+## 8. General vector features
 
 Do not implement these merely to make the custom renderer look complete.
 
@@ -72,7 +82,7 @@ Do not implement these merely to make the custom renderer look complete.
 
 For each item, first ask whether Vello or another specialized library already solves the generic problem well enough. Implement custom machinery only when a product-specific benchmark demonstrates leverage.
 
-## 8. Decision criteria
+## 9. Decision criteria
 
 For **Maps**, keep custom GPU work only where domain structure produces an end-to-end advantage such as retained tile geometry, cheaper camera-only frames, map-specific culling, picking or specialized shaders.
 
@@ -81,7 +91,7 @@ For **Flat Stories**, prefer Vello if representative vector scenes meet correctn
 A rendering primitive moves into a stable shared package only after multiple real consumers demonstrate the same semantic contract.
 
 
-## 9. Promotion gate
+## 10. Promotion gate
 
 `2d-lab` remains a lab until a separate promotion decision is justified.
 
