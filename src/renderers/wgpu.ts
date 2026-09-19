@@ -21,12 +21,7 @@ async function rendererFor(
   let pending = rendererByCanvas.get(canvas);
   if (!pending) {
     pending = (async () => {
-      const module = await loadVizRenderModule();
-      if (!module.createWgpuPolygonRenderer) {
-        throw new Error(
-          "This WASM package does not expose the wgpu polygon renderer.",
-        );
-      }
+      const module = await loadCustomWgpuModule();
       return module.createWgpuPolygonRenderer(canvas);
     })().catch((error: unknown) => {
       rendererByCanvas.delete(canvas);
