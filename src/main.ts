@@ -17,6 +17,7 @@ import { mapLikeScene } from "./scenes/map-like";
 import { retainedMapScene } from "./scenes/retained-map";
 import type { BenchmarkWorkload } from "./scenes/types";
 import { vectorAnimationScene } from "./scenes/vector-animation";
+import { workloadProvenance } from "./scenes/provenance";
 
 const workloads: readonly BenchmarkWorkload[] = [
   retainedMapScene,
@@ -106,6 +107,8 @@ const decisionMatrixStats =
   requiredElement<HTMLPreElement>("#decision-matrix-stats");
 const sceneDescription =
   requiredElement<HTMLParagraphElement>("#scene-description");
+const sceneProvenance =
+  requiredElement<HTMLParagraphElement>("#scene-provenance");
 
 for (const workload of workloads) {
   sceneSelect.add(new Option(workload.name, workload.id));
@@ -247,6 +250,21 @@ async function drawFrame(timestamp: number): Promise<void> {
     const displayList = workload.create(timeSeconds);
     validateDisplayList(displayList);
     sceneDescription.textContent = workload.description;
+    const provenance = workloadProvenance[workload.id];
+    sceneProvenance.textContent = provenance
+      ? [
+          provenance.kind === "consumer-shaped"
+            ? "Consumer-shaped workload"
+            : "Lab-owned synthetic workload",
+          provenance.sourceRepository
+            ? `${provenance.sourceRepository}@${provenance.sourceRevision ?? "unpinned"}`
+            : null,
+          provenance.sourceIdentity ?? null,
+          provenance.note,
+        ]
+          .filter((value): value is string => Boolean(value))
+          .join(" · ")
+      : "No workload provenance declared.";
 
     const supportError = renderer.support(displayList, options);
     if (supportError) {
