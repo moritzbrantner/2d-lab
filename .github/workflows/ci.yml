@@ -16,10 +16,10 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run test
-      - run: cargo test --workspace
+      - run: cargo test --workspace --locked
       - run: rustup target add wasm32-unknown-unknown
-      - run: cargo check --workspace --target wasm32-unknown-unknown
+      - run: cargo check --workspace --target wasm32-unknown-unknown --locked
       - run: bun run build
