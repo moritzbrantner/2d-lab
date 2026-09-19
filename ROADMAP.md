@@ -70,3 +70,19 @@ For **Maps**, keep custom GPU work only where domain structure produces an end-t
 For **Flat Stories**, prefer Vello if representative vector scenes meet correctness, browser compatibility, bundle/startup and frame-time requirements. Flat Stories should not grow a general renderer simply because a custom map pipeline exists elsewhere.
 
 A rendering primitive moves into a stable shared package only after multiple real consumers demonstrate the same semantic contract.
+
+
+## 8. Promotion gate
+
+`viz-engine` remains a lab until a separate promotion decision is justified.
+
+A shared 2D rendering contract must not be extracted merely because the lab has a useful display list. Promotion requires all of the following:
+
+- at least two real product consumers need materially the same rendering semantics;
+- each product keeps its canonical scene/document/map model and owns its adapter;
+- the candidate contract contains no map, editor, story, chart, or other product semantics;
+- each product's existing reference renderer remains the correctness oracle during adoption;
+- representative product-shaped benchmarks show a concrete reason to share the implementation rather than simply share ideas;
+- the promoted package receives a production-oriented name and ownership boundary instead of making `viz-engine` itself the authority.
+
+Until that gate is met, reusable findings move outward as techniques, benchmark evidence, or deliberately copied small algorithms—not as a universal scene model.

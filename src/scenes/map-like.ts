@@ -3,7 +3,7 @@ import type {
   DisplayList,
   PathCommand,
 } from "../core/display-list";
-import type { SceneFixture } from "./types";
+import type { BenchmarkWorkload } from "./types";
 
 function path(
   points: readonly number[],
@@ -100,7 +100,7 @@ function createMapLikeScene(timeSeconds: number): DisplayList {
   };
 }
 
-export const mapLikeScene: SceneFixture = {
+export const mapLikeScene: BenchmarkWorkload = {
   id: "map-like",
   name: "Map-like geometry",
   description:

@@ -3,7 +3,7 @@ import type {
   DisplayList,
   PathCommand,
 } from "../core/display-list";
-import type { SceneFixture } from "./types";
+import type { BenchmarkWorkload } from "./types";
 
 interface StaticFeature {
   readonly points: Float32Array;
@@ -68,7 +68,7 @@ function createRetainedMapScene(timeSeconds: number): DisplayList {
   };
 }
 
-export const retainedMapScene: SceneFixture = {
+export const retainedMapScene: BenchmarkWorkload = {
   id: "retained-map",
   name: "Map · retained geometry",
   description:

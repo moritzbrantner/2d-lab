@@ -3,7 +3,7 @@ import type {
   DisplayList,
   PathCommand,
 } from "../core/display-list";
-import type { SceneFixture } from "./types";
+import type { BenchmarkWorkload } from "./types";
 
 const QUAD = new Float32Array([
   -17, -13,
@@ -69,7 +69,7 @@ function createFilledPolygonScene(timeSeconds: number): DisplayList {
   };
 }
 
-export const filledPolygonScene: SceneFixture = {
+export const filledPolygonScene: BenchmarkWorkload = {
   id: "filled-polygons",
   name: "Filled polygon parity",
   description:

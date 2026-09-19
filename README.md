@@ -19,7 +19,7 @@ This repository exists to answer rendering questions with representative workloa
 
 It does **not** own map projection, geographic semantics, vector-editor documents, animation models, chart data, tables, or another product's scene graph. Product repositories adapt their authoritative state into render-ready primitives.
 
-The current `DisplayList` and `SceneFixture` shapes are **lab-internal workload contracts**, not shared scene APIs. A product must not import them as canonical scene/document/map state; if a stable 2D rendering contract is ever promoted, that should happen deliberately after multiple real consumers prove the same seam.
+The current `DisplayList` and `BenchmarkWorkload` shapes are **lab-internal workload contracts**, not shared scene APIs. A product must not import them as canonical scene/document/map state; if a stable 2D rendering contract is ever promoted, that should happen deliberately after multiple real consumers prove the same seam.
 
 ## Current render paths
 

@@ -3,7 +3,7 @@ import type {
   DisplayList,
   PathCommand,
 } from "../core/display-list";
-import type { SceneFixture } from "./types";
+import type { BenchmarkWorkload } from "./types";
 
 const RECT = new Float32Array([-8, -22, 8, -22, 8, 22, -8, 22]);
 const HEAD = new Float32Array([
@@ -105,7 +105,7 @@ function createVectorAnimationScene(timeSeconds: number): DisplayList {
   };
 }
 
-export const vectorAnimationScene: SceneFixture = {
+export const vectorAnimationScene: BenchmarkWorkload = {
   id: "vector-animation",
   name: "Flat Stories · vector animation",
   description:

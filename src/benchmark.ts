@@ -1,5 +1,5 @@
 import type { FrameStats, Renderer } from "./renderers/types";
-import type { SceneFixture } from "./scenes/types";
+import type { BenchmarkWorkload } from "./scenes/types";
 
 export interface BenchmarkResult {
   readonly frames: number;
@@ -34,7 +34,7 @@ function percentile(
 export async function runRendererBenchmark(
   renderer: Renderer,
   canvas: HTMLCanvasElement,
-  fixture: SceneFixture,
+  workload: BenchmarkWorkload,
   debugBounds: boolean,
   frames = 90,
 ): Promise<BenchmarkResult> {
@@ -44,7 +44,7 @@ export async function runRendererBenchmark(
 
   const options = { debugBounds };
   const displayLists = Array.from({ length: frames }, (_, index) =>
-    fixture.create(index / 30),
+    workload.create(index / 30),
   );
   const supportError = renderer.support(displayLists[0]!, options);
   if (supportError) {

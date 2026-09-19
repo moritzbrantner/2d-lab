@@ -14,10 +14,10 @@ import { wgpuPolygonRenderer } from "./renderers/wgpu";
 import { filledPolygonScene } from "./scenes/filled-polygons";
 import { mapLikeScene } from "./scenes/map-like";
 import { retainedMapScene } from "./scenes/retained-map";
-import type { SceneFixture } from "./scenes/types";
+import type { BenchmarkWorkload } from "./scenes/types";
 import { vectorAnimationScene } from "./scenes/vector-animation";
 
-const fixtures: readonly SceneFixture[] = [
+const workloads: readonly BenchmarkWorkload[] = [
   retainedMapScene,
   vectorAnimationScene,
   filledPolygonScene,
@@ -54,16 +54,16 @@ const comparisonStats =
 const sceneDescription =
   requiredElement<HTMLParagraphElement>("#scene-description");
 
-for (const fixture of fixtures) {
-  sceneSelect.add(new Option(fixture.name, fixture.id));
+for (const fixture of workloads) {
+  sceneSelect.add(new Option(workload.name, fixture.id));
 }
 for (const renderer of renderers) {
   rendererSelect.add(new Option(renderer.name, renderer.id));
 }
 
-function selectedFixture(): SceneFixture {
+function selectedWorkload(): BenchmarkWorkload {
   return (
-    fixtures.find((fixture) => fixture.id === sceneSelect.value) ?? fixtures[0]!
+    workloads.find((fixture) => fixture.id === sceneSelect.value) ?? workloads[0]!
   );
 }
 
@@ -121,12 +121,12 @@ function formatFrameStats(
 
 function formatBenchmark(
   renderer: Renderer,
-  fixture: SceneFixture,
+  workload: BenchmarkWorkload,
   result: BenchmarkResult,
 ): string {
   return [
     `renderer          ${renderer.name}`,
-    `scene             ${fixture.name}`,
+    `scene             ${workload.name}`,
     `frames            ${result.frames}`,
     `average           ${result.averageMs.toFixed(3)} ms`,
     `p50               ${result.p50Ms.toFixed(3)} ms`,
@@ -153,15 +153,15 @@ async function drawFrame(timestamp: number): Promise<void> {
   frameInFlight = true;
 
   try {
-    const fixture = selectedFixture();
+    const workload = selectedWorkload();
     const renderer = selectedRenderer();
     const options = { debugBounds: debugBoundsInput.checked };
     const timeSeconds = animateInput.checked
       ? (timestamp - startTime) / 1000
       : 0;
-    const displayList = fixture.create(timeSeconds);
+    const displayList = workload.create(timeSeconds);
     validateDisplayList(displayList);
-    sceneDescription.textContent = fixture.description;
+    sceneDescription.textContent = workload.description;
 
     const supportError = renderer.support(displayList, options);
     if (supportError) {
@@ -209,22 +209,22 @@ benchmarkButton.addEventListener("click", async () => {
   benchmarkStats.textContent = "Running deterministic 90-frame benchmark…";
 
   const renderer = selectedRenderer();
-  const fixture = selectedFixture();
+  const workload = selectedWorkload();
   const benchmarkCanvas = document.createElement("canvas");
 
   try {
-    const firstDisplayList = fixture.create(0);
+    const firstDisplayList = workload.create(0);
     benchmarkCanvas.width = firstDisplayList.width;
     benchmarkCanvas.height = firstDisplayList.height;
 
     const result = await runRendererBenchmark(
       renderer,
       benchmarkCanvas,
-      fixture,
+      workload,
       debugBoundsInput.checked,
     );
 
-    benchmarkStats.textContent = formatBenchmark(renderer, fixture, result);
+    benchmarkStats.textContent = formatBenchmark(renderer, workload, result);
   } catch (error) {
     benchmarkStats.textContent =
       error instanceof Error ? error.message : String(error);
@@ -240,11 +240,11 @@ compareButton.addEventListener("click", async () => {
   compareButton.disabled = true;
   comparisonStats.textContent = "Running compatible renderer comparison…";
 
-  const fixture = selectedFixture();
+  const workload = selectedWorkload();
   const options = { debugBounds: debugBoundsInput.checked };
-  const firstDisplayList = fixture.create(0);
+  const firstDisplayList = workload.create(0);
   const sections: string[] = [
-    `scene: ${fixture.name}`,
+    `scene: ${workload.name}`,
     "45 deterministic frames per compatible renderer",
     "",
   ];
@@ -267,7 +267,7 @@ compareButton.addEventListener("click", async () => {
         const result = await runRendererBenchmark(
           renderer,
           benchmarkCanvas,
-          fixture,
+          workload,
           options.debugBounds,
           45,
         );
