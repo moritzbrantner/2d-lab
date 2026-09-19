@@ -29,12 +29,7 @@ function stateFor(canvas: HTMLCanvasElement): RetainedState {
   let state = stateByCanvas.get(canvas);
   if (!state) {
     const renderer = (async () => {
-      const module = await loadVizRenderModule();
-      if (!module.createRetainedWgpuPolygonRenderer) {
-        throw new Error(
-          "This WASM package does not expose the retained WebGPU renderer.",
-        );
-      }
+      const module = await loadCustomWgpuModule();
       return module.createRetainedWgpuPolygonRenderer(canvas);
     })().catch((error: unknown) => {
       stateByCanvas.delete(canvas);
