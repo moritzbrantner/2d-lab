@@ -24,6 +24,8 @@ This repository is a rendering decision laboratory, not a generic application fr
 - Prefer end-to-end evidence over isolated microbenchmarks.
 - Keep Canvas 2D, pinned Vello, and the 2d-lab custom contender visible as the stable three-engine decision baseline.
 - For the custom contender, report the actual specialized backend used; when no custom backend preserves a workload, keep the row visible and report the semantic coverage gap instead of approximating it.
+- The `2d-lab custom` renderer is Rust/WASM + `wgpu`; TypeScript may adapt/route workload data but must not provide a Canvas or TypeScript rasterization fallback under the custom identity.
+- Keep custom GPU resource ownership, command encoding, and submission inside the Rust WASM kernel.
 
 ## Custom renderer rule
 
