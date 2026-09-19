@@ -1,34 +1,8 @@
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
-import wasm from "vite-plugin-wasm";
-
-const projectRoot = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-  plugins: [tailwindcss(), wasm(), react()],
-  resolve: {
-    alias: [
-      {
-        find: "@moritzbrantner/viz-engine/core",
-        replacement: resolve(projectRoot, "src/core.ts"),
-      },
-      {
-        find: "@moritzbrantner/viz-engine/react",
-        replacement: resolve(projectRoot, "src/react.tsx"),
-      },
-      {
-        find: "@moritzbrantner/viz-engine",
-        replacement: resolve(projectRoot, "src/index.ts"),
-      },
-    ],
-  },
-  root: "examples",
-  server: {
-    fs: {
-      allow: [projectRoot, resolve(projectRoot, "../rust-packages")],
-    },
+  base: process.env.GITHUB_ACTIONS ? "/viz-engine/" : "/",
+  build: {
+    target: "es2022",
   },
 });

@@ -1,7 +1,6 @@
-coverage
-dist
-node_modules
-temp
-target
-bench/results/*
-!bench/results/.gitkeep
+node_modules/
+dist/
+target/
+crates/*/target/
+public/wasm/
+.DS_Store

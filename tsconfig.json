@@ -1,29 +1,16 @@
 {
   "compilerOptions": {
-    "declaration": true,
-    "ignoreDeprecations": "6.0",
-    "jsx": "react-jsx",
+    "target": "ES2022",
+    "useDefineForClassFields": true,
     "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "moduleResolution": "Bundler",
-    "baseUrl": ".",
-    "paths": {
-      "@moritzbrantner/viz-engine": ["src/index.ts"],
-      "@moritzbrantner/viz-engine/core": ["src/core.ts"],
-      "@moritzbrantner/viz-engine/core/embedded": ["src/core-embedded.ts"],
-      "@moritzbrantner/viz-engine/core/lazy": ["src/core-lazy.ts"],
-      "@moritzbrantner/viz-engine/worker": ["src/worker.ts"],
-      "@moritzbrantner/viz-engine/react": ["src/react.tsx"]
-    },
-    "skipLibCheck": true,
     "strict": true,
-    "target": "ES2022"
+    "noEmit": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "types": ["vite/client", "vitest/globals"]
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "examples/**/*.ts",
-    "examples/**/*.tsx",
-    "vite.config.ts",
-    "vitest.config.ts"
-  ]
+  "include": ["src", "vite.config.ts"]
 }
