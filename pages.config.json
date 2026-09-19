@@ -37,7 +37,7 @@
       "id": "runtime",
       "label": "Renderer runtime evidence",
       "kind": "project-evidence-v1",
-      "producer": "runtime-profiler + repository policy",
+      "producer": "runtime-profiler + Moonlight",
       "url": "/2d-lab/evidence/runtime.json"
     }
   ]
