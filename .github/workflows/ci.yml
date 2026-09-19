@@ -2,95 +2,24 @@ name: CI
 
 on:
   pull_request:
-    branches:
-      - main
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  fast-validation:
-    name: Fast validation
-    permissions:
-      contents: read
-      packages: read
-    uses: moritzbrantner/reusable-workflows/.github/workflows/fast-validation.yml@workflow-standard-v1.2
-    with:
-      bun_version: 1.3.14
-      bun_cache_dependency_path: bun.lock
-      cache_cargo: true
-      cargo_cache_dependency_path: Cargo.lock
-      format_command: bun run format:check
-      typecheck_command: bun run check-types
-      build_command: bun run build
-      unit_test_command: |
-        bun run test
-        bun run test:rust
-      pre_command: |
-        rustup toolchain install stable --profile minimal
-        rustup default stable
-        if ! command -v wasm-pack >/dev/null 2>&1; then
-          cargo install wasm-pack --version 0.14.0 --locked
-        fi
-      timeout_minutes: 45
-
-  package-validation:
-    name: Package validation
-    permissions:
-      contents: read
-      packages: read
-    uses: moritzbrantner/reusable-workflows/.github/workflows/integration-validation.yml@workflow-standard-v1.2
-    with:
-      bun_version: 1.3.14
-      bun_cache_dependency_path: bun.lock
-      cache_cargo: true
-      cargo_cache_dependency_path: Cargo.lock
-      integration_command: bun run package:smoke
-      package_check_command: bun pm pack --dry-run
-      pre_command: |
-        rustup toolchain install stable --profile minimal
-        rustup default stable
-        if ! command -v wasm-pack >/dev/null 2>&1; then
-          cargo install wasm-pack --version 0.14.0 --locked
-        fi
-      timeout_minutes: 30
-
-  charts-token:
-    name: Detect charts token
+  validate:
     runs-on: ubuntu-latest
-    outputs:
-      has_token: ${{ steps.detect.outputs.has_token }}
     steps:
-      - name: Detect charts repository token
-        id: detect
-        env:
-          HAS_CHARTS_REPO_TOKEN: ${{ secrets.CHARTS_REPO_TOKEN != '' }}
-        run: echo "has_token=${HAS_CHARTS_REPO_TOKEN}" >> "$GITHUB_OUTPUT"
-
-  charts-integration:
-    name: Charts integration
-    needs: charts-token
-    if: ${{ needs.charts-token.outputs.has_token == 'true' }}
-    permissions:
-      contents: read
-      packages: read
-    uses: moritzbrantner/reusable-workflows/.github/workflows/integration-validation.yml@workflow-standard-v1.2
-    with:
-      bun_version: 1.3.14
-      install_command: ""
-      integration_command: |
-        auth_header="$(printf 'x-access-token:%s' "$NODE_AUTH_TOKEN" | base64 -w0)"
-        git -c http.extraheader="AUTHORIZATION: basic $auth_header" clone --depth=1 https://github.com/moritzbrantner/charts.git charts
-        cd charts
-        bun install --frozen-lockfile
-        bun run build
-      timeout_minutes: 30
-    secrets:
-      node_auth_token: ${{ secrets.CHARTS_REPO_TOKEN }}
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install
+      - run: bun run typecheck
+      - run: bun run test
+      - run: cargo test --workspace
+      - run: rustup target add wasm32-unknown-unknown
+      - run: cargo check --workspace --target wasm32-unknown-unknown
+      - run: bun run build

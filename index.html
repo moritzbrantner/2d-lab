@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Rust/WASM 2D rendering experiments for browser projects."
+    />
+    <title>2d-lab rendering lab</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header>
+        <p class="eyebrow">2d-lab</p>
+        <h1>Rust/WASM 2D rendering lab</h1>
+        <p class="lede">
+          Compare Canvas, custom WebGPU, retained map geometry, and a pinned
+          Vello GPU backend on the same low-level scenes.
+        </p>
+      </header>
+
+      <section class="controls" aria-label="Rendering controls">
+        <label>
+          Scene
+          <select id="scene"></select>
+        </label>
+        <label>
+          Renderer
+          <select id="renderer"></select>
+        </label>
+        <label class="check">
+          <input id="animate" type="checkbox" checked />
+          Animate
+        </label>
+        <label class="check">
+          <input id="debug-bounds" type="checkbox" />
+          Debug bounds
+        </label>
+        <button id="benchmark" type="button">Run benchmark</button>
+        <button id="compare" type="button">Compare compatible</button>
+        <button id="compare-vello-canvas" type="button">Canvas 2D vs Vello</button>
+      </section>
+
+      <section class="viewport">
+        <canvas id="surface" aria-label="Rendering experiment canvas"></canvas>
+      </section>
+
+      <section class="readout" aria-live="polite">
+        <div>
+          <h2>Frame</h2>
+          <pre id="frame-stats">Waiting for first frame…</pre>
+        </div>
+        <div>
+          <h2>Selected benchmark</h2>
+          <pre id="benchmark-stats">Not run yet.</pre>
+        </div>
+        <div class="comparison">
+          <h2>Compatible renderer comparison</h2>
+          <pre id="comparison-stats">Not run yet.</pre>
+        </div>
+        <div class="comparison">
+          <h2>Canvas 2D ↔ Vello decision matrix</h2>
+          <pre id="vello-canvas-stats">Not run yet.</pre>
+        </div>
+      </section>
+
+      <section class="notes">
+        <h2>Experiment boundary</h2>
+        <p id="scene-description"></p>
+        <p>
+          The custom retained backend is intentionally map-shaped: it requires
+          one shared frame transform and keeps verified-stable local geometry on
+          the GPU. Vello is the general vector competitor and owns path/stroke
+          preprocessing. Unsupported semantics are reported rather than silently
+          approximated.
+        </p>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
