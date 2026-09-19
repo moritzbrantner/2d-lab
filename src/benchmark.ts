@@ -3,6 +3,7 @@ import type { BenchmarkWorkload } from "./scenes/types";
 
 export interface BenchmarkResult {
   readonly frames: number;
+  readonly freshSurfaceMs: number;
   readonly p50Ms: number;
   readonly p95Ms: number;
   readonly averageMs: number;
@@ -51,7 +52,11 @@ export async function runRendererBenchmark(
     throw new Error(supportError);
   }
 
-  for (let index = 0; index < Math.min(8, frames); index += 1) {
+  const freshSurfaceStart = performance.now();
+  await renderer.render(canvas, displayLists[0]!, options);
+  const freshSurfaceMs = performance.now() - freshSurfaceStart;
+
+  for (let index = 1; index < Math.min(8, frames); index += 1) {
     await renderer.render(canvas, displayLists[index]!, options);
   }
 
@@ -79,6 +84,7 @@ export async function runRendererBenchmark(
 
   return {
     frames,
+    freshSurfaceMs,
     p50Ms: percentile(sorted, 0.5),
     p95Ms: percentile(sorted, 0.95),
     averageMs: total / frames,
