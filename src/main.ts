@@ -77,7 +77,7 @@ function resolveDecisionRenderer(
   }
 
   return {
-    renderer: customWgpuRenderer,
+    renderer: customBackend.renderer,
     label: `2d-lab custom · Rust/WASM + wgpu · ${customBackend.label}`,
   };
 }
