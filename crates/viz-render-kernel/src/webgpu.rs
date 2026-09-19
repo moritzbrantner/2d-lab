@@ -123,11 +123,11 @@ impl WgpuPolygonRenderer {
         surface.configure(&device, &config);
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("viz-engine polygon shader"),
+            label: Some("2d-lab polygon shader"),
             source: wgpu::ShaderSource::Wgsl(POLYGON_SHADER.into()),
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("viz-engine polygon pipeline layout"),
+            label: Some("2d-lab polygon pipeline layout"),
             bind_group_layouts: &[],
             immediate_size: 0,
         });
@@ -161,7 +161,7 @@ impl WgpuPolygonRenderer {
             },
         };
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("viz-engine convex polygon pipeline"),
+            label: Some("2d-lab convex polygon pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
@@ -282,14 +282,14 @@ impl WgpuPolygonRenderer {
         };
 
         let view = surface_frame.texture.create_view(&wgpu::TextureViewDescriptor {
-            label: Some("viz-engine sRGB surface view"),
+            label: Some("2d-lab sRGB surface view"),
             format: Some(self.surface_view_format),
             ..Default::default()
         });
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("viz-engine polygon command encoder"),
+                label: Some("2d-lab polygon command encoder"),
             });
         let color_attachments = [Some(wgpu::RenderPassColorAttachment {
             view: &view,
@@ -310,7 +310,7 @@ impl WgpuPolygonRenderer {
         let draw_calls = if vertex_count > 0 { 1 } else { 0 };
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("viz-engine convex polygon render pass"),
+                label: Some("2d-lab convex polygon render pass"),
                 color_attachments: &color_attachments,
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
@@ -387,7 +387,7 @@ fn srgb_to_linear(value: f32) -> f32 {
 
 fn create_vertex_buffer(device: &wgpu::Device, size: u64) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("viz-engine convex polygon vertices"),
+        label: Some("2d-lab convex polygon vertices"),
         size,
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
