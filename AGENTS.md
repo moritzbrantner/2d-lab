@@ -45,3 +45,7 @@ Vello GPU is currently consumed from the exact upstream revision documented in R
 - Unsupported renderer semantics must fail closed.
 - Keep the Vello adapter non-authoritative.
 - Keep exact-head Rust/WASM/browser evidence separate from noisy performance evidence.
+- Reuse `reusable-workflows` for deployment mechanics and `github-pages-template` for shared Pages evidence presentation instead of recreating those locally.
+- Keep `.coding-tooling.json` as the deterministic capability-discovery contract; benchmark smoke checks prove workload/support shape, not performance thresholds.
+- Runtime captures belong to `runtime-profiler` and comparable baseline/candidate verdicts belong to Moonlight. Do not label ad-hoc CI wall-clock timings as profiler evidence.
+- Consumer-shaped workloads must keep exact Maps/Flat Stories provenance while remaining disposable lab adapters; never require sibling product checkouts for normal CI or Pages builds.
