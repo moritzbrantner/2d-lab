@@ -94,7 +94,6 @@ Each scenario page supports:
 - end-to-end average, p50 and p95;
 - explicit unsupported semantics instead of fallback or approximation.
 
-Legacy root links using `?scenario=<workload-id>` redirect to the corresponding dedicated route.
 
 The measurements are intentionally local and descriptive: they reflect the visitor's current browser/device and are not correctness gates or permanent renderer rankings. Vello does not expose equivalent low-level vertex/upload accounting through this adapter, so unavailable fields remain `n/a` rather than being synthesized.
 
