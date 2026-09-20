@@ -185,6 +185,10 @@ function updateScenarioPresentation(updateUrl: boolean): void {
 }
 
 function setMeasurementInProgress(inProgress: boolean): void {
+  sceneSelect.disabled = inProgress;
+  rendererSelect.disabled = inProgress;
+  animateInput.disabled = inProgress;
+  debugBoundsInput.disabled = inProgress;
   benchmarkButton.disabled = inProgress;
   compareButton.disabled = inProgress;
   compareDecisionMatrixButton.disabled = inProgress;
