@@ -10,15 +10,117 @@ button, select, input { font: inherit; }
 .shell { width: min(1440px, calc(100% - 32px)); margin: 0 auto; padding: 48px 0 72px; }
 header { max-width: 900px; margin-bottom: 28px; }
 .eyebrow { margin: 0 0 8px; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
-h1, h2, p { margin-top: 0; }
+h1, h2, h3, p { margin-top: 0; }
 h1 { margin-bottom: 10px; font-size: clamp(2rem, 5vw, 4.8rem); line-height: 0.96; letter-spacing: -0.05em; }
 h2 { font-size: 0.95rem; }
+h3 { margin-bottom: 7px; font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase; }
 .lede { max-width: 800px; color: #5a5d63; font-size: 1.05rem; line-height: 1.6; }
+
+.scenario-explorer {
+  margin-bottom: 18px;
+  border: 1px solid #cfcfca;
+  background: #fff;
+  padding: 22px;
+}
+.scenario-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: start;
+}
+.scenario-heading h2 {
+  margin-bottom: 6px;
+  font-size: clamp(1.35rem, 2.6vw, 2.1rem);
+  letter-spacing: -0.025em;
+}
+.scenario-progress {
+  margin: 0;
+  color: #666a70;
+  font: 0.82rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+}
+.scenario-copy {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 18px;
+}
+.scenario-copy > div {
+  border-top: 1px solid #e0e0dc;
+  padding-top: 14px;
+}
+.scenario-copy p {
+  margin-bottom: 0;
+  color: #52555b;
+  line-height: 1.55;
+}
+.scenario-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 18px;
+}
+.scenario-actions button,
+.controls select,
+.controls button {
+  min-height: 40px;
+  border: 1px solid #c4c5c1;
+  border-radius: 5px;
+  background: #fff;
+  padding: 0 10px;
+}
+.scenario-actions button,
+.controls button {
+  cursor: pointer;
+  font-weight: 650;
+}
+.scenario-actions button:disabled,
+.controls button:disabled {
+  cursor: progress;
+  opacity: 0.55;
+}
+#scenario-run-status {
+  color: #666a70;
+  font-size: 0.82rem;
+}
+.scenario-results-wrap {
+  margin-top: 18px;
+  overflow-x: auto;
+  border: 1px solid #e0e0dc;
+}
+.scenario-results {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 860px;
+  font-size: 0.82rem;
+}
+.scenario-results th,
+.scenario-results td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e7e7e3;
+  text-align: left;
+  vertical-align: top;
+}
+.scenario-results th {
+  background: #f7f7f4;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.scenario-results tr:last-child td { border-bottom: 0; }
+.scenario-results td:nth-child(n + 3) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+}
+.scenario-results .unsupported {
+  color: #6a4e1e;
+  font-family: inherit;
+  white-space: normal;
+}
+
 .controls { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: end; padding: 16px; border: 1px solid #d7d7d2; background: #fff; }
 .controls label:not(.check) { display: grid; gap: 6px; min-width: 220px; font-size: 0.78rem; font-weight: 650; }
-.controls select, .controls button { min-height: 40px; border: 1px solid #c4c5c1; border-radius: 5px; background: #fff; padding: 0 10px; }
-.controls button { cursor: pointer; font-weight: 650; }
-.controls button:disabled { cursor: progress; opacity: 0.55; }
 .check { display: flex; gap: 7px; align-items: center; min-height: 40px; font-size: 0.88rem; }
 .viewport { margin-top: 18px; overflow: hidden; border: 1px solid #cfcfca; background: #fff; }
 canvas { display: block; width: 100%; height: auto; }
@@ -28,8 +130,13 @@ canvas { display: block; width: 100%; height: auto; }
 pre { min-height: 8rem; margin: 0; overflow-x: auto; white-space: pre-wrap; font: 0.84rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .notes { margin-top: 18px; color: #52555b; line-height: 1.6; }
 .notes p:last-child { margin-bottom: 0; }
+
 @media (max-width: 720px) {
   .shell { width: min(100% - 20px, 1440px); padding-top: 24px; }
+  .scenario-heading,
+  .scenario-copy { display: block; }
+  .scenario-progress { margin-top: 10px; }
+  .scenario-copy > div + div { margin-top: 16px; }
   .readout { grid-template-columns: 1fr; }
   .readout .comparison { grid-column: auto; }
   .controls label:not(.check) { width: 100%; }
