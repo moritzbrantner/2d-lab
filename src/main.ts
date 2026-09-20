@@ -1,13 +1,6 @@
 import "./styles.css";
 
-import { findLabScenario, labScenarios } from "./scenarios";
-
-const legacyScenario = findLabScenario(
-  new URLSearchParams(window.location.search).get("scenario"),
-);
-if (legacyScenario) {
-  window.location.replace(`${import.meta.env.BASE_URL}${legacyScenario.path}`);
-}
+import { labScenarios } from "./scenarios";
 
 const list = document.querySelector<HTMLElement>("#scenario-list");
 if (!list) {
