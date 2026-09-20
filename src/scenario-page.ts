@@ -195,15 +195,16 @@ function renderScenarioMeasurements(
 }
 
 const scenarioId = document.body.dataset.scenarioId;
-const scenario = findLabScenario(scenarioId ?? null);
-if (!scenario) {
+const matchedScenario = findLabScenario(scenarioId ?? null);
+if (!matchedScenario) {
   throw new Error(`scenario page has unknown id: ${scenarioId ?? "missing"}`);
 }
+const activeScenario: LabScenario = matchedScenario;
 
-const workload = await loadScenarioWorkload(scenario.id);
-if (workload.id !== scenario.id) {
+const workload = await loadScenarioWorkload(activeScenario.id);
+if (workload.id !== activeScenario.id) {
   throw new Error(
-    `scenario/workload mismatch: ${scenario.id} loaded ${workload.id}`,
+    `scenario/workload mismatch: ${activeScenario.id} loaded ${workload.id}`,
   );
 }
 
@@ -236,11 +237,11 @@ const previousScenarioLink =
 const nextScenarioLink =
   requiredElement<HTMLAnchorElement>("#next-scenario");
 
-document.title = `${scenario.title} · 2d-lab`;
-scenarioTitle.textContent = scenario.title;
-scenarioUseCase.textContent = scenario.useCase;
-scenarioQuestion.textContent = scenario.question;
-const index = scenarioIndex(scenario);
+document.title = `${activeScenario.title} · 2d-lab`;
+scenarioTitle.textContent = activeScenario.title;
+scenarioUseCase.textContent = activeScenario.useCase;
+scenarioQuestion.textContent = activeScenario.question;
+const index = scenarioIndex(activeScenario);
 scenarioProgress.textContent = `Scenario ${index + 1} of ${labScenarios.length}`;
 catalogLink.href = import.meta.env.BASE_URL;
 
@@ -292,7 +293,7 @@ function replaceSurfaceCanvas(): void {
   const previous = canvas;
   const next = document.createElement("canvas");
   next.id = "surface";
-  next.setAttribute("aria-label", `${scenario.title} rendering surface`);
+  next.setAttribute("aria-label", `${activeScenario.title} rendering surface`);
   previous.replaceWith(next);
   canvas = next;
 
@@ -376,7 +377,7 @@ animateInput.addEventListener("change", () => {
 benchmarkButton.addEventListener("click", async () => {
   setMeasurementInProgress(true);
   benchmarkStats.textContent =
-    `Running deterministic ${scenario.frames}-frame benchmark…`;
+    `Running deterministic ${activeScenario.frames}-frame benchmark…`;
   await pauseLiveRendering();
 
   const renderer = selectedRenderer();
@@ -391,7 +392,7 @@ benchmarkButton.addEventListener("click", async () => {
       benchmarkCanvas,
       workload,
       debugBoundsInput.checked,
-      scenario.frames,
+      activeScenario.frames,
     );
     benchmarkStats.textContent = formatBenchmark(renderer, workload, result);
   } catch (error) {
@@ -418,7 +419,7 @@ compareButton.addEventListener("click", async () => {
   ];
 
   scenarioRunStatus.textContent =
-    `Running ${scenario.frames} deterministic frames per engine…`;
+    `Running ${activeScenario.frames} deterministic frames per engine…`;
   scenarioResultsBody.replaceChildren();
   const pendingRow = scenarioResultsBody.insertRow();
   const pendingCell = pendingRow.insertCell();
@@ -446,7 +447,7 @@ compareButton.addEventListener("click", async () => {
           benchmarkCanvas,
           workload,
           false,
-          scenario.frames,
+          activeScenario.frames,
         );
         results.set(candidate.id, { label: resolved.label, result });
       } catch (error) {
