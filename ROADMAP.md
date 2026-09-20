@@ -55,6 +55,7 @@ The roadmap is evidence-driven. A later renderer is not promoted merely because 
 - [x] Declare deterministic capabilities through `.coding-tooling.json`.
 - [x] Reuse `reusable-workflows` for Pages deployment.
 - [x] Reuse `github-pages-template` for shared stats/evidence presentation.
+- [x] Add a Pages use-case explorer with shareable scenario URLs and local three-engine measurements.
 - [x] Declare coding-tooling and runtime/Moonlight evidence sources on Pages.
 - [x] Pin consumer-shaped workload provenance to exact Maps and Flat Stories revisions.
 - [ ] Add a runtime-profiler scenario only once CI/manual capture can exercise representative browser/WebGPU behavior rather than measuring a test runner or fallback path.

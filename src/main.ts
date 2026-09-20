@@ -12,19 +12,17 @@ import {
 } from "./renderers/custom-wgpu";
 import type { FrameStats, Renderer } from "./renderers/types";
 import { velloGpuRenderer } from "./renderers/vello";
-import { filledPolygonScene } from "./scenes/filled-polygons";
-import { mapLikeScene } from "./scenes/map-like";
-import { retainedMapScene } from "./scenes/retained-map";
-import type { BenchmarkWorkload } from "./scenes/types";
-import { vectorAnimationScene } from "./scenes/vector-animation";
+import {
+  findLabScenario,
+  labScenarios,
+  type LabScenario,
+} from "./scenarios";
 import { workloadProvenance } from "./scenes/provenance";
+import type { BenchmarkWorkload } from "./scenes/types";
 
-const workloads: readonly BenchmarkWorkload[] = [
-  retainedMapScene,
-  vectorAnimationScene,
-  filledPolygonScene,
-  mapLikeScene,
-];
+const workloads: readonly BenchmarkWorkload[] = labScenarios.map(
+  (scenario) => scenario.workload,
+);
 
 const renderers: readonly Renderer[] = [
   canvas2dRenderer,
@@ -99,6 +97,21 @@ const benchmarkButton = requiredElement<HTMLButtonElement>("#benchmark");
 const compareButton = requiredElement<HTMLButtonElement>("#compare");
 const compareDecisionMatrixButton =
   requiredElement<HTMLButtonElement>("#compare-decision-matrix");
+const previousScenarioButton =
+  requiredElement<HTMLButtonElement>("#previous-scenario");
+const nextScenarioButton = requiredElement<HTMLButtonElement>("#next-scenario");
+const runScenarioButton = requiredElement<HTMLButtonElement>("#run-scenario");
+const scenarioTitle = requiredElement<HTMLHeadingElement>("#scenario-title");
+const scenarioProgress =
+  requiredElement<HTMLParagraphElement>("#scenario-progress");
+const scenarioUseCase =
+  requiredElement<HTMLParagraphElement>("#scenario-use-case");
+const scenarioQuestion =
+  requiredElement<HTMLParagraphElement>("#scenario-question");
+const scenarioRunStatus =
+  requiredElement<HTMLSpanElement>("#scenario-run-status");
+const scenarioResultsBody =
+  requiredElement<HTMLTableSectionElement>("#scenario-results-body");
 const frameStats = requiredElement<HTMLPreElement>("#frame-stats");
 const benchmarkStats = requiredElement<HTMLPreElement>("#benchmark-stats");
 const comparisonStats =
@@ -110,17 +123,26 @@ const sceneDescription =
 const sceneProvenance =
   requiredElement<HTMLParagraphElement>("#scene-provenance");
 
-for (const workload of workloads) {
-  sceneSelect.add(new Option(workload.name, workload.id));
+for (const scenario of labScenarios) {
+  sceneSelect.add(new Option(scenario.title, scenario.id));
 }
 for (const renderer of renderers) {
   rendererSelect.add(new Option(renderer.name, renderer.id));
 }
 
+const requestedScenario = findLabScenario(
+  new URLSearchParams(window.location.search).get("scenario"),
+);
+if (requestedScenario) {
+  sceneSelect.value = requestedScenario.id;
+}
+
+function selectedScenario(): LabScenario {
+  return findLabScenario(sceneSelect.value) ?? labScenarios[0]!;
+}
+
 function selectedWorkload(): BenchmarkWorkload {
-  return (
-    workloads.find((workload) => workload.id === sceneSelect.value) ?? workloads[0]!
-  );
+  return selectedScenario().workload;
 }
 
 function selectedRenderer(): Renderer {
@@ -128,6 +150,64 @@ function selectedRenderer(): Renderer {
     renderers.find((renderer) => renderer.id === rendererSelect.value) ??
     renderers[0]!
   );
+}
+
+function scenarioIndex(scenario: LabScenario): number {
+  return Math.max(
+    0,
+    labScenarios.findIndex((candidate) => candidate.id === scenario.id),
+  );
+}
+
+function resetScenarioResults(message = "Run this scenario to collect local browser measurements."): void {
+  scenarioResultsBody.replaceChildren();
+  const row = scenarioResultsBody.insertRow();
+  const cell = row.insertCell();
+  cell.colSpan = 7;
+  cell.textContent = message;
+}
+
+function updateScenarioPresentation(updateUrl: boolean): void {
+  const scenario = selectedScenario();
+  const index = scenarioIndex(scenario);
+  scenarioTitle.textContent = scenario.title;
+  scenarioProgress.textContent = `Scenario ${index + 1} of ${labScenarios.length}`;
+  scenarioUseCase.textContent = scenario.useCase;
+  scenarioQuestion.textContent = scenario.question;
+  previousScenarioButton.disabled = index === 0;
+  nextScenarioButton.disabled = index === labScenarios.length - 1;
+
+  if (updateUrl) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("scenario", scenario.id);
+    window.history.replaceState(null, "", url);
+  }
+}
+
+function setMeasurementInProgress(inProgress: boolean): void {
+  sceneSelect.disabled = inProgress;
+  rendererSelect.disabled = inProgress;
+  animateInput.disabled = inProgress;
+  debugBoundsInput.disabled = inProgress;
+  benchmarkButton.disabled = inProgress;
+  compareButton.disabled = inProgress;
+  compareDecisionMatrixButton.disabled = inProgress;
+  runScenarioButton.disabled = inProgress;
+  if (inProgress) {
+    previousScenarioButton.disabled = true;
+    nextScenarioButton.disabled = true;
+  } else {
+    updateScenarioPresentation(false);
+  }
+}
+
+function selectScenarioAt(index: number): void {
+  const scenario = labScenarios[index];
+  if (!scenario) {
+    return;
+  }
+  sceneSelect.value = scenario.id;
+  sceneSelect.dispatchEvent(new Event("change"));
 }
 
 function replaceSurfaceCanvas(): void {
@@ -155,6 +235,52 @@ function formatBytes(value: number | null): string {
 
 function formatCount(value: number | null): string {
   return value === null ? "n/a" : String(value);
+}
+
+function formatMilliseconds(value: number): string {
+  return `${value.toFixed(3)} ms`;
+}
+
+interface ScenarioMeasurement {
+  readonly label: string;
+  readonly result: BenchmarkResult;
+}
+
+function renderScenarioMeasurements(
+  results: ReadonlyMap<DecisionCandidate["id"], ScenarioMeasurement>,
+  errors: ReadonlyMap<DecisionCandidate["id"], string>,
+): void {
+  scenarioResultsBody.replaceChildren();
+
+  for (const candidate of decisionCandidates) {
+    const row = scenarioResultsBody.insertRow();
+    row.insertCell().textContent = candidate.name;
+    const measured = results.get(candidate.id);
+
+    if (!measured) {
+      const support = row.insertCell();
+      support.className = "unsupported";
+      support.textContent =
+        errors.get(candidate.id) ?? "Unsupported or unavailable.";
+      for (let column = 0; column < 5; column += 1) {
+        row.insertCell().textContent = "—";
+      }
+      continue;
+    }
+
+    row.insertCell().textContent = measured.label;
+    row.insertCell().textContent = formatMilliseconds(
+      measured.result.freshSurfaceMs,
+    );
+    row.insertCell().textContent = formatMilliseconds(measured.result.p50Ms);
+    row.insertCell().textContent = formatMilliseconds(measured.result.p95Ms);
+    row.insertCell().textContent = formatMilliseconds(
+      measured.result.averagePrepareMs,
+    );
+    row.insertCell().textContent = formatMilliseconds(
+      measured.result.averageRenderMs,
+    );
+  }
 }
 
 function formatFrameStats(
@@ -217,6 +343,8 @@ function formatDecisionResult(
 function formatRatio(numerator: number, denominator: number): string {
   return denominator > 0 ? `${(numerator / denominator).toFixed(2)}×` : "n/a";
 }
+
+updateScenarioPresentation(true);
 
 let startTime = performance.now();
 let frameInFlight = false;
@@ -294,6 +422,17 @@ sceneSelect.addEventListener("change", () => {
   startTime = performance.now();
   benchmarkStats.textContent = "Not run yet.";
   comparisonStats.textContent = "Not run yet.";
+  scenarioRunStatus.textContent = "Not run yet.";
+  resetScenarioResults();
+  updateScenarioPresentation(true);
+});
+
+previousScenarioButton.addEventListener("click", () => {
+  selectScenarioAt(scenarioIndex(selectedScenario()) - 1);
+});
+
+nextScenarioButton.addEventListener("click", () => {
+  selectScenarioAt(scenarioIndex(selectedScenario()) + 1);
 });
 
 rendererSelect.addEventListener("change", () => {
@@ -307,9 +446,7 @@ animateInput.addEventListener("change", () => {
 });
 
 benchmarkButton.addEventListener("click", async () => {
-  benchmarkButton.disabled = true;
-  compareButton.disabled = true;
-  compareDecisionMatrixButton.disabled = true;
+  setMeasurementInProgress(true);
   benchmarkStats.textContent = "Running deterministic 90-frame benchmark…";
   await pauseLiveRendering();
 
@@ -336,16 +473,12 @@ benchmarkButton.addEventListener("click", async () => {
   } finally {
     await renderer.dispose?.(benchmarkCanvas);
     resumeLiveRendering();
-    benchmarkButton.disabled = false;
-    compareButton.disabled = false;
-    compareDecisionMatrixButton.disabled = false;
+    setMeasurementInProgress(false);
   }
 });
 
 compareButton.addEventListener("click", async () => {
-  benchmarkButton.disabled = true;
-  compareButton.disabled = true;
-  compareDecisionMatrixButton.disabled = true;
+  setMeasurementInProgress(true);
   comparisonStats.textContent = "Running compatible renderer comparison…";
   await pauseLiveRendering();
 
@@ -409,16 +542,73 @@ compareButton.addEventListener("click", async () => {
   } finally {
     comparisonStats.textContent = sections.join("\n");
     resumeLiveRendering();
-    benchmarkButton.disabled = false;
-    compareButton.disabled = false;
-    compareDecisionMatrixButton.disabled = false;
+    setMeasurementInProgress(false);
+  }
+});
+
+runScenarioButton.addEventListener("click", async () => {
+  setMeasurementInProgress(true);
+  await pauseLiveRendering();
+
+  const scenario = selectedScenario();
+  const workload = scenario.workload;
+  const firstDisplayList = workload.create(0);
+  const results = new Map<DecisionCandidate["id"], ScenarioMeasurement>();
+  const errors = new Map<DecisionCandidate["id"], string>();
+  const offset = scenarioIndex(scenario) % decisionCandidates.length;
+  const runOrder = [
+    ...decisionCandidates.slice(offset),
+    ...decisionCandidates.slice(0, offset),
+  ];
+
+  scenarioRunStatus.textContent =
+    `Running ${scenario.frames} deterministic frames per engine…`;
+  resetScenarioResults("Collecting measurements…");
+
+  try {
+    for (const [index, candidate] of runOrder.entries()) {
+      scenarioRunStatus.textContent =
+        `Measuring ${candidate.name} (${index + 1}/${runOrder.length})…`;
+      const resolved = resolveDecisionRenderer(candidate, firstDisplayList);
+      if (typeof resolved === "string") {
+        errors.set(candidate.id, resolved);
+        continue;
+      }
+
+      const benchmarkCanvas = document.createElement("canvas");
+      benchmarkCanvas.width = firstDisplayList.width;
+      benchmarkCanvas.height = firstDisplayList.height;
+
+      try {
+        const result = await runRendererBenchmark(
+          resolved.renderer,
+          benchmarkCanvas,
+          workload,
+          false,
+          scenario.frames,
+        );
+        results.set(candidate.id, { label: resolved.label, result });
+      } catch (error) {
+        errors.set(
+          candidate.id,
+          error instanceof Error ? error.message : String(error),
+        );
+      } finally {
+        await resolved.renderer.dispose?.(benchmarkCanvas);
+      }
+    }
+
+    renderScenarioMeasurements(results, errors);
+    scenarioRunStatus.textContent =
+      `Complete: ${results.size}/${decisionCandidates.length} engines measured locally.`;
+  } finally {
+    resumeLiveRendering();
+    setMeasurementInProgress(false);
   }
 });
 
 compareDecisionMatrixButton.addEventListener("click", async () => {
-  benchmarkButton.disabled = true;
-  compareButton.disabled = true;
-  compareDecisionMatrixButton.disabled = true;
+  setMeasurementInProgress(true);
   decisionMatrixStats.textContent =
     "Running Canvas 2D ↔ Vello ↔ custom benchmark matrix…";
   await pauseLiveRendering();
@@ -525,8 +715,6 @@ compareDecisionMatrixButton.addEventListener("click", async () => {
   } finally {
     decisionMatrixStats.textContent = sections.join("\n");
     resumeLiveRendering();
-    benchmarkButton.disabled = false;
-    compareButton.disabled = false;
-    compareDecisionMatrixButton.disabled = false;
+    setMeasurementInProgress(false);
   }
 });

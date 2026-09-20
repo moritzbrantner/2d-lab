@@ -76,6 +76,9 @@ A mixed polygon/road workload keeps open lines and strokes in the benchmark suit
 
 The page supports:
 
+- a GitHub Pages **use-case explorer** that walks through retained map navigation, animated vector storytelling, dense filled-shape redraw, and mixed roads/polygons;
+- shareable scenario state through the `?scenario=<workload-id>` query parameter plus previous/next navigation;
+- an in-page three-engine comparison table that uses the same benchmark runner as the lower-level lab controls;
 - live scene/renderer switching;
 - one-renderer 90-frame benchmark;
 - a 45-frame **compatible renderer comparison** for the selected scene;
@@ -83,6 +86,8 @@ The page supports:
 - fresh-surface initialization timing plus prepare, upload-call and render/submit timing;
 - end-to-end average, p50 and p95;
 - draw calls, generated vertices and upload bytes when the backend exposes them.
+
+The use-case explorer is intentionally local and descriptive: it measures the visitor's current browser/device, reports unsupported semantics explicitly, and does not turn wall-clock results into a correctness gate or a permanent engine ranking.
 
 The three-engine matrix pauses the live preview while measuring and rotates engine order by scene so one engine is not systematically measured first. Debug bounds are disabled for this comparison because they are lab instrumentation rather than shared renderer semantics. The custom contender is one explicit `2d-lab custom · Rust/WASM + wgpu` renderer. TypeScript may choose retained versus immediate mode from workload semantics, but all custom rasterization, GPU resource management, command encoding and submission stay in the Rust/WASM kernel through `wgpu`; there is no Canvas fallback. If neither custom mode can preserve the workload, the custom row remains visible and reports the unsupported semantics; that missing coverage is part of the evidence.
 
