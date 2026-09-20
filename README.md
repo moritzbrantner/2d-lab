@@ -74,24 +74,29 @@ A mixed polygon/road workload keeps open lines and strokes in the benchmark suit
 
 ## Browser lab
 
-The page supports:
+GitHub Pages is a multi-page lab rather than one long-lived scenario switcher.
 
-- a GitHub Pages **use-case explorer** that walks through retained map navigation, animated vector storytelling, dense filled-shape redraw, and mixed roads/polygons;
-- shareable scenario state through the `?scenario=<workload-id>` query parameter plus previous/next navigation;
-- an in-page three-engine comparison table that uses the same benchmark runner as the lower-level lab controls;
-- live scene/renderer switching;
-- one-renderer 90-frame benchmark;
-- a 45-frame **compatible renderer comparison** for the selected scene;
-- a dedicated 90-frame-per-engine **Canvas 2D ↔ Vello ↔ 2d-lab custom decision matrix** across every workload;
-- fresh-surface initialization timing plus prepare, upload-call and render/submit timing;
+The root page is a catalog. Each workload has a dedicated static route:
+
+- `/scenarios/retained-map/` — retained map navigation;
+- `/scenarios/vector-animation/` — animated vector storytelling;
+- `/scenarios/filled-polygons/` — dense fill-only redraw;
+- `/scenarios/map-like/` — mixed roads and polygons.
+
+A scenario page lazy-loads only its own workload module. Navigating to another scenario performs a real document navigation, which tears down the previous page's Canvas/WebGPU state and prevents one scenario's renderer resources or measurement UI from being reused by another scenario.
+
+Each scenario page supports:
+
+- live Canvas 2D, pinned Vello, or custom Rust/WASM + wgpu preview;
+- a deterministic selected-engine benchmark;
+- an isolated three-engine comparison for that workload only;
+- fresh-surface initialization plus prepare, upload-call and render/submit timing;
 - end-to-end average, p50 and p95;
-- draw calls, generated vertices and upload bytes when the backend exposes them.
+- explicit unsupported semantics instead of fallback or approximation.
 
-The use-case explorer is intentionally local and descriptive: it measures the visitor's current browser/device, reports unsupported semantics explicitly, and does not turn wall-clock results into a correctness gate or a permanent engine ranking.
+Legacy root links using `?scenario=<workload-id>` redirect to the corresponding dedicated route.
 
-The three-engine matrix pauses the live preview while measuring and rotates engine order by scene so one engine is not systematically measured first. Debug bounds are disabled for this comparison because they are lab instrumentation rather than shared renderer semantics. The custom contender is one explicit `2d-lab custom · Rust/WASM + wgpu` renderer. TypeScript may choose retained versus immediate mode from workload semantics, but all custom rasterization, GPU resource management, command encoding and submission stay in the Rust/WASM kernel through `wgpu`; there is no Canvas fallback. If neither custom mode can preserve the workload, the custom row remains visible and reports the unsupported semantics; that missing coverage is part of the evidence.
-
-Vello does not expose equivalent low-level vertex/upload accounting through this adapter, so those fields are shown as `n/a` rather than invented.
+The measurements are intentionally local and descriptive: they reflect the visitor's current browser/device and are not correctness gates or permanent renderer rankings. Vello does not expose equivalent low-level vertex/upload accounting through this adapter, so unavailable fields remain `n/a` rather than being synthesized.
 
 Timing categories are CPU-side observations. They are not GPU timestamp-query measurements. Fresh-surface timing includes per-canvas setup, but shared browser/WASM module caches may already be warm; it is not a full cold-browser startup measurement.
 
