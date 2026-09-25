@@ -33,6 +33,9 @@ describe("renderer benchmark contract", () => {
       expect(first.width, workload.id).toBe(second.width);
       expect(first.height, workload.id).toBe(second.height);
       expect(first.background, workload.id).toBe(second.background);
+      expect(first.retainedGeometryRevision, workload.id).toBe(
+        second.retainedGeometryRevision,
+      );
       expect(first.commands.length, workload.id).toBe(second.commands.length);
 
       for (let index = 0; index < first.commands.length; index += 1) {

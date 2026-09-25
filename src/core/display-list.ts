@@ -39,6 +39,12 @@ export type DisplayList = {
   readonly height: number;
   readonly background: string;
   readonly commands: readonly PathCommand[];
+  /**
+   * Optional workload-owned revision for the local path geometry and fill paint
+   * that a retained renderer uploads. Equal revisions assert that those values
+   * are unchanged even when per-frame transforms differ.
+   */
+  readonly retainedGeometryRevision?: string;
 };
 
 export const IDENTITY_TRANSFORM: Affine2D = [1, 0, 0, 1, 0, 0];
@@ -72,6 +78,12 @@ export function validateDisplayList(displayList: DisplayList): void {
     displayList.height <= 0
   ) {
     throw new Error("display-list dimensions must be positive and finite");
+  }
+  if (
+    displayList.retainedGeometryRevision !== undefined &&
+    displayList.retainedGeometryRevision.trim().length === 0
+  ) {
+    throw new Error("retained geometry revision must not be blank");
   }
 
   for (const [index, command] of displayList.commands.entries()) {

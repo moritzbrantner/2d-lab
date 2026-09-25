@@ -12,15 +12,24 @@ import {
   polygonRendererSupportError,
 } from "./wgpu-polygon-frame";
 
-interface GeometrySnapshot {
+interface RevisionGeometrySnapshot {
+  readonly revision: string;
+  readonly vertexCount: number;
+}
+
+interface ValueGeometrySnapshot {
   readonly pointValues: readonly Float32Array[];
   readonly fills: readonly string[];
   readonly vertexCount: number;
 }
 
+export type RetainedGeometrySnapshot =
+  | RevisionGeometrySnapshot
+  | ValueGeometrySnapshot;
+
 interface RetainedState {
   readonly renderer: Promise<RetainedWgpuPolygonRendererWasm>;
-  geometry?: GeometrySnapshot;
+  geometry?: RetainedGeometrySnapshot;
 }
 
 const stateByCanvas = new WeakMap<HTMLCanvasElement, RetainedState>();
@@ -95,9 +104,9 @@ export const retainedWgpuRenderer: Renderer = {
     }
 
     const geometryCheckStart = performance.now();
-    const geometryChanged = !sameGeometry(
+    const geometryChanged = !retainedGeometryMatchesSnapshot(
       state.geometry,
-      displayList.commands,
+      displayList,
     );
     let prepareMs = performance.now() - geometryCheckStart;
     let uploadMs = 0;
@@ -117,13 +126,10 @@ export const retainedWgpuRenderer: Renderer = {
       prepareMs += upload[0] ?? 0;
       uploadMs += upload[1] ?? 0;
       uploadBytes += Math.trunc(upload[3] ?? 0);
-      state.geometry = {
-        pointValues: displayList.commands.map((command) =>
-          command.points.slice(),
-        ),
-        fills: displayList.commands.map((command) => command.paint.fill!),
-        vertexCount: Math.trunc(upload[2] ?? 0),
-      };
+      state.geometry = createRetainedGeometrySnapshot(
+        displayList,
+        Math.trunc(upload[2] ?? 0),
+      );
       wasmCalls += 1;
     }
 
@@ -176,11 +182,44 @@ export const retainedWgpuRenderer: Renderer = {
   },
 };
 
-function sameGeometry(
-  snapshot: GeometrySnapshot | undefined,
-  commands: readonly PathCommand[],
+/** @internal Exported only so the revision/fallback contract can be regression tested. */
+export function createRetainedGeometrySnapshot(
+  displayList: DisplayList,
+  vertexCount: number,
+): RetainedGeometrySnapshot {
+  if (displayList.retainedGeometryRevision !== undefined) {
+    return {
+      revision: displayList.retainedGeometryRevision,
+      vertexCount,
+    };
+  }
+
+  return {
+    pointValues: displayList.commands.map((command) => command.points.slice()),
+    fills: displayList.commands.map((command) => command.paint.fill!),
+    vertexCount,
+  };
+}
+
+/** @internal Exported only so the revision/fallback contract can be regression tested. */
+export function retainedGeometryMatchesSnapshot(
+  snapshot: RetainedGeometrySnapshot | undefined,
+  displayList: DisplayList,
 ): boolean {
-  if (!snapshot || snapshot.pointValues.length !== commands.length) {
+  if (!snapshot) {
+    return false;
+  }
+
+  const revision = displayList.retainedGeometryRevision;
+  if (revision !== undefined) {
+    return "revision" in snapshot && snapshot.revision === revision;
+  }
+  if ("revision" in snapshot) {
+    return false;
+  }
+
+  const commands = displayList.commands;
+  if (snapshot.pointValues.length !== commands.length) {
     return false;
   }
 
