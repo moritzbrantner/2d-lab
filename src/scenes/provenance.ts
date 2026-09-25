@@ -1,11 +1,11 @@
-export interface WorkloadProvenance {
+export type WorkloadProvenance = {
   readonly kind: "lab-synthetic" | "consumer-shaped";
   readonly sourceRepository?: string;
   readonly sourceRevision?: string;
   readonly sourcePath?: string;
   readonly sourceIdentity?: string;
   readonly note: string;
-}
+};
 
 export const workloadProvenance: Readonly<Record<string, WorkloadProvenance>> = {
   "retained-map": {
@@ -16,6 +16,15 @@ export const workloadProvenance: Readonly<Record<string, WorkloadProvenance>> = 
     sourceIdentity: "camera-world-pan-v1",
     note:
       "Workload intent follows the canonical Maps camera journey and retained-rendering questions. Geometry remains lab-owned synthetic data; Maps keeps geographic camera and projection authority.",
+  },
+  "maps-e2e-style": {
+    kind: "consumer-shaped",
+    sourceRepository: "moritzbrantner/maps",
+    sourceRevision: "0ac63eed510f23d436909dbfb22528c6414bcde9",
+    sourcePath: "demo/data/map-style.ts#e2eMapStyle",
+    sourceIdentity: "maps-2d-lab-screen-frame/v1",
+    note:
+      "Maps owns projection and style semantics. This checked-in screen-space export is a disposable lab fixture; 2d-lab only lowers its resolved primitives into the lab display list.",
   },
   "map-like": {
     kind: "consumer-shaped",

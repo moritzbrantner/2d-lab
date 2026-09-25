@@ -6,6 +6,8 @@ export async function loadScenarioWorkload(
   switch (scenarioId) {
     case "retained-map":
       return (await import("./scenes/retained-map")).retainedMapScene;
+    case "maps-e2e-style":
+      return (await import("./scenes/maps-e2e-style")).mapsE2eStyleWorkload;
     case "vector-animation":
       return (await import("./scenes/vector-animation")).vectorAnimationScene;
     case "filled-polygons":

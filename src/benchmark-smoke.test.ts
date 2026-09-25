@@ -6,12 +6,14 @@ import { resolveCustomWgpuBackend } from "./renderers/custom-wgpu";
 import { velloGpuRenderer } from "./renderers/vello";
 import { filledPolygonScene } from "./scenes/filled-polygons";
 import { mapLikeScene } from "./scenes/map-like";
+import { mapsE2eStyleWorkload } from "./scenes/maps-e2e-style";
 import { retainedMapScene } from "./scenes/retained-map";
 import type { BenchmarkWorkload } from "./scenes/types";
 import { vectorAnimationScene } from "./scenes/vector-animation";
 
 const workloads: readonly BenchmarkWorkload[] = [
   retainedMapScene,
+  mapsE2eStyleWorkload,
   vectorAnimationScene,
   filledPolygonScene,
   mapLikeScene,
@@ -73,6 +75,12 @@ describe("renderer benchmark contract", () => {
     if (typeof immediate !== "string") {
       expect(immediate.id).toBe("immediate");
     }
+
+    expect(
+      resolveCustomWgpuBackend(mapsE2eStyleWorkload.create(0), {
+        debugBounds: false,
+      }),
+    ).toMatch(/No Rust\/WASM \+ wgpu custom backend/);
 
     expect(
       resolveCustomWgpuBackend(vectorAnimationScene.create(0), {

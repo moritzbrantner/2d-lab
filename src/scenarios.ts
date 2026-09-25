@@ -1,11 +1,11 @@
-export interface LabScenario {
+export type LabScenario = {
   readonly id: string;
   readonly title: string;
   readonly useCase: string;
   readonly question: string;
   readonly frames: number;
   readonly path: string;
-}
+};
 
 export const labScenarios: readonly LabScenario[] = [
   {
@@ -17,6 +17,16 @@ export const labScenarios: readonly LabScenario[] = [
       "How much does retained geometry help when only the shared camera transform changes?",
     frames: 90,
     path: "scenarios/retained-map/",
+  },
+  {
+    id: "maps-e2e-style",
+    title: "Render a Maps-owned snapshot",
+    useCase:
+      "A Maps E2E fixture is exported after projection and style resolution as screen-space polygons and roads.",
+    question:
+      "Can the lab compare product-shaped Maps semantics without importing map authority or approximating unsupported primitives?",
+    frames: 90,
+    path: "scenarios/maps-e2e-style/",
   },
   {
     id: "vector-animation",

@@ -24,9 +24,7 @@ describe("Vello frame adapter", () => {
       ],
     };
 
-    expect(
-      velloSupportError(displayList, { debugBounds: false }),
-    ).toBeNull();
+    expect(velloSupportError(displayList, { debugBounds: false })).toBeNull();
 
     const packed = packVelloFrame(displayList);
     expect(Array.from(packed.spans)).toEqual([0, 6]);
@@ -42,7 +40,37 @@ describe("Vello frame adapter", () => {
     expect(packed.strokeColors[3]).toBeCloseTo(0x80 / 255);
   });
 
-  it("fails closed for non-hex paint in the experiment adapter", () => {
+  it("preserves rgba paint from product-shaped fixtures", () => {
+    const displayList: DisplayList = {
+      width: 100,
+      height: 80,
+      background: "#ffffff",
+      commands: [
+        {
+          kind: "path",
+          points: new Float32Array([0, 0, 20, 0, 10, 15]),
+          closed: true,
+          transform: [1, 0, 0, 1, 0, 0],
+          paint: {
+            fill: "rgba(74, 222, 128, 0.72)",
+            stroke: "rgba(236, 254, 255, 0.7)",
+            strokeWidth: 1.2,
+          },
+        },
+      ],
+    };
+
+    expect(velloSupportError(displayList, { debugBounds: false })).toBeNull();
+
+    const packed = packVelloFrame(displayList);
+    expect(packed.fillColors[0]).toBeCloseTo(74 / 255);
+    expect(packed.fillColors[1]).toBeCloseTo(222 / 255);
+    expect(packed.fillColors[2]).toBeCloseTo(128 / 255);
+    expect(packed.fillColors[3]).toBeCloseTo(0.72);
+    expect(packed.strokeColors[3]).toBeCloseTo(0.7);
+  });
+
+  it("fails closed for unsupported paint syntax", () => {
     const displayList: DisplayList = {
       width: 100,
       height: 80,
@@ -58,8 +86,8 @@ describe("Vello frame adapter", () => {
       ],
     };
 
-    expect(
-      velloSupportError(displayList, { debugBounds: false }),
-    ).toMatch(/non-hex stroke/);
+    expect(velloSupportError(displayList, { debugBounds: false })).toMatch(
+      /unsupported stroke color/,
+    );
   });
 });
