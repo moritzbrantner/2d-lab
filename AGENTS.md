@@ -13,6 +13,14 @@ This repository is a rendering decision laboratory, not a generic application fr
 - Products should normally consume findings, not add `2d-lab` as a runtime authority dependency.
 - Promote reusable 2D rendering behavior only through a separately named production boundary after at least two real consumers prove the same semantics.
 
+## Interactive lab UX
+
+- Interactive Pages scenarios and browser workbenches apply the current shared `ui` conventions from `moritzbrantner/coding-agent-conventions`, especially `PRINCIPLE-009`, `UI-008`, `UI-012`, and `UI-013`.
+- Treat the rendered workload/visualization as the primary lab surface. Keep scenario controls compact and contextual so evidence is not pushed below decorative or explanatory chrome.
+- Keep exact numeric inputs for benchmark/workload parameters. Direct spatial manipulation may supplement them when it makes the experiment easier to inspect, but it must stay synchronized with the same authoritative experiment state.
+- Give pan/zoom/selection/scrub or other browser gestures one owner per scenario. Do not duplicate render-state or interaction authority merely to add UI convenience.
+- Protect browser-dependent viewport alignment, hit geometry, clipping, and interaction behavior with focused browser evidence when those properties are part of the experiment.
+
 ## Experiment discipline
 
 - Correctness comes before timing.
