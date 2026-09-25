@@ -9,11 +9,13 @@ import { flatStoriesCurveScene } from "./scenes/flat-stories-curves";
 import { mapLikeScene } from "./scenes/map-like";
 import { mapsE2eStyleWorkload } from "./scenes/maps-e2e-style";
 import { retainedMapScene } from "./scenes/retained-map";
+import { retainedMapChurnScene } from "./scenes/retained-map-churn";
 import type { BenchmarkWorkload } from "./scenes/types";
 import { vectorAnimationScene } from "./scenes/vector-animation";
 
 const workloads: readonly BenchmarkWorkload[] = [
   retainedMapScene,
+  retainedMapChurnScene,
   mapsE2eStyleWorkload,
   flatStoriesCurveScene,
   vectorAnimationScene,
@@ -35,6 +37,9 @@ describe("renderer benchmark contract", () => {
       expect(first.background, workload.id).toBe(second.background);
       expect(first.retainedGeometryRevision, workload.id).toBe(
         second.retainedGeometryRevision,
+      );
+      expect(first.retainedGeometryChunks, workload.id).toEqual(
+        second.retainedGeometryChunks,
       );
       expect(first.commands.length, workload.id).toBe(second.commands.length);
 
@@ -74,6 +79,15 @@ describe("renderer benchmark contract", () => {
     expect(typeof retained).not.toBe("string");
     if (typeof retained !== "string") {
       expect(retained.id).toBe("retained");
+    }
+
+    const retainedChurn = resolveCustomWgpuBackend(
+      retainedMapChurnScene.create(0),
+      { debugBounds: false },
+    );
+    expect(typeof retainedChurn).not.toBe("string");
+    if (typeof retainedChurn !== "string") {
+      expect(retainedChurn.id).toBe("retained");
     }
 
     const immediate = resolveCustomWgpuBackend(filledPolygonScene.create(0), {

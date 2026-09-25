@@ -68,6 +68,60 @@ describe("display list", () => {
     expect(() => validateDisplayList(scene)).toThrow(/revision/);
   });
 
+  it("validates retained geometry chunk partitions", () => {
+    const command = {
+      kind: "path" as const,
+      points: new Float32Array([0, 0, 10, 0, 10, 10]),
+      closed: true,
+      transform: IDENTITY_TRANSFORM,
+      paint: { fill: "#000" },
+    };
+    const scene: DisplayList = {
+      width: 100,
+      height: 100,
+      background: "#fff",
+      commands: [command, command],
+      retainedGeometryChunks: [
+        { commandStart: 0, commandCount: 1, revision: "left:1" },
+        { commandStart: 1, commandCount: 1, revision: "right:1" },
+      ],
+    };
+
+    expect(() => validateDisplayList(scene)).not.toThrow();
+    expect(() =>
+      validateDisplayList({
+        ...scene,
+        retainedGeometryRevision: "all:1",
+      }),
+    ).toThrow(/either retainedGeometryRevision or retainedGeometryChunks/);
+    expect(() =>
+      validateDisplayList({
+        ...scene,
+        retainedGeometryChunks: [
+          { commandStart: 0, commandCount: 1, revision: "left:1" },
+          { commandStart: 2, commandCount: 1, revision: "right:1" },
+        ],
+      }),
+    ).toThrow(/must start at command 1/);
+    expect(() =>
+      validateDisplayList({
+        ...scene,
+        retainedGeometryChunks: [
+          { commandStart: 0, commandCount: 1, revision: "left:1" },
+        ],
+      }),
+    ).toThrow(/cover every command/);
+    expect(() =>
+      validateDisplayList({
+        ...scene,
+        retainedGeometryChunks: [
+          { commandStart: 0, commandCount: 1, revision: " " },
+          { commandStart: 1, commandCount: 1, revision: "right:1" },
+        ],
+      }),
+    ).toThrow(/blank revision/);
+  });
+
   it("rejects partial point pairs and mismatched segment topology", () => {
     const partial = {
       width: 100,

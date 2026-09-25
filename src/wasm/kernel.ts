@@ -31,6 +31,13 @@ export interface RetainedWgpuPolygonRendererWasm {
     spans: Uint32Array,
     colors: Float32Array,
   ): Float64Array;
+  uploadGeometryChunk(
+    chunkIndex: number,
+    points: Float32Array,
+    spans: Uint32Array,
+    colors: Float32Array,
+  ): Float64Array;
+  truncateGeometryChunks(chunkCount: number): void;
   render(
     transform: Float32Array,
     background: Float32Array,

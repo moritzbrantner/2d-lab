@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import type { DisplayList } from "../core/display-list";
 import {
+  createRetainedGeometryChunkSnapshot,
   createRetainedGeometrySnapshot,
+  retainedGeometryChunkMatchesSnapshot,
+  retainedGeometryChunkPlan,
   retainedGeometryMatchesSnapshot,
   retainedRendererSupportError,
 } from "./retained-wgpu";
@@ -72,5 +75,42 @@ describe("retained WebGPU boundary", () => {
 
     expect(retainedGeometryMatchesSnapshot(snapshot, scene())).toBe(true);
     expect(retainedGeometryMatchesSnapshot(snapshot, changed)).toBe(false);
+  });
+
+  it("invalidates only the retained chunk whose producer revision changed", () => {
+    const first: DisplayList = {
+      ...scene(),
+      retainedGeometryChunks: [
+        { commandStart: 0, commandCount: 1, revision: "left:1" },
+        { commandStart: 1, commandCount: 1, revision: "right:1" },
+      ],
+    };
+    const second: DisplayList = {
+      ...scene(),
+      retainedGeometryChunks: [
+        { commandStart: 0, commandCount: 1, revision: "left:1" },
+        { commandStart: 1, commandCount: 1, revision: "right:2" },
+      ],
+    };
+    const firstPlans = retainedGeometryChunkPlan(first);
+    const snapshots = firstPlans.map((plan) =>
+      createRetainedGeometryChunkSnapshot(first, plan, 6),
+    );
+    const secondPlans = retainedGeometryChunkPlan(second);
+
+    expect(
+      retainedGeometryChunkMatchesSnapshot(
+        snapshots[0],
+        second,
+        secondPlans[0]!,
+      ),
+    ).toBe(true);
+    expect(
+      retainedGeometryChunkMatchesSnapshot(
+        snapshots[1],
+        second,
+        secondPlans[1]!,
+      ),
+    ).toBe(false);
   });
 });

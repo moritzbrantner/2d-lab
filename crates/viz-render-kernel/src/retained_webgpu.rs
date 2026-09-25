@@ -70,6 +70,24 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 }
 "#;
 
+struct RetainedGeometryChunk {
+    vertex_buffer: wgpu::Buffer,
+    vertex_capacity: u64,
+    vertex_count: u32,
+    vertex_bytes: u64,
+}
+
+impl RetainedGeometryChunk {
+    fn new(device: &wgpu::Device) -> Self {
+        Self {
+            vertex_buffer: create_vertex_buffer(device, INITIAL_VERTEX_BUFFER_SIZE),
+            vertex_capacity: INITIAL_VERTEX_BUFFER_SIZE,
+            vertex_count: 0,
+            vertex_bytes: 0,
+        }
+    }
+}
+
 #[wasm_bindgen]
 pub struct RetainedWgpuPolygonRenderer {
     surface: wgpu::Surface<'static>,
@@ -78,10 +96,7 @@ pub struct RetainedWgpuPolygonRenderer {
     config: wgpu::SurfaceConfiguration,
     surface_view_format: wgpu::TextureFormat,
     pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    vertex_capacity: u64,
-    vertex_count: u32,
-    vertex_bytes: u64,
+    geometry_chunks: Vec<RetainedGeometryChunk>,
     frame_uniform_buffer: wgpu::Buffer,
     frame_bind_group: wgpu::BindGroup,
     device_lost: Arc<AtomicBool>,
@@ -239,8 +254,6 @@ impl RetainedWgpuPolygonRenderer {
             multiview_mask: None,
             cache: None,
         });
-        let vertex_buffer = create_vertex_buffer(&device, INITIAL_VERTEX_BUFFER_SIZE);
-
         Ok(Self {
             surface,
             device,
@@ -248,10 +261,7 @@ impl RetainedWgpuPolygonRenderer {
             config,
             surface_view_format,
             pipeline,
-            vertex_buffer,
-            vertex_capacity: INITIAL_VERTEX_BUFFER_SIZE,
-            vertex_count: 0,
-            vertex_bytes: 0,
+            geometry_chunks: Vec::new(),
             frame_uniform_buffer,
             frame_bind_group,
             device_lost,
@@ -270,37 +280,62 @@ impl RetainedWgpuPolygonRenderer {
         spans: &[u32],
         colors: &[f32],
     ) -> Result<Float64Array, JsValue> {
+        let metrics = self.upload_geometry_chunk(0, points, spans, colors)?;
+        self.geometry_chunks.truncate(1);
+        Ok(metrics)
+    }
+
+    #[wasm_bindgen(js_name = uploadGeometryChunk)]
+    pub fn upload_geometry_chunk(
+        &mut self,
+        chunk_index: u32,
+        points: &[f32],
+        spans: &[u32],
+        colors: &[f32],
+    ) -> Result<Float64Array, JsValue> {
         let prepare_start = now_ms();
         let vertices = build_local_convex_polygon_vertices(points, spans, colors)
             .map_err(|message| JsValue::from_str(&message))?;
         let vertex_bytes = vertex_bytes(&vertices);
         let prepare_ms = now_ms() - prepare_start;
-
         let required = vertex_bytes.len() as u64;
-        if required > self.vertex_capacity {
+
+        let chunk_index = chunk_index as usize;
+        while self.geometry_chunks.len() <= chunk_index {
+            self.geometry_chunks
+                .push(RetainedGeometryChunk::new(&self.device));
+        }
+
+        let chunk = &mut self.geometry_chunks[chunk_index];
+        if required > chunk.vertex_capacity {
             let capacity = required
                 .next_power_of_two()
                 .max(INITIAL_VERTEX_BUFFER_SIZE);
-            self.vertex_buffer = create_vertex_buffer(&self.device, capacity);
-            self.vertex_capacity = capacity;
+            chunk.vertex_buffer = create_vertex_buffer(&self.device, capacity);
+            chunk.vertex_capacity = capacity;
         }
 
         let upload_start = now_ms();
         if !vertex_bytes.is_empty() {
             self.queue
-                .write_buffer(&self.vertex_buffer, 0, &vertex_bytes);
+                .write_buffer(&chunk.vertex_buffer, 0, &vertex_bytes);
         }
         let upload_ms = now_ms() - upload_start;
 
-        self.vertex_count = (vertices.len() / 6) as u32;
-        self.vertex_bytes = required;
+        chunk.vertex_count = (vertices.len() / 6) as u32;
+        chunk.vertex_bytes = required;
 
         Ok(Float64Array::new_from_slice(&[
             prepare_ms,
             upload_ms,
-            f64::from(self.vertex_count),
+            f64::from(chunk.vertex_count),
             required as f64,
         ]))
+    }
+
+    #[wasm_bindgen(js_name = truncateGeometryChunks)]
+    pub fn truncate_geometry_chunks(&mut self, chunk_count: u32) {
+        self.geometry_chunks.truncate(chunk_count as usize);
     }
 
     pub fn render(
@@ -347,6 +382,17 @@ impl RetainedWgpuPolygonRenderer {
             .write_buffer(&self.frame_uniform_buffer, 0, &uniform_bytes);
         let upload_ms = now_ms() - upload_start;
 
+        let total_vertex_count = self
+            .geometry_chunks
+            .iter()
+            .map(|chunk| u64::from(chunk.vertex_count))
+            .sum::<u64>();
+        let draw_calls = self
+            .geometry_chunks
+            .iter()
+            .filter(|chunk| chunk.vertex_count > 0)
+            .count() as u32;
+
         let render_start = now_ms();
         let Some(surface_frame) = self.acquire_surface_frame()? else {
             return Ok(Float64Array::new_from_slice(&[
@@ -354,7 +400,7 @@ impl RetainedWgpuPolygonRenderer {
                 now_ms() - render_start,
                 0.0,
                 FRAME_UNIFORM_SIZE as f64,
-                f64::from(self.vertex_count),
+                total_vertex_count as f64,
             ]));
         };
 
@@ -383,7 +429,6 @@ impl RetainedWgpuPolygonRenderer {
             },
         })];
 
-        let draw_calls = if self.vertex_count > 0 { 1 } else { 0 };
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("2d-lab retained render pass"),
@@ -393,11 +438,16 @@ impl RetainedWgpuPolygonRenderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            if self.vertex_count > 0 {
+            if draw_calls > 0 {
                 pass.set_pipeline(&self.pipeline);
                 pass.set_bind_group(0, &self.frame_bind_group, &[]);
-                pass.set_vertex_buffer(0, self.vertex_buffer.slice(..self.vertex_bytes));
-                pass.draw(0..self.vertex_count, 0..1);
+                for chunk in &self.geometry_chunks {
+                    if chunk.vertex_count == 0 {
+                        continue;
+                    }
+                    pass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..chunk.vertex_bytes));
+                    pass.draw(0..chunk.vertex_count, 0..1);
+                }
             }
         }
 
@@ -410,7 +460,7 @@ impl RetainedWgpuPolygonRenderer {
             render_ms,
             f64::from(draw_calls),
             FRAME_UNIFORM_SIZE as f64,
-            f64::from(self.vertex_count),
+            total_vertex_count as f64,
         ]))
     }
 

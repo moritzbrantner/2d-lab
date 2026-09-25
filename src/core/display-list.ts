@@ -34,6 +34,12 @@ export type PathCommand = {
   readonly paint: Paint;
 };
 
+export type RetainedGeometryChunk = {
+  readonly commandStart: number;
+  readonly commandCount: number;
+  readonly revision: string;
+};
+
 export type DisplayList = {
   readonly width: number;
   readonly height: number;
@@ -45,6 +51,12 @@ export type DisplayList = {
    * are unchanged even when per-frame transforms differ.
    */
   readonly retainedGeometryRevision?: string;
+  /**
+   * Optional producer-owned partition of retained geometry. Chunks are ordered,
+   * contiguous command ranges whose revisions cover local geometry and fill
+   * paint. This is lab evidence metadata, not a product tile model.
+   */
+  readonly retainedGeometryChunks?: readonly RetainedGeometryChunk[];
 };
 
 export const IDENTITY_TRANSFORM: Affine2D = [1, 0, 0, 1, 0, 0];
@@ -70,6 +82,59 @@ function commandEncodedPointCount(command: PathCommand): number {
   );
 }
 
+export function retainedGeometryMetadataError(
+  displayList: DisplayList,
+): string | null {
+  const revision = displayList.retainedGeometryRevision;
+  if (revision !== undefined && revision.trim().length === 0) {
+    return "retained geometry revision must not be blank";
+  }
+
+  const chunks = displayList.retainedGeometryChunks;
+  if (chunks === undefined) {
+    return null;
+  }
+  if (revision !== undefined) {
+    return (
+      "display list must use either retainedGeometryRevision or " +
+      "retainedGeometryChunks, not both"
+    );
+  }
+
+  let expectedCommandStart = 0;
+  for (const [index, chunk] of chunks.entries()) {
+    if (!Number.isInteger(chunk.commandStart) || chunk.commandStart < 0) {
+      return `retained geometry chunk ${index} has an invalid commandStart`;
+    }
+    if (!Number.isInteger(chunk.commandCount) || chunk.commandCount <= 0) {
+      return `retained geometry chunk ${index} has an invalid commandCount`;
+    }
+    if (chunk.revision.trim().length === 0) {
+      return `retained geometry chunk ${index} has a blank revision`;
+    }
+    if (chunk.commandStart !== expectedCommandStart) {
+      return (
+        `retained geometry chunk ${index} must start at command ` +
+        `${expectedCommandStart}, got ${chunk.commandStart}`
+      );
+    }
+
+    expectedCommandStart += chunk.commandCount;
+    if (expectedCommandStart > displayList.commands.length) {
+      return `retained geometry chunk ${index} exceeds the command list`;
+    }
+  }
+
+  if (expectedCommandStart !== displayList.commands.length) {
+    return (
+      "retained geometry chunks must cover every command exactly once; " +
+      `covered ${expectedCommandStart} of ${displayList.commands.length}`
+    );
+  }
+
+  return null;
+}
+
 export function validateDisplayList(displayList: DisplayList): void {
   if (
     !Number.isFinite(displayList.width) ||
@@ -79,11 +144,10 @@ export function validateDisplayList(displayList: DisplayList): void {
   ) {
     throw new Error("display-list dimensions must be positive and finite");
   }
-  if (
-    displayList.retainedGeometryRevision !== undefined &&
-    displayList.retainedGeometryRevision.trim().length === 0
-  ) {
-    throw new Error("retained geometry revision must not be blank");
+
+  const retainedGeometryError = retainedGeometryMetadataError(displayList);
+  if (retainedGeometryError) {
+    throw new Error(retainedGeometryError);
   }
 
   for (const [index, command] of displayList.commands.entries()) {
