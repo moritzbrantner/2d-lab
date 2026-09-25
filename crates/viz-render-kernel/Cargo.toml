@@ -15,4 +15,4 @@ wasm-bindgen = "=0.2.128"
 wasm-bindgen-futures = "=0.4.78"
 web-sys = { version = "=0.3.105", features = ["HtmlCanvasElement", "Performance", "Window"] }
 wgpu = { version = "=30.0.1", default-features = false, features = ["webgpu", "wgsl"] }
-vello_gpu = { git = "https://github.com/linebender/vello.git", rev = "60618fc3ff3343aeabbceb25180be6c6319154e3", default-features = false, features = ["wgpu"] }
+vello_gpu = { git = "https://github.com/linebender/vello.git", rev = "a9f11bbe752c391a2e420657d65cbd1fc97f4fae", default-features = false, features = ["wgpu"] }
