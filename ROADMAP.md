@@ -74,7 +74,7 @@ The roadmap is evidence-driven. A later renderer is not promoted merely because 
 
 Do not implement these merely to make the custom renderer look complete.
 
-- [ ] Curves.
+- [x] Curves.
 - [ ] General fill tessellation.
 - [ ] Strokes/joins/caps/dashes.
 - [ ] Text.

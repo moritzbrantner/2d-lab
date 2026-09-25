@@ -3,13 +3,13 @@ import { parseHexColor } from "../geometry/color";
 import { flattenGeometry } from "../geometry/flatten";
 import type { RenderOptions } from "./types";
 
-export interface PackedPolygonFrame {
+export type PackedPolygonFrame = {
   readonly points: Float32Array;
   readonly spans: Uint32Array;
   readonly transforms: Float32Array;
   readonly colors: Float32Array;
   readonly background: Float32Array;
-}
+};
 
 export function polygonRendererSupportError(
   displayList: DisplayList,
@@ -27,6 +27,9 @@ export function polygonRendererSupportError(
   }
 
   for (const [index, command] of displayList.commands.entries()) {
+    if (command.segments) {
+      return `WebGPU command ${index} uses explicit path segments; custom polygon rendering supports straight edges only.`;
+    }
     if (!command.closed) {
       return `WebGPU command ${index} is open; the first slice supports closed polygons only.`;
     }

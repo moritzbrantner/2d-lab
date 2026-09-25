@@ -6,10 +6,14 @@ import type { RenderOptions } from "./types";
 const FLAG_CLOSED = 1;
 const FLAG_FILL = 2;
 const FLAG_STROKE = 4;
+const VERB_LINE = 0;
+const VERB_CUBIC = 1;
 
 export type PackedVelloFrame = {
   readonly points: Float32Array;
   readonly spans: Uint32Array;
+  readonly verbs: Uint32Array;
+  readonly verbSpans: Uint32Array;
   readonly transforms: Float32Array;
   readonly fillColors: Float32Array;
   readonly strokeColors: Float32Array;
@@ -53,6 +57,7 @@ export function packVelloFrame(displayList: DisplayList): PackedVelloFrame {
   }
 
   const geometry = flattenGeometry(displayList);
+  const { verbs, verbSpans } = packPathVerbs(displayList);
   const count = displayList.commands.length;
   const fillColors = new Float32Array(count * 4);
   const strokeColors = new Float32Array(count * 4);
@@ -91,10 +96,47 @@ export function packVelloFrame(displayList: DisplayList): PackedVelloFrame {
 
   return {
     ...geometry,
+    verbs,
+    verbSpans,
     fillColors,
     strokeColors,
     strokeWidths,
     flags,
     background: new Float32Array(background),
   };
+}
+
+function packPathVerbs(displayList: DisplayList): {
+  readonly verbs: Uint32Array;
+  readonly verbSpans: Uint32Array;
+} {
+  const verbCount = displayList.commands.reduce(
+    (total, command) =>
+      total +
+      (command.segments?.length ?? command.points.length / 2 - 1),
+    0,
+  );
+  const verbs = new Uint32Array(verbCount);
+  const verbSpans = new Uint32Array(displayList.commands.length * 2);
+  let verbOffset = 0;
+
+  for (const [commandIndex, command] of displayList.commands.entries()) {
+    const commandVerbCount =
+      command.segments?.length ?? command.points.length / 2 - 1;
+    verbSpans[commandIndex * 2] = verbOffset;
+    verbSpans[commandIndex * 2 + 1] = commandVerbCount;
+
+    if (command.segments) {
+      for (const segment of command.segments) {
+        verbs[verbOffset] =
+          segment.kind === "cubic" ? VERB_CUBIC : VERB_LINE;
+        verbOffset += 1;
+      }
+    } else {
+      verbs.fill(VERB_LINE, verbOffset, verbOffset + commandVerbCount);
+      verbOffset += commandVerbCount;
+    }
+  }
+
+  return { verbs, verbSpans };
 }
