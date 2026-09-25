@@ -146,7 +146,7 @@ impl RetainedWgpuPolygonRenderer {
 
         let frame_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("viz-engine retained frame layout"),
+                label: Some("2d-lab retained frame layout"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::VERTEX,
@@ -159,13 +159,13 @@ impl RetainedWgpuPolygonRenderer {
                 }],
             });
         let frame_uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("viz-engine retained frame uniform"),
+            label: Some("2d-lab retained frame uniform"),
             size: FRAME_UNIFORM_SIZE,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let frame_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("viz-engine retained frame bind group"),
+            label: Some("2d-lab retained frame bind group"),
             layout: &frame_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
@@ -174,11 +174,11 @@ impl RetainedWgpuPolygonRenderer {
         });
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("viz-engine retained polygon shader"),
+            label: Some("2d-lab retained polygon shader"),
             source: wgpu::ShaderSource::Wgsl(RETAINED_SHADER.into()),
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("viz-engine retained polygon pipeline layout"),
+            label: Some("2d-lab retained polygon pipeline layout"),
             bind_group_layouts: &[Some(&frame_bind_group_layout)],
             immediate_size: 0,
         });
@@ -212,7 +212,7 @@ impl RetainedWgpuPolygonRenderer {
             },
         };
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("viz-engine retained convex polygon pipeline"),
+            label: Some("2d-lab retained convex polygon pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
@@ -359,14 +359,14 @@ impl RetainedWgpuPolygonRenderer {
         };
 
         let view = surface_frame.texture.create_view(&wgpu::TextureViewDescriptor {
-            label: Some("viz-engine retained sRGB surface view"),
+            label: Some("2d-lab retained sRGB surface view"),
             format: Some(self.surface_view_format),
             ..Default::default()
         });
         let mut encoder =
             self.device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("viz-engine retained command encoder"),
+                    label: Some("2d-lab retained command encoder"),
                 });
         let color_attachments = [Some(wgpu::RenderPassColorAttachment {
             view: &view,
@@ -386,7 +386,7 @@ impl RetainedWgpuPolygonRenderer {
         let draw_calls = if self.vertex_count > 0 { 1 } else { 0 };
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("viz-engine retained render pass"),
+                label: Some("2d-lab retained render pass"),
                 color_attachments: &color_attachments,
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
@@ -459,7 +459,7 @@ impl RetainedWgpuPolygonRenderer {
 
 fn create_vertex_buffer(device: &wgpu::Device, size: u64) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("viz-engine retained polygon vertices"),
+        label: Some("2d-lab retained polygon vertices"),
         size,
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,

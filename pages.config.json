@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "name": "2d-lab",
+    "repository": "moritzbrantner/2d-lab",
+    "basePath": "/2d-lab/",
+    "kicker": "Rust/WASM 2D rendering decision laboratory",
+    "description": "Compare Canvas 2D, pinned Vello, and a custom Rust/WASM + wgpu renderer on deterministic representative workloads."
+  },
+  "links": [
+    {
+      "label": "Lab",
+      "href": "/2d-lab/"
+    },
+    {
+      "label": "Source",
+      "href": "https://github.com/moritzbrantner/2d-lab"
+    },
+    {
+      "label": "Maps scenarios",
+      "href": "https://github.com/moritzbrantner/maps/blob/b64b31067e4384fea361ae1de1e79881441e7ff8/docs/engine-scenarios.md"
+    },
+    {
+      "label": "Flat Stories renderer fixture",
+      "href": "https://github.com/moritzbrantner/flat-stories/blob/c69971965d06b5efb940c3932bfd6b07b1070aca/features/editor/rendering/benchmarkFixture.ts"
+    }
+  ],
+  "evidenceSources": [
+    {
+      "id": "coding-tooling",
+      "label": "Repository verification",
+      "kind": "coding-tooling-analysis-v1",
+      "producer": "coding-tooling",
+      "url": "https://moritzbrantner.github.io/coding-tooling/analysis.json/?repo=moritzbrantner/2d-lab"
+    },
+    {
+      "id": "runtime",
+      "label": "Renderer runtime evidence",
+      "kind": "project-evidence-v1",
+      "producer": "runtime-profiler + Moonlight",
+      "url": "/2d-lab/evidence/runtime.json"
+    }
+  ]
+}

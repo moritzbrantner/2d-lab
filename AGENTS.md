@@ -22,6 +22,10 @@ This repository is a rendering decision laboratory, not a generic application fr
 - Never make shared-runner wall-clock timings a correctness gate.
 - Add an optimization only with a workload that can demonstrate why it exists.
 - Prefer end-to-end evidence over isolated microbenchmarks.
+- Keep Canvas 2D, pinned Vello, and the 2d-lab custom contender visible as the stable three-engine decision baseline.
+- For the custom contender, report the actual specialized backend used; when no custom backend preserves a workload, keep the row visible and report the semantic coverage gap instead of approximating it.
+- The `2d-lab custom` renderer is Rust/WASM + `wgpu`; TypeScript may adapt/route workload data but must not provide a Canvas or TypeScript rasterization fallback under the custom identity.
+- Keep custom GPU resource ownership, command encoding, and submission inside the Rust WASM kernel.
 
 ## Custom renderer rule
 
@@ -41,3 +45,7 @@ Vello GPU is currently consumed from the exact upstream revision documented in R
 - Unsupported renderer semantics must fail closed.
 - Keep the Vello adapter non-authoritative.
 - Keep exact-head Rust/WASM/browser evidence separate from noisy performance evidence.
+- Reuse `reusable-workflows` for deployment mechanics and `github-pages-template` for shared Pages evidence presentation instead of recreating those locally.
+- Keep `.coding-tooling.json` as the deterministic capability-discovery contract; benchmark smoke checks prove workload/support shape, not performance thresholds.
+- Runtime captures belong to `runtime-profiler` and comparable baseline/candidate verdicts belong to Moonlight. Do not label ad-hoc CI wall-clock timings as profiler evidence.
+- Consumer-shaped workloads must keep exact Maps/Flat Stories provenance while remaining disposable lab adapters; never require sibling product checkouts for normal CI or Pages builds.

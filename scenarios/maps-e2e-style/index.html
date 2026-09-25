@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Render a Maps-owned snapshot — isolated 2d-lab renderer comparison."
+    />
+    <title>Render a Maps-owned snapshot · 2d-lab</title>
+  </head>
+  <body data-scenario-id="maps-e2e-style">
+    <main class="shell scenario-shell">
+      <nav class="scenario-nav" aria-label="Scenario navigation">
+        <a id="catalog-link" href="/">All scenarios</a>
+        <span class="scenario-nav-spacer"></span>
+        <a id="previous-scenario"></a>
+        <a id="next-scenario"></a>
+      </nav>
+
+      <header>
+        <p class="eyebrow">2d-lab · isolated scenario</p>
+        <div class="scenario-heading">
+          <h1 id="scenario-title">Render a Maps-owned snapshot</h1>
+          <p id="scenario-progress" class="scenario-progress"></p>
+        </div>
+        <div class="scenario-copy">
+          <div>
+            <h2>Use case</h2>
+            <p id="scenario-use-case"></p>
+          </div>
+          <div>
+            <h2>Question</h2>
+            <p id="scenario-question"></p>
+          </div>
+        </div>
+      </header>
+
+      <section class="controls" aria-label="Renderer controls">
+        <label>
+          Renderer
+          <select id="renderer"></select>
+        </label>
+        <label class="check">
+          <input id="animate" type="checkbox" checked />
+          Animate
+        </label>
+        <label class="check">
+          <input id="debug-bounds" type="checkbox" />
+          Debug bounds
+        </label>
+        <button id="benchmark" type="button">Benchmark selected engine</button>
+        <button id="compare" type="button">Compare 3 engines</button>
+      </section>
+
+      <section class="viewport">
+        <canvas id="surface" aria-label="Render a Maps-owned snapshot rendering surface"></canvas>
+      </section>
+
+      <section class="readout" aria-live="polite">
+        <div>
+          <h2>Live frame</h2>
+          <pre id="frame-stats">Waiting for first frame…</pre>
+        </div>
+        <div>
+          <h2>Selected engine benchmark</h2>
+          <pre id="benchmark-stats">Not run yet.</pre>
+        </div>
+      </section>
+
+      <section class="comparison-panel">
+        <div class="comparison-heading">
+          <h2>Three-engine comparison</h2>
+          <span id="scenario-run-status" role="status">Not run yet.</span>
+        </div>
+        <div class="scenario-results-wrap">
+          <table class="scenario-results">
+            <thead>
+              <tr>
+                <th scope="col">Engine</th>
+                <th scope="col">Backend / support</th>
+                <th scope="col">Fresh surface</th>
+                <th scope="col">p50</th>
+                <th scope="col">p95</th>
+                <th scope="col">Prepare avg</th>
+                <th scope="col">Render avg</th>
+              </tr>
+            </thead>
+            <tbody id="scenario-results-body">
+              <tr>
+                <td colspan="7">Run the comparison to collect measurements on this page.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="notes">
+        <h2>Experiment boundary</h2>
+        <p id="scene-description"></p>
+        <p id="scene-provenance"></p>
+        <p>
+          This page owns one scenario only. Canvas 2D, Vello, and the custom
+          Rust/WASM + wgpu contender are measured against the same workload on
+          this page, and unsupported semantics stay visible rather than falling
+          back to another renderer.
+        </p>
+      </section>
+    </main>
+    <script type="module" src="/src/scenario-page.ts"></script>
+  </body>
+</html>
