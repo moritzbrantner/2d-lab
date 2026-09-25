@@ -1,13 +1,23 @@
 import { describe, expect, it } from "vitest";
 
 import type { DisplayList } from "../core/display-list";
-import { retainedRendererSupportError } from "./retained-wgpu";
+import {
+  createRetainedGeometrySnapshot,
+  retainedGeometryMatchesSnapshot,
+  retainedRendererSupportError,
+} from "./retained-wgpu";
 
-function scene(secondTransform = false): DisplayList {
+function scene(
+  secondTransform = false,
+  retainedGeometryRevision?: string,
+): DisplayList {
   return {
     width: 100,
     height: 100,
     background: "#ffffff",
+    ...(retainedGeometryRevision === undefined
+      ? {}
+      : { retainedGeometryRevision }),
     commands: [
       {
         kind: "path",
@@ -38,5 +48,29 @@ describe("retained WebGPU boundary", () => {
     expect(retainedRendererSupportError(scene(true), false)).toMatch(
       /shared frame transform/,
     );
+  });
+
+  it("uses an authoritative revision as the retained-geometry fast path", () => {
+    const snapshot = createRetainedGeometrySnapshot(
+      scene(false, "geometry:1"),
+      12,
+    );
+
+    expect(
+      retainedGeometryMatchesSnapshot(snapshot, scene(false, "geometry:1")),
+    ).toBe(true);
+    expect(
+      retainedGeometryMatchesSnapshot(snapshot, scene(false, "geometry:2")),
+    ).toBe(false);
+    expect(retainedGeometryMatchesSnapshot(snapshot, scene())).toBe(false);
+  });
+
+  it("keeps value verification as the safe fallback without a revision", () => {
+    const snapshot = createRetainedGeometrySnapshot(scene(), 12);
+    const changed = scene();
+    changed.commands[0]!.points[0] = 1;
+
+    expect(retainedGeometryMatchesSnapshot(snapshot, scene())).toBe(true);
+    expect(retainedGeometryMatchesSnapshot(snapshot, changed)).toBe(false);
   });
 });

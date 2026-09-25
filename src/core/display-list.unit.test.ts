@@ -56,6 +56,18 @@ describe("display list", () => {
     expect(() => validateDisplayList(scene)).not.toThrow();
   });
 
+  it("rejects blank retained geometry revisions", () => {
+    const scene: DisplayList = {
+      width: 100,
+      height: 100,
+      background: "#fff",
+      retainedGeometryRevision: "   ",
+      commands: [],
+    };
+
+    expect(() => validateDisplayList(scene)).toThrow(/revision/);
+  });
+
   it("rejects partial point pairs and mismatched segment topology", () => {
     const partial = {
       width: 100,

@@ -25,7 +25,7 @@ The roadmap is evidence-driven. A later renderer is not promoted merely because 
 - [x] Add a retained Rust/WASM + `wgpu` backend.
 - [x] Keep triangulated geometry resident and upload only a frame uniform in steady state.
 - [x] Verify geometry values before reuse rather than assuming identity means immutability.
-- [ ] Let a future Maps adapter supply an authoritative geometry revision and measure the removed scan cost.
+- [x] Model a workload-owned authoritative geometry revision so steady-state retained frames can skip the O(N) value scan; real Maps adapters must own any revision they supply.
 - [ ] Add tile-level independent invalidation rather than one monolithic retained buffer.
 - [ ] Add map-specific line/stroke geometry and compare retained road buffers.
 - [ ] Add culling/visible-tile updates.

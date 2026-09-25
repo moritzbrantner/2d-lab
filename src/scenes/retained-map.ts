@@ -10,6 +10,8 @@ interface StaticFeature {
   readonly fill: string;
 }
 
+const RETAINED_GEOMETRY_REVISION = "retained-map-static-v1";
+
 const PALETTE = [
   "#d8dfca",
   "#e7deca",
@@ -65,6 +67,7 @@ function createRetainedMapScene(timeSeconds: number): DisplayList {
     height: 720,
     background: "#f5f1e8",
     commands,
+    retainedGeometryRevision: RETAINED_GEOMETRY_REVISION,
   };
 }
 
