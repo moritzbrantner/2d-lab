@@ -19,6 +19,16 @@ export const labScenarios: readonly LabScenario[] = [
     path: "scenarios/retained-map/",
   },
   {
+    id: "retained-map-churn",
+    title: "Update one retained map chunk",
+    useCase:
+      "A user pans and zooms while one row-sized render-ready map chunk changes every few frames.",
+    question:
+      "Can custom WebGPU retain the rest of the map and reupload only the changed chunk?",
+    frames: 90,
+    path: "scenarios/retained-map-churn/",
+  },
+  {
     id: "maps-e2e-style",
     title: "Render a Maps-owned snapshot",
     useCase:

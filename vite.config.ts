@@ -8,6 +8,8 @@ export default defineConfig(({ command }) => ({
       input: {
         main: "index.html",
         "scenario-retained-map": "scenarios/retained-map/index.html",
+        "scenario-retained-map-churn":
+          "scenarios/retained-map-churn/index.html",
         "scenario-maps-e2e-style": "scenarios/maps-e2e-style/index.html",
         "scenario-flat-stories-curves": "scenarios/flat-stories-curves/index.html",
         "scenario-vector-animation": "scenarios/vector-animation/index.html",

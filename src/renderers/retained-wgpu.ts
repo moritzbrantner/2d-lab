@@ -1,5 +1,8 @@
 import type { DisplayList, PathCommand } from "../core/display-list";
-import { countPoints } from "../core/display-list";
+import {
+  countPoints,
+  retainedGeometryMetadataError,
+} from "../core/display-list";
 import { parseHexColor } from "../geometry/color";
 import {
   loadCustomWgpuModule,
@@ -12,12 +15,22 @@ import {
   polygonRendererSupportError,
 } from "./wgpu-polygon-frame";
 
+export interface RetainedGeometryChunkPlan {
+  readonly commandStart: number;
+  readonly commandCount: number;
+  readonly revision?: string;
+}
+
 interface RevisionGeometrySnapshot {
+  readonly commandStart: number;
+  readonly commandCount: number;
   readonly revision: string;
   readonly vertexCount: number;
 }
 
 interface ValueGeometrySnapshot {
+  readonly commandStart: number;
+  readonly commandCount: number;
   readonly pointValues: readonly Float32Array[];
   readonly fills: readonly string[];
   readonly vertexCount: number;
@@ -29,7 +42,7 @@ export type RetainedGeometrySnapshot =
 
 interface RetainedState {
   readonly renderer: Promise<RetainedWgpuPolygonRendererWasm>;
-  geometry?: RetainedGeometrySnapshot;
+  geometry?: readonly RetainedGeometrySnapshot[];
 }
 
 const stateByCanvas = new WeakMap<HTMLCanvasElement, RetainedState>();
@@ -55,6 +68,11 @@ export function retainedRendererSupportError(
   displayList: DisplayList,
   debugBounds: boolean,
 ): string | null {
+  const metadataError = retainedGeometryMetadataError(displayList);
+  if (metadataError) {
+    return metadataError;
+  }
+
   const polygonError = polygonRendererSupportError(displayList, {
     debugBounds,
   });
@@ -76,6 +94,28 @@ export function retainedRendererSupportError(
   }
 
   return null;
+}
+
+/** @internal Exported so retained chunk invalidation can be regression tested. */
+export function retainedGeometryChunkPlan(
+  displayList: DisplayList,
+): readonly RetainedGeometryChunkPlan[] {
+  if (displayList.retainedGeometryChunks !== undefined) {
+    return displayList.retainedGeometryChunks;
+  }
+  if (displayList.commands.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      commandStart: 0,
+      commandCount: displayList.commands.length,
+      ...(displayList.retainedGeometryRevision === undefined
+        ? {}
+        : { revision: displayList.retainedGeometryRevision }),
+    },
+  ];
 }
 
 export const retainedWgpuRenderer: Renderer = {
@@ -104,21 +144,42 @@ export const retainedWgpuRenderer: Renderer = {
     }
 
     const geometryCheckStart = performance.now();
-    const geometryChanged = !retainedGeometryMatchesSnapshot(
-      state.geometry,
-      displayList,
-    );
+    const plans = retainedGeometryChunkPlan(displayList);
+    const previousGeometry = state.geometry ?? [];
+    const nextGeometry = new Array<RetainedGeometrySnapshot>(plans.length);
     let prepareMs = performance.now() - geometryCheckStart;
     let uploadMs = 0;
     let uploadBytes = 0;
     let wasmCalls = 1;
 
-    if (geometryChanged) {
+    for (const [chunkIndex, plan] of plans.entries()) {
+      const previous = previousGeometry[chunkIndex];
+      if (
+        retainedGeometryChunkMatchesSnapshot(
+          previous,
+          displayList,
+          plan,
+        )
+      ) {
+        nextGeometry[chunkIndex] = previous!;
+        continue;
+      }
+
       const packStart = performance.now();
-      const packed = packPolygonFrame(displayList);
+      const chunkDisplayList: DisplayList = {
+        width: displayList.width,
+        height: displayList.height,
+        background: displayList.background,
+        commands: displayList.commands.slice(
+          plan.commandStart,
+          plan.commandStart + plan.commandCount,
+        ),
+      };
+      const packed = packPolygonFrame(chunkDisplayList);
       prepareMs += performance.now() - packStart;
 
-      const upload = renderer.uploadGeometry(
+      const upload = renderer.uploadGeometryChunk(
+        chunkIndex,
         packed.points,
         packed.spans,
         packed.colors,
@@ -126,12 +187,19 @@ export const retainedWgpuRenderer: Renderer = {
       prepareMs += upload[0] ?? 0;
       uploadMs += upload[1] ?? 0;
       uploadBytes += Math.trunc(upload[3] ?? 0);
-      state.geometry = createRetainedGeometrySnapshot(
+      nextGeometry[chunkIndex] = createRetainedGeometryChunkSnapshot(
         displayList,
+        plan,
         Math.trunc(upload[2] ?? 0),
       );
       wasmCalls += 1;
     }
+
+    if (previousGeometry.length > plans.length) {
+      renderer.truncateGeometryChunks(plans.length);
+      wasmCalls += 1;
+    }
+    state.geometry = nextGeometry;
 
     const framePackStart = performance.now();
     const transform = new Float32Array(
@@ -161,8 +229,10 @@ export const retainedWgpuRenderer: Renderer = {
       pointCount: countPoints(displayList),
       wasmCalls,
       drawCalls: Math.trunc(metrics[2] ?? 0),
-      vertexCount:
-        state.geometry?.vertexCount ?? Math.trunc(metrics[4] ?? 0),
+      vertexCount: nextGeometry.reduce(
+        (total, snapshot) => total + snapshot.vertexCount,
+        0,
+      ),
       uploadBytes,
     };
   },
@@ -183,51 +253,68 @@ export const retainedWgpuRenderer: Renderer = {
 };
 
 /** @internal Exported only so the revision/fallback contract can be regression tested. */
-export function createRetainedGeometrySnapshot(
+export function createRetainedGeometryChunkSnapshot(
   displayList: DisplayList,
+  plan: RetainedGeometryChunkPlan,
   vertexCount: number,
 ): RetainedGeometrySnapshot {
-  if (displayList.retainedGeometryRevision !== undefined) {
+  if (plan.revision !== undefined) {
     return {
-      revision: displayList.retainedGeometryRevision,
+      commandStart: plan.commandStart,
+      commandCount: plan.commandCount,
+      revision: plan.revision,
       vertexCount,
     };
   }
 
+  const commands = displayList.commands.slice(
+    plan.commandStart,
+    plan.commandStart + plan.commandCount,
+  );
   return {
-    pointValues: displayList.commands.map((command) => command.points.slice()),
-    fills: displayList.commands.map((command) => command.paint.fill!),
+    commandStart: plan.commandStart,
+    commandCount: plan.commandCount,
+    pointValues: commands.map((command) => command.points.slice()),
+    fills: commands.map((command) => command.paint.fill!),
     vertexCount,
   };
 }
 
-/** @internal Exported only so the revision/fallback contract can be regression tested. */
-export function retainedGeometryMatchesSnapshot(
+/** @internal Exported only so chunk invalidation can be regression tested. */
+export function retainedGeometryChunkMatchesSnapshot(
   snapshot: RetainedGeometrySnapshot | undefined,
   displayList: DisplayList,
+  plan: RetainedGeometryChunkPlan,
 ): boolean {
-  if (!snapshot) {
+  if (
+    !snapshot ||
+    snapshot.commandStart !== plan.commandStart ||
+    snapshot.commandCount !== plan.commandCount
+  ) {
     return false;
   }
 
-  const revision = displayList.retainedGeometryRevision;
-  if (revision !== undefined) {
-    return "revision" in snapshot && snapshot.revision === revision;
+  if (plan.revision !== undefined) {
+    return "revision" in snapshot && snapshot.revision === plan.revision;
   }
   if ("revision" in snapshot) {
     return false;
   }
 
-  const commands = displayList.commands;
-  if (snapshot.pointValues.length !== commands.length) {
+  if (snapshot.pointValues.length !== plan.commandCount) {
     return false;
   }
 
-  for (let index = 0; index < commands.length; index += 1) {
-    const command = commands[index]!;
-    const previous = snapshot.pointValues[index]!;
+  for (
+    let chunkCommandIndex = 0;
+    chunkCommandIndex < plan.commandCount;
+    chunkCommandIndex += 1
+  ) {
+    const command =
+      displayList.commands[plan.commandStart + chunkCommandIndex]!;
+    const previous = snapshot.pointValues[chunkCommandIndex]!;
     if (
-      snapshot.fills[index] !== command.paint.fill ||
+      snapshot.fills[chunkCommandIndex] !== command.paint.fill ||
       previous.length !== command.points.length
     ) {
       return false;
@@ -240,6 +327,42 @@ export function retainedGeometryMatchesSnapshot(
     }
   }
   return true;
+}
+
+/** @internal Compatibility helper for the monolithic retained contract tests. */
+export function createRetainedGeometrySnapshot(
+  displayList: DisplayList,
+  vertexCount: number,
+): RetainedGeometrySnapshot {
+  return createRetainedGeometryChunkSnapshot(
+    displayList,
+    {
+      commandStart: 0,
+      commandCount: displayList.commands.length,
+      ...(displayList.retainedGeometryRevision === undefined
+        ? {}
+        : { revision: displayList.retainedGeometryRevision }),
+    },
+    vertexCount,
+  );
+}
+
+/** @internal Compatibility helper for the monolithic retained contract tests. */
+export function retainedGeometryMatchesSnapshot(
+  snapshot: RetainedGeometrySnapshot | undefined,
+  displayList: DisplayList,
+): boolean {
+  return retainedGeometryChunkMatchesSnapshot(
+    snapshot,
+    displayList,
+    {
+      commandStart: 0,
+      commandCount: displayList.commands.length,
+      ...(displayList.retainedGeometryRevision === undefined
+        ? {}
+        : { revision: displayList.retainedGeometryRevision }),
+    },
+  );
 }
 
 function sameTransform(

@@ -28,7 +28,7 @@ All current paths consume the same low-level display list where their semantics 
 1. **Canvas 2D / TypeScript prepared** — readable browser reference.
 2. **Canvas 2D / Rust-WASM prepared** — the same Canvas rasterization after one batched Rust affine pass.
 3. **Custom WebGPU / immediate** — Rust transforms and triangle-fans convex fill-only polygons, uploads the generated vertices every frame, then submits one draw.
-4. **Custom WebGPU / retained map geometry** — for scenes with stable local fill geometry and one shared frame transform, triangulates/uploads geometry once and updates only a small frame uniform during steady-state frames. A workload-owned `retainedGeometryRevision` removes the steady-state value scan when the producer can authoritatively prove the uploaded geometry and fills are unchanged; workloads without that contract still use conservative value verification.
+4. **Custom WebGPU / retained map geometry** — for scenes with stable local fill geometry and one shared frame transform, keeps one or more Rust-owned GPU vertex buffers resident and updates only a small frame uniform during steady-state frames. A workload may provide one `retainedGeometryRevision` or a contiguous `retainedGeometryChunks` partition with producer-owned revisions. Unchanged chunks remain resident while changed chunks alone are retessellated and reuploaded; workloads without revision metadata still use conservative value verification. Chunking deliberately trades additional draw calls for smaller invalidation/upload work.
 5. **Vello GPU / pinned upstream** — general vector competitor. Vello owns path/stroke preprocessing and GPU rasterization/compositing instead of 2d-lab growing those facilities itself.
 
 ### Vello pin
@@ -57,6 +57,16 @@ This asks a map-specific question:
 > How much do we gain when product knowledge lets geometry stay resident and only camera state changes?
 
 It is compatible with Canvas, both custom polygon backends, and Vello.
+
+### Map · retained chunk churn
+
+The same 640-polygon grid is partitioned into 20 contiguous render-ready chunks. Every ten benchmark frames, exactly one row-sized chunk changes its local geometry and revision while the camera continues moving.
+
+This asks a second map-specific question:
+
+> Does independent retained invalidation pay for its extra draw calls when a small part of the geometry changes?
+
+The chunk metadata is lab-owned evidence. It models the behavior a product-owned tile/cache revision could enable without making 2d-lab authoritative for map tiles.
 
 ### Flat Stories · Nova curve slice
 
@@ -87,6 +97,7 @@ GitHub Pages is a multi-page lab rather than one long-lived scenario switcher.
 The root page is a catalog. Each workload has a dedicated static route:
 
 - `/scenarios/retained-map/` — retained map navigation;
+- `/scenarios/retained-map-churn/` — independent retained-chunk invalidation;
 - `/scenarios/maps-e2e-style/` — Maps-owned post-projection fixture;
 - `/scenarios/vector-animation/` — animated vector storytelling;
 - `/scenarios/flat-stories-curves/` — Nova-derived cubic path semantics;

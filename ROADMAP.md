@@ -26,7 +26,7 @@ The roadmap is evidence-driven. A later renderer is not promoted merely because 
 - [x] Keep triangulated geometry resident and upload only a frame uniform in steady state.
 - [x] Verify geometry values before reuse rather than assuming identity means immutability.
 - [x] Model a workload-owned authoritative geometry revision so steady-state retained frames can skip the O(N) value scan; real Maps adapters must own any revision they supply.
-- [ ] Add tile-level independent invalidation rather than one monolithic retained buffer.
+- [x] Add independent retained chunk invalidation with producer-owned revisions and separate Rust GPU buffers; the churn workload models tile-shaped updates without importing Maps tile authority.
 - [ ] Add map-specific line/stroke geometry and compare retained road buffers.
 - [ ] Add culling/visible-tile updates.
 - [ ] Add GPU picking only when a Maps workload needs it.
