@@ -1,5 +1,5 @@
 import type { DisplayList } from "../core/display-list";
-import { parseHexColor } from "../geometry/color";
+import { parseHexColor, parsePaintColor } from "../geometry/color";
 import { flattenGeometry } from "../geometry/flatten";
 import type { RenderOptions } from "./types";
 
@@ -7,7 +7,7 @@ const FLAG_CLOSED = 1;
 const FLAG_FILL = 2;
 const FLAG_STROKE = 4;
 
-export interface PackedVelloFrame {
+export type PackedVelloFrame = {
   readonly points: Float32Array;
   readonly spans: Uint32Array;
   readonly transforms: Float32Array;
@@ -16,7 +16,7 @@ export interface PackedVelloFrame {
   readonly strokeWidths: Float32Array;
   readonly flags: Uint32Array;
   readonly background: Float32Array;
-}
+};
 
 export function velloSupportError(
   displayList: DisplayList,
@@ -35,11 +35,11 @@ export function velloSupportError(
   }
 
   for (const [index, command] of displayList.commands.entries()) {
-    if (command.paint.fill && !parseHexColor(command.paint.fill)) {
-      return `Vello command ${index} uses a non-hex fill.`;
+    if (command.paint.fill && !parsePaintColor(command.paint.fill)) {
+      return `Vello command ${index} uses an unsupported fill color.`;
     }
-    if (command.paint.stroke && !parseHexColor(command.paint.stroke)) {
-      return `Vello command ${index} uses a non-hex stroke.`;
+    if (command.paint.stroke && !parsePaintColor(command.paint.stroke)) {
+      return `Vello command ${index} uses an unsupported stroke color.`;
     }
   }
 
@@ -63,7 +63,7 @@ export function packVelloFrame(displayList: DisplayList): PackedVelloFrame {
     let commandFlags = command.closed ? FLAG_CLOSED : 0;
 
     if (command.paint.fill) {
-      const color = parseHexColor(command.paint.fill);
+      const color = parsePaintColor(command.paint.fill);
       if (!color) {
         throw new Error(`command ${index} fill could not be encoded`);
       }
@@ -72,7 +72,7 @@ export function packVelloFrame(displayList: DisplayList): PackedVelloFrame {
     }
 
     if (command.paint.stroke) {
-      const color = parseHexColor(command.paint.stroke);
+      const color = parsePaintColor(command.paint.stroke);
       if (!color) {
         throw new Error(`command ${index} stroke could not be encoded`);
       }
