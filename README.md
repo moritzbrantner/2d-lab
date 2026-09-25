@@ -185,3 +185,14 @@ The lab reuses shared infrastructure at explicit seams:
 The root lab remains repository-owned. Product models are not imported as scene authority, and missing runtime evidence is shown as unavailable rather than synthesized.
 
 See [docs/ecosystem.md](docs/ecosystem.md) for the exact pins and dependency decisions, and [ROADMAP.md](ROADMAP.md) for the next experiments.
+
+## Nix development environment
+
+Linux development can enter the repository tool environment with:
+
+```sh
+nix develop
+bun install --frozen-lockfile
+```
+
+The shell provides Bun 1.4.2 from the pinned nixpkgs package and wasm-pack 0.14.0 from a hash-verified upstream release artifact. Rust still follows `rust-toolchain.toml`, including the WASM target, and `bun.lock` remains the JavaScript dependency authority. Normal repository commands such as `bun run check` and `bun run build:wasm` are unchanged.
