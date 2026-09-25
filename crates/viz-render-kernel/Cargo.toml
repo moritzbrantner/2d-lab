@@ -12,7 +12,7 @@ crate-type = ["cdylib", "rlib"]
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 js-sys = "=0.3.105"
 wasm-bindgen = "=0.2.128"
-wasm-bindgen-futures = "=0.4.78"
+wasm-bindgen-futures = "=0.4.79"
 web-sys = { version = "=0.3.105", features = ["HtmlCanvasElement", "Performance", "Window"] }
 wgpu = { version = "=30.0.1", default-features = false, features = ["webgpu", "wgsl"] }
 vello_gpu = { git = "https://github.com/linebender/vello.git", rev = "60618fc3ff3343aeabbceb25180be6c6319154e3", default-features = false, features = ["wgpu"] }
