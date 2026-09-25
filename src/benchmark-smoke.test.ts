@@ -10,12 +10,14 @@ import { mapLikeScene } from "./scenes/map-like";
 import { mapsE2eStyleWorkload } from "./scenes/maps-e2e-style";
 import { retainedMapScene } from "./scenes/retained-map";
 import { retainedMapChurnScene } from "./scenes/retained-map-churn";
+import { retainedMapCullingScene } from "./scenes/retained-map-culling";
 import type { BenchmarkWorkload } from "./scenes/types";
 import { vectorAnimationScene } from "./scenes/vector-animation";
 
 const workloads: readonly BenchmarkWorkload[] = [
   retainedMapScene,
   retainedMapChurnScene,
+  retainedMapCullingScene,
   mapsE2eStyleWorkload,
   flatStoriesCurveScene,
   vectorAnimationScene,
@@ -88,6 +90,15 @@ describe("renderer benchmark contract", () => {
     expect(typeof retainedChurn).not.toBe("string");
     if (typeof retainedChurn !== "string") {
       expect(retainedChurn.id).toBe("retained");
+    }
+
+    const retainedCulling = resolveCustomWgpuBackend(
+      retainedMapCullingScene.create(0),
+      { debugBounds: false },
+    );
+    expect(typeof retainedCulling).not.toBe("string");
+    if (typeof retainedCulling !== "string") {
+      expect(retainedCulling.id).toBe("retained");
     }
 
     const immediate = resolveCustomWgpuBackend(filledPolygonScene.create(0), {

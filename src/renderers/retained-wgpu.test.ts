@@ -6,6 +6,7 @@ import {
   createRetainedGeometrySnapshot,
   retainedGeometryChunkMatchesSnapshot,
   retainedGeometryChunkPlan,
+  retainedGeometryChunkVisibility,
   retainedGeometryMatchesSnapshot,
   retainedRendererSupportError,
 } from "./retained-wgpu";
@@ -75,6 +76,47 @@ describe("retained WebGPU boundary", () => {
 
     expect(retainedGeometryMatchesSnapshot(snapshot, scene())).toBe(true);
     expect(retainedGeometryMatchesSnapshot(snapshot, changed)).toBe(false);
+  });
+
+  it("changes chunk visibility without invalidating retained geometry", () => {
+    const first: DisplayList = {
+      ...scene(),
+      retainedGeometryChunks: [
+        { commandStart: 0, commandCount: 1, revision: "left:1" },
+        { commandStart: 1, commandCount: 1, revision: "right:1" },
+      ],
+    };
+    const second: DisplayList = {
+      ...scene(),
+      retainedGeometryChunks: [
+        {
+          commandStart: 0,
+          commandCount: 1,
+          revision: "left:1",
+          visible: false,
+        },
+        { commandStart: 1, commandCount: 1, revision: "right:1" },
+      ],
+    };
+    const firstPlans = retainedGeometryChunkPlan(first);
+    const snapshot = createRetainedGeometryChunkSnapshot(
+      first,
+      firstPlans[0]!,
+      6,
+    );
+    const secondPlans = retainedGeometryChunkPlan(second);
+
+    expect(
+      retainedGeometryChunkMatchesSnapshot(
+        snapshot,
+        second,
+        secondPlans[0]!,
+      ),
+    ).toBe(true);
+    expect(Array.from(retainedGeometryChunkVisibility(secondPlans))).toEqual([
+      0,
+      1,
+    ]);
   });
 
   it("invalidates only the retained chunk whose producer revision changed", () => {

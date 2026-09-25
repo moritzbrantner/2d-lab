@@ -38,6 +38,11 @@ export type RetainedGeometryChunk = {
   readonly commandStart: number;
   readonly commandCount: number;
   readonly revision: string;
+  /**
+   * Producer-owned conservative visibility. False means the entire chunk is
+   * outside the viewport for this frame; omitted/true means draw it.
+   */
+  readonly visible?: boolean;
 };
 
 export type DisplayList = {
@@ -111,6 +116,9 @@ export function retainedGeometryMetadataError(
     }
     if (chunk.revision.trim().length === 0) {
       return `retained geometry chunk ${index} has a blank revision`;
+    }
+    if (chunk.visible !== undefined && typeof chunk.visible !== "boolean") {
+      return `retained geometry chunk ${index} has an invalid visible flag`;
     }
     if (chunk.commandStart !== expectedCommandStart) {
       return (

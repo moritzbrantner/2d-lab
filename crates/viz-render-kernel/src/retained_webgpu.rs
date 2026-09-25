@@ -342,6 +342,7 @@ impl RetainedWgpuPolygonRenderer {
         &mut self,
         transform: &[f32],
         background: &[f32],
+        visible_chunks: &[u32],
         width: u32,
         height: u32,
     ) -> Result<Float64Array, JsValue> {
@@ -360,6 +361,13 @@ impl RetainedWgpuPolygonRenderer {
         {
             return Err(JsValue::from_str(
                 "retained wgpu background must contain finite RGBA in [0, 1]",
+            ));
+        }
+        if visible_chunks.len() != self.geometry_chunks.len()
+            || visible_chunks.iter().any(|visible| *visible > 1)
+        {
+            return Err(JsValue::from_str(
+                "retained wgpu visibility must contain one 0/1 flag per geometry chunk",
             ));
         }
 
@@ -390,7 +398,8 @@ impl RetainedWgpuPolygonRenderer {
         let draw_calls = self
             .geometry_chunks
             .iter()
-            .filter(|chunk| chunk.vertex_count > 0)
+            .zip(visible_chunks)
+            .filter(|(chunk, visible)| chunk.vertex_count > 0 && **visible != 0)
             .count() as u32;
 
         let render_start = now_ms();
@@ -441,8 +450,8 @@ impl RetainedWgpuPolygonRenderer {
             if draw_calls > 0 {
                 pass.set_pipeline(&self.pipeline);
                 pass.set_bind_group(0, &self.frame_bind_group, &[]);
-                for chunk in &self.geometry_chunks {
-                    if chunk.vertex_count == 0 {
+                for (chunk, visible) in self.geometry_chunks.iter().zip(visible_chunks) {
+                    if *visible == 0 || chunk.vertex_count == 0 {
                         continue;
                     }
                     pass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..chunk.vertex_bytes));
