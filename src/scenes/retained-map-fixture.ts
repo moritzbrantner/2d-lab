@@ -45,10 +45,11 @@ export const RETAINED_MAP_FEATURES: readonly RetainedMapFeature[] = Array.from(
       pointIndex < alternatePoints.length;
       pointIndex += 2
     ) {
-      alternatePoints[pointIndex] +=
-        (centerX - alternatePoints[pointIndex]!) * 0.04;
-      alternatePoints[pointIndex + 1] +=
-        (centerY - alternatePoints[pointIndex + 1]!) * 0.04;
+      const pointX = alternatePoints[pointIndex]!;
+      const pointY = alternatePoints[pointIndex + 1]!;
+      alternatePoints[pointIndex] = pointX + (centerX - pointX) * 0.04;
+      alternatePoints[pointIndex + 1] =
+        pointY + (centerY - pointY) * 0.04;
     }
 
     return {
