@@ -12,14 +12,26 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Install Nix
+        uses: NixOS/nix-installer-action@62c1943b776c509394b550f3f983adc14e9212d6 # v1.0.0
         with:
-          bun-version: 1.4.2
-      - run: bun install --frozen-lockfile
-      - run: bun run typecheck
-      - run: bun run test
-      - run: cargo test --workspace --locked
-      - run: rustup target add wasm32-unknown-unknown
-      - run: cargo check --workspace --target wasm32-unknown-unknown --locked
-      - run: bun run build
+          installer-version: 2.35.2
+          enable-kvm: false
+
+      - name: Validate in Nix shell
+        run: |
+          nix develop --command bash -lc '
+            set -euo pipefail
+            bun --version
+            wasm-pack --version
+            cargo --version
+            bun install --frozen-lockfile
+            bun run typecheck
+            bun run test
+            cargo test --workspace --locked
+            cargo check --workspace --target wasm32-unknown-unknown --locked
+            bun run build:wasm
+            bun run build
+          '
