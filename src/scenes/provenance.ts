@@ -26,6 +26,15 @@ export const workloadProvenance: Readonly<Record<string, WorkloadProvenance>> = 
     note:
       "Maps owns projection and style semantics. This checked-in screen-space export is a disposable lab fixture; 2d-lab only lowers its resolved primitives into the lab display list.",
   },
+  "flat-stories-curves": {
+    kind: "consumer-shaped",
+    sourceRepository: "moritzbrantner/flat-stories",
+    sourceRevision: "c69971965d06b5efb940c3932bfd6b07b1070aca",
+    sourcePath: "features/editor/fixture.ts#fixtureDocument",
+    sourceIdentity: "Nova torso/hair cubic path slice",
+    note:
+      "The exact Nova torso and hair anchor/control geometry is replicated over the product benchmark's 36-copy grid. Placement is lab-owned to isolate cubic-path support; this is not a second Flat Stories scene model or the full Nova semantic oracle.",
+  },
   "map-like": {
     kind: "consumer-shaped",
     sourceRepository: "moritzbrantner/maps",

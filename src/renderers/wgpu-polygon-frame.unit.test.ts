@@ -36,6 +36,31 @@ describe("wgpu polygon frame", () => {
     expect(packed.colors[3]).toBe(1);
   });
 
+  it("fails closed for curved path semantics", () => {
+    const curved: DisplayList = {
+      ...convexScene,
+      commands: [
+        {
+          ...convexScene.commands[0]!,
+          segments: [
+            {
+              kind: "cubic",
+              control1: [5, -5],
+              control2: [15, -5],
+            },
+            { kind: "line" },
+            { kind: "line" },
+            { kind: "line" },
+          ],
+        },
+      ],
+    };
+
+    expect(
+      polygonRendererSupportError(curved, { debugBounds: false }),
+    ).toMatch(/straight edges only/);
+  });
+
   it("fails closed for unsupported paint and geometry semantics", () => {
     const translucentBackground: DisplayList = {
       ...convexScene,
@@ -46,7 +71,6 @@ describe("wgpu polygon frame", () => {
         debugBounds: false,
       }),
     ).toMatch(/opaque background/);
-
 
     const stroked: DisplayList = {
       ...convexScene,

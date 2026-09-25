@@ -4,7 +4,7 @@ import type { DisplayList } from "../core/display-list";
 import { flattenGeometry } from "./flatten";
 
 describe("flattenGeometry", () => {
-  it("creates one contiguous ABI for all commands", () => {
+  it("creates one contiguous ABI for straight commands", () => {
     const displayList: DisplayList = {
       width: 10,
       height: 10,
@@ -36,5 +36,38 @@ describe("flattenGeometry", () => {
     expect(Array.from(flattened.transforms)).toEqual([
       1, 0, 0, 1, 2, 3, 2, 0, 0, 2, 0, 0,
     ]);
+  });
+
+  it("includes cubic controls in the transform ABI", () => {
+    const displayList: DisplayList = {
+      width: 30,
+      height: 20,
+      background: "#fff",
+      commands: [
+        {
+          kind: "path",
+          points: new Float32Array([0, 0, 10, 10, 20, 10]),
+          segments: [
+            {
+              kind: "cubic",
+              control1: [3, 0],
+              control2: [7, 10],
+            },
+            { kind: "line" },
+          ],
+          closed: false,
+          transform: [1, 0, 0, 1, 4, 5],
+          paint: { stroke: "#000" },
+        },
+      ],
+    };
+
+    const flattened = flattenGeometry(displayList);
+
+    expect(Array.from(flattened.points)).toEqual([
+      0, 0, 3, 0, 7, 10, 10, 10, 20, 10,
+    ]);
+    expect(Array.from(flattened.spans)).toEqual([0, 10]);
+    expect(Array.from(flattened.transforms)).toEqual([1, 0, 0, 1, 4, 5]);
   });
 });

@@ -59,6 +59,8 @@ export const velloGpuRenderer: Renderer = {
     const metrics = renderer.render(
       packed.points,
       packed.spans,
+      packed.verbs,
+      packed.verbSpans,
       packed.transforms,
       packed.fillColors,
       packed.strokeColors,

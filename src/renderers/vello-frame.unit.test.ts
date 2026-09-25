@@ -28,6 +28,8 @@ describe("Vello frame adapter", () => {
 
     const packed = packVelloFrame(displayList);
     expect(Array.from(packed.spans)).toEqual([0, 6]);
+    expect(Array.from(packed.verbs)).toEqual([0, 0]);
+    expect(Array.from(packed.verbSpans)).toEqual([0, 2]);
     expect(packed.transforms[0]).toBe(1);
     expect(packed.transforms[1]).toBeCloseTo(0.2);
     expect(packed.transforms[2]).toBeCloseTo(-0.1);
@@ -38,6 +40,39 @@ describe("Vello frame adapter", () => {
     expect(packed.strokeWidths[0]).toBe(2.5);
     expect(packed.fillColors[3]).toBe(1);
     expect(packed.strokeColors[3]).toBeCloseTo(0x80 / 255);
+  });
+
+  it("packs cubic controls and verbs without flattening the curve", () => {
+    const displayList: DisplayList = {
+      width: 100,
+      height: 80,
+      background: "#ffffff",
+      commands: [
+        {
+          kind: "path",
+          points: new Float32Array([0, 0, 10, 10, 20, 10]),
+          segments: [
+            {
+              kind: "cubic",
+              control1: [3, 0],
+              control2: [7, 10],
+            },
+            { kind: "line" },
+          ],
+          closed: false,
+          transform: [1, 0, 0, 1, 0, 0],
+          paint: { fill: "#336699" },
+        },
+      ],
+    };
+
+    const packed = packVelloFrame(displayList);
+    expect(Array.from(packed.points)).toEqual([
+      0, 0, 3, 0, 7, 10, 10, 10, 20, 10,
+    ]);
+    expect(Array.from(packed.spans)).toEqual([0, 10]);
+    expect(Array.from(packed.verbs)).toEqual([1, 0]);
+    expect(Array.from(packed.verbSpans)).toEqual([0, 2]);
   });
 
   it("preserves rgba paint from product-shaped fixtures", () => {

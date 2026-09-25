@@ -17,6 +17,8 @@ use vello_gpu::{
 const FLAG_CLOSED: u32 = 1;
 const FLAG_FILL: u32 = 2;
 const FLAG_STROKE: u32 = 4;
+const VERB_LINE: u32 = 0;
+const VERB_CUBIC: u32 = 1;
 
 #[wasm_bindgen]
 pub struct VelloGpuRenderer {
@@ -122,6 +124,8 @@ impl VelloGpuRenderer {
         &mut self,
         points: &[f32],
         spans: &[u32],
+        verbs: &[u32],
+        verb_spans: &[u32],
         transforms: &[f32],
         fill_colors: &[f32],
         stroke_colors: &[f32],
@@ -137,6 +141,8 @@ impl VelloGpuRenderer {
         validate_frame(
             points,
             spans,
+            verbs,
+            verb_spans,
             transforms,
             fill_colors,
             stroke_colors,
@@ -155,17 +161,44 @@ impl VelloGpuRenderer {
             let len = spans[command_index * 2 + 1] as usize;
             let flags = flags[command_index];
 
+            let verb_start = verb_spans[command_index * 2] as usize;
+            let verb_len = verb_spans[command_index * 2 + 1] as usize;
             let mut path = BezPath::new();
             path.move_to((
                 f64::from(points[start]),
                 f64::from(points[start + 1]),
             ));
-            for offset in (start + 2..start + len).step_by(2) {
-                path.line_to((
-                    f64::from(points[offset]),
-                    f64::from(points[offset + 1]),
-                ));
+            let mut point_offset = start + 2;
+            for verb in &verbs[verb_start..verb_start + verb_len] {
+                match *verb {
+                    VERB_LINE => {
+                        path.line_to((
+                            f64::from(points[point_offset]),
+                            f64::from(points[point_offset + 1]),
+                        ));
+                        point_offset += 2;
+                    }
+                    VERB_CUBIC => {
+                        path.curve_to(
+                            (
+                                f64::from(points[point_offset]),
+                                f64::from(points[point_offset + 1]),
+                            ),
+                            (
+                                f64::from(points[point_offset + 2]),
+                                f64::from(points[point_offset + 3]),
+                            ),
+                            (
+                                f64::from(points[point_offset + 4]),
+                                f64::from(points[point_offset + 5]),
+                            ),
+                        );
+                        point_offset += 6;
+                    }
+                    _ => return Err(JsValue::from_str("Vello path contains an unknown verb")),
+                }
             }
+            debug_assert_eq!(point_offset, start + len);
             if flags & FLAG_CLOSED != 0 {
                 path.close_path();
             }
@@ -306,6 +339,8 @@ fn create_vello_state(
 fn validate_frame(
     points: &[f32],
     spans: &[u32],
+    verbs: &[u32],
+    verb_spans: &[u32],
     transforms: &[f32],
     fill_colors: &[f32],
     stroke_colors: &[f32],
@@ -317,6 +352,9 @@ fn validate_frame(
         return Err(JsValue::from_str("Vello spans must be start/length pairs"));
     }
     let count = spans.len() / 2;
+    if verb_spans.len() != count * 2 {
+        return Err(JsValue::from_str("Vello verb spans must match command count"));
+    }
     if transforms.len() != count * 6
         || fill_colors.len() != count * 4
         || stroke_colors.len() != count * 4
@@ -335,6 +373,30 @@ fn validate_frame(
         if start % 2 != 0 || len % 2 != 0 || len < 4 || start + len > points.len() {
             return Err(JsValue::from_str(&format!(
                 "Vello command {command_index} has invalid geometry"
+            )));
+        }
+        let verb_start = verb_spans[command_index * 2] as usize;
+        let verb_len = verb_spans[command_index * 2 + 1] as usize;
+        if verb_start + verb_len > verbs.len() {
+            return Err(JsValue::from_str(&format!(
+                "Vello command {command_index} has an invalid verb span"
+            )));
+        }
+        let mut expected_point_len = 2;
+        for verb in &verbs[verb_start..verb_start + verb_len] {
+            expected_point_len += match *verb {
+                VERB_LINE => 2,
+                VERB_CUBIC => 6,
+                _ => {
+                    return Err(JsValue::from_str(&format!(
+                        "Vello command {command_index} contains an unknown path verb"
+                    )));
+                }
+            };
+        }
+        if expected_point_len != len {
+            return Err(JsValue::from_str(&format!(
+                "Vello command {command_index} path verbs do not consume its geometry"
             )));
         }
         if !stroke_widths[command_index].is_finite()

@@ -29,6 +29,16 @@ export const labScenarios: readonly LabScenario[] = [
     path: "scenarios/maps-e2e-style/",
   },
   {
+    id: "flat-stories-curves",
+    title: "Render Nova cubic paths",
+    useCase:
+      "A Flat Stories-derived curve slice repeats Nova's torso and hair cubic geometry across the same 36-copy grid used by its renderer benchmark.",
+    question:
+      "Can Canvas and pinned Vello preserve cubic path semantics while custom polygon backends remain explicitly unsupported?",
+    frames: 90,
+    path: "scenarios/flat-stories-curves/",
+  },
+  {
     id: "vector-animation",
     title: "Animate a vector story",
     useCase:

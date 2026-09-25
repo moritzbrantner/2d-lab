@@ -1,4 +1,5 @@
 import type { DisplayList } from "../core/display-list";
+import { pathDataFloatCount } from "../geometry/flatten";
 
 export function drawPreparedDisplayList(
   context: CanvasRenderingContext2D,
@@ -13,7 +14,7 @@ export function drawPreparedDisplayList(
 
   let floatOffset = 0;
   for (const command of displayList.commands) {
-    const end = floatOffset + command.points.length;
+    const end = floatOffset + pathDataFloatCount(command);
 
     context.beginPath();
     context.moveTo(
@@ -21,11 +22,34 @@ export function drawPreparedDisplayList(
       preparedPoints[floatOffset + 1] ?? 0,
     );
 
-    for (let offset = floatOffset + 2; offset < end; offset += 2) {
-      context.lineTo(
-        preparedPoints[offset] ?? 0,
-        preparedPoints[offset + 1] ?? 0,
-      );
+    if (command.segments) {
+      let cursor = floatOffset + 2;
+      for (const segment of command.segments) {
+        if (segment.kind === "cubic") {
+          context.bezierCurveTo(
+            preparedPoints[cursor] ?? 0,
+            preparedPoints[cursor + 1] ?? 0,
+            preparedPoints[cursor + 2] ?? 0,
+            preparedPoints[cursor + 3] ?? 0,
+            preparedPoints[cursor + 4] ?? 0,
+            preparedPoints[cursor + 5] ?? 0,
+          );
+          cursor += 6;
+        } else {
+          context.lineTo(
+            preparedPoints[cursor] ?? 0,
+            preparedPoints[cursor + 1] ?? 0,
+          );
+          cursor += 2;
+        }
+      }
+    } else {
+      for (let offset = floatOffset + 2; offset < end; offset += 2) {
+        context.lineTo(
+          preparedPoints[offset] ?? 0,
+          preparedPoints[offset + 1] ?? 0,
+        );
+      }
     }
 
     if (command.closed) {

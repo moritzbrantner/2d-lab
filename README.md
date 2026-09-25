@@ -58,6 +58,10 @@ This asks a map-specific question:
 
 It is compatible with Canvas, both custom polygon backends, and Vello.
 
+### Flat Stories · Nova curve slice
+
+Exact cubic path anchors and control handles from Nova's torso and hair are replicated over the same 36-copy grid shape used by Flat Stories' renderer benchmark. Placement is deliberately lab-owned so this workload isolates curve transport and rasterization without importing Flat Stories' document, rig, animation, or scene authority. Canvas and pinned Vello preserve the cubic segments; the custom polygon backends reject them explicitly. This is a prerequisite slice, not the full Nova fixture.
+
 ### Flat Stories · vector animation
 
 45 animated figures contain independently changing transforms, fills and strokes.
@@ -85,6 +89,7 @@ The root page is a catalog. Each workload has a dedicated static route:
 - `/scenarios/retained-map/` — retained map navigation;
 - `/scenarios/maps-e2e-style/` — Maps-owned post-projection fixture;
 - `/scenarios/vector-animation/` — animated vector storytelling;
+- `/scenarios/flat-stories-curves/` — Nova-derived cubic path semantics;
 - `/scenarios/filled-polygons/` — dense fill-only redraw;
 - `/scenarios/map-like/` — mixed roads and polygons.
 

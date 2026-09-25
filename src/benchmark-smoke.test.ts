@@ -5,6 +5,7 @@ import { canvas2dRenderer } from "./renderers/canvas2d";
 import { resolveCustomWgpuBackend } from "./renderers/custom-wgpu";
 import { velloGpuRenderer } from "./renderers/vello";
 import { filledPolygonScene } from "./scenes/filled-polygons";
+import { flatStoriesCurveScene } from "./scenes/flat-stories-curves";
 import { mapLikeScene } from "./scenes/map-like";
 import { mapsE2eStyleWorkload } from "./scenes/maps-e2e-style";
 import { retainedMapScene } from "./scenes/retained-map";
@@ -14,6 +15,7 @@ import { vectorAnimationScene } from "./scenes/vector-animation";
 const workloads: readonly BenchmarkWorkload[] = [
   retainedMapScene,
   mapsE2eStyleWorkload,
+  flatStoriesCurveScene,
   vectorAnimationScene,
   filledPolygonScene,
   mapLikeScene,
@@ -38,6 +40,9 @@ describe("renderer benchmark contract", () => {
         const right = second.commands[index]!;
         expect(Array.from(left.points), `${workload.id} command ${index} points`).toEqual(
           Array.from(right.points),
+        );
+        expect(left.segments, `${workload.id} command ${index} segments`).toEqual(
+          right.segments,
         );
         expect(left.transform, `${workload.id} command ${index} transform`).toEqual(
           right.transform,
@@ -76,22 +81,18 @@ describe("renderer benchmark contract", () => {
       expect(immediate.id).toBe("immediate");
     }
 
-    expect(
-      resolveCustomWgpuBackend(mapsE2eStyleWorkload.create(0), {
-        debugBounds: false,
-      }),
-    ).toMatch(/No Rust\/WASM \+ wgpu custom backend/);
-
-    expect(
-      resolveCustomWgpuBackend(vectorAnimationScene.create(0), {
-        debugBounds: false,
-      }),
-    ).toMatch(/No Rust\/WASM \+ wgpu custom backend/);
-
-    expect(
-      resolveCustomWgpuBackend(mapLikeScene.create(0), {
-        debugBounds: false,
-      }),
-    ).toMatch(/No Rust\/WASM \+ wgpu custom backend/);
+    for (const workload of [
+      mapsE2eStyleWorkload,
+      flatStoriesCurveScene,
+      vectorAnimationScene,
+      mapLikeScene,
+    ]) {
+      expect(
+        resolveCustomWgpuBackend(workload.create(0), {
+          debugBounds: false,
+        }),
+        workload.id,
+      ).toMatch(/No Rust\/WASM \+ wgpu custom backend/);
+    }
   });
 });
