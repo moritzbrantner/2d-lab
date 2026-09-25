@@ -28,7 +28,7 @@ All current paths consume the same low-level display list where their semantics 
 1. **Canvas 2D / TypeScript prepared** — readable browser reference.
 2. **Canvas 2D / Rust-WASM prepared** — the same Canvas rasterization after one batched Rust affine pass.
 3. **Custom WebGPU / immediate** — Rust transforms and triangle-fans convex fill-only polygons, uploads the generated vertices every frame, then submits one draw.
-4. **Custom WebGPU / retained map geometry** — for scenes with stable local fill geometry and one shared frame transform, keeps one or more Rust-owned GPU vertex buffers resident and updates only a small frame uniform during steady-state frames. A workload may provide one `retainedGeometryRevision` or a contiguous `retainedGeometryChunks` partition with producer-owned revisions. Unchanged chunks remain resident while changed chunks alone are retessellated and reuploaded; workloads without revision metadata still use conservative value verification. Chunking deliberately trades additional draw calls for smaller invalidation/upload work.
+4. **Custom WebGPU / retained map geometry** — for scenes with stable local fill geometry and one shared frame transform, keeps one or more Rust-owned GPU vertex buffers resident and updates only a small frame uniform during steady-state frames. A workload may provide one `retainedGeometryRevision` or a contiguous `retainedGeometryChunks` partition with producer-owned revisions. Unchanged chunks remain resident while changed chunks alone are retessellated and reuploaded; workloads without revision metadata still use conservative value verification. Chunking deliberately trades additional draw calls for smaller invalidation/upload work. Chunk producers may also mark a chunk conservatively invisible for the current frame; visibility does not invalidate geometry, and Rust simply omits that chunk's draw call.
 5. **Vello GPU / pinned upstream** — general vector competitor. Vello owns path/stroke preprocessing and GPU rasterization/compositing instead of 2d-lab growing those facilities itself.
 
 ### Vello pin
@@ -68,6 +68,16 @@ This asks a second map-specific question:
 
 The chunk metadata is lab-owned evidence. It models the behavior a product-owned tile/cache revision could enable without making 2d-lab authoritative for map tiles.
 
+### Map · retained chunk culling
+
+2,560 static polygons cover a world larger than the viewport and are grouped into 40 retained chunks. The producer computes conservative chunk visibility from the same shared camera transform, while geometry revisions remain unchanged.
+
+This asks a third map-specific question:
+
+> How much work can we avoid when product knowledge proves entire retained chunks are off-screen?
+
+Canvas and Vello still receive the full semantic frame and rely on their normal clipping/culling. The custom backend receives the same geometry plus lab-owned visibility evidence and skips only chunks whose complete conservative bounds are outside the viewport.
+
 ### Flat Stories · Nova curve slice
 
 Exact cubic path anchors and control handles from Nova's torso and hair are replicated over the same 36-copy grid shape used by Flat Stories' renderer benchmark. Placement is deliberately lab-owned so this workload isolates curve transport and rasterization without importing Flat Stories' document, rig, animation, or scene authority. Canvas and pinned Vello preserve the cubic segments; the custom polygon backends reject them explicitly. This is a prerequisite slice, not the full Nova fixture.
@@ -98,6 +108,7 @@ The root page is a catalog. Each workload has a dedicated static route:
 
 - `/scenarios/retained-map/` — retained map navigation;
 - `/scenarios/retained-map-churn/` — independent retained-chunk invalidation;
+- `/scenarios/retained-map-culling/` — producer-owned off-screen chunk culling;
 - `/scenarios/maps-e2e-style/` — Maps-owned post-projection fixture;
 - `/scenarios/vector-animation/` — animated vector storytelling;
 - `/scenarios/flat-stories-curves/` — Nova-derived cubic path semantics;

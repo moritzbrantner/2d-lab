@@ -19,6 +19,7 @@ export interface RetainedGeometryChunkPlan {
   readonly commandStart: number;
   readonly commandCount: number;
   readonly revision?: string;
+  readonly visible?: boolean;
 }
 
 interface RevisionGeometrySnapshot {
@@ -118,6 +119,13 @@ export function retainedGeometryChunkPlan(
   ];
 }
 
+/** @internal Exported so visibility transport can be regression tested. */
+export function retainedGeometryChunkVisibility(
+  plans: readonly RetainedGeometryChunkPlan[],
+): Uint32Array {
+  return Uint32Array.from(plans, (plan) => (plan.visible === false ? 0 : 1));
+}
+
 export const retainedWgpuRenderer: Renderer = {
   id: "wgpu-retained-map",
   name: "WebGPU · custom retained map geometry",
@@ -210,11 +218,13 @@ export const retainedWgpuRenderer: Renderer = {
       throw new Error("retained background could not be encoded");
     }
     const background = new Float32Array(backgroundColor);
+    const visibleChunks = retainedGeometryChunkVisibility(plans);
     prepareMs += performance.now() - framePackStart;
 
     const metrics = renderer.render(
       transform,
       background,
+      visibleChunks,
       displayList.width,
       displayList.height,
     );
