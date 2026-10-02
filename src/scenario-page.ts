@@ -115,6 +115,10 @@ function formatCount(value: number | null): string {
   return value === null ? "n/a" : String(value);
 }
 
+function formatAverageCount(value: number | null): string {
+  return value === null ? "n/a" : String(Number(value.toFixed(2)));
+}
+
 function formatMilliseconds(value: number): string {
   return `${value.toFixed(3)} ms`;
 }
@@ -150,7 +154,7 @@ function formatBenchmark(
     `prepare average   ${result.averagePrepareMs.toFixed(3)} ms`,
     `upload average    ${result.averageUploadMs.toFixed(3)} ms`,
     `render average    ${result.averageRenderMs.toFixed(3)} ms`,
-    `draw calls/frame  ${formatCount(result.drawCallsPerFrame)}`,
+    `draw calls/frame  ${formatAverageCount(result.drawCallsPerFrame)} (avg)`,
     `GPU vertices      ${formatCount(result.vertexCount)}`,
     `upload/frame      ${formatBytes(result.uploadBytesPerFrame)}`,
     `WASM calls/frame  ${result.wasmCallsPerFrame}`,

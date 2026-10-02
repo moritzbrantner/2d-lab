@@ -64,6 +64,7 @@ export async function runRendererBenchmark(
   let prepareTotal = 0;
   let uploadTotal = 0;
   let renderTotal = 0;
+  let drawCallTotal: number | null = 0;
   let finalStats: FrameStats | undefined;
 
   for (const displayList of displayLists) {
@@ -73,6 +74,10 @@ export async function runRendererBenchmark(
     prepareTotal += finalStats.prepareMs;
     uploadTotal += finalStats.uploadMs;
     renderTotal += finalStats.renderMs;
+    drawCallTotal =
+      drawCallTotal === null || finalStats.drawCalls === null
+        ? null
+        : drawCallTotal + finalStats.drawCalls;
   }
 
   if (!finalStats) {
@@ -94,7 +99,7 @@ export async function runRendererBenchmark(
     commandCount: finalStats.commandCount,
     pointCount: finalStats.pointCount,
     wasmCallsPerFrame: finalStats.wasmCalls,
-    drawCallsPerFrame: finalStats.drawCalls,
+    drawCallsPerFrame: drawCallTotal === null ? null : drawCallTotal / frames,
     vertexCount: finalStats.vertexCount,
     uploadBytesPerFrame: finalStats.uploadBytes,
   };
