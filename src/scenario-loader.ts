@@ -9,6 +9,9 @@ export async function loadScenarioWorkload(
     case "retained-map-churn":
       return (await import("./scenes/retained-map-churn"))
         .retainedMapChurnScene;
+    case "retained-map-culling":
+      return (await import("./scenes/retained-map-culling"))
+        .retainedMapCullingScene;
     case "maps-e2e-style":
       return (await import("./scenes/maps-e2e-style")).mapsE2eStyleWorkload;
     case "flat-stories-curves":

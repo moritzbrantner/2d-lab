@@ -19,11 +19,13 @@ const PALETTE = [
   "#ded8e8",
 ] as const;
 
-export const RETAINED_MAP_FEATURES: readonly RetainedMapFeature[] = Array.from(
-  { length: RETAINED_MAP_COLUMNS * RETAINED_MAP_ROWS },
-  (_, index) => {
-    const column = index % RETAINED_MAP_COLUMNS;
-    const row = Math.floor(index / RETAINED_MAP_COLUMNS);
+export function createRetainedMapFeatures(
+  columns: number,
+  rows: number,
+): readonly RetainedMapFeature[] {
+  return Array.from({ length: columns * rows }, (_, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
     const x = column * 39;
     const y = row * 36;
     const inset = ((row * 11 + column * 17) % 6) * 0.55;
@@ -59,8 +61,11 @@ export const RETAINED_MAP_FEATURES: readonly RetainedMapFeature[] = Array.from(
       alternatePoints,
       fill: PALETTE[(row * 3 + column * 7) % PALETTE.length]!,
     };
-  },
-);
+  });
+}
+
+export const RETAINED_MAP_FEATURES: readonly RetainedMapFeature[] =
+  createRetainedMapFeatures(RETAINED_MAP_COLUMNS, RETAINED_MAP_ROWS);
 
 export function retainedMapTransform(timeSeconds: number): Affine2D {
   const zoom = 0.96 + Math.sin(timeSeconds * 0.31) * 0.035;
