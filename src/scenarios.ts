@@ -29,6 +29,16 @@ export const labScenarios: readonly LabScenario[] = [
     path: "scenarios/retained-map-churn/",
   },
   {
+    id: "retained-map-culling",
+    title: "Cull off-screen retained map chunks",
+    useCase:
+      "A user navigates a map larger than the viewport while most retained chunks are wholly off-screen.",
+    question:
+      "Can producer-owned visibility reduce custom WebGPU draw calls without invalidating resident geometry?",
+    frames: 90,
+    path: "scenarios/retained-map-culling/",
+  },
+  {
     id: "maps-e2e-style",
     title: "Render a Maps-owned snapshot",
     useCase:

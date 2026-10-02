@@ -41,6 +41,7 @@ export interface RetainedWgpuPolygonRendererWasm {
   render(
     transform: Float32Array,
     background: Float32Array,
+    visibleChunks: Uint32Array,
     width: number,
     height: number,
   ): Float64Array;

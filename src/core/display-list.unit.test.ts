@@ -120,6 +120,20 @@ describe("display list", () => {
         ],
       }),
     ).toThrow(/blank revision/);
+    expect(() =>
+      validateDisplayList({
+        ...scene,
+        retainedGeometryChunks: [
+          {
+            commandStart: 0,
+            commandCount: 1,
+            revision: "left:1",
+            visible: "yes" as unknown as boolean,
+          },
+          { commandStart: 1, commandCount: 1, revision: "right:1" },
+        ],
+      }),
+    ).toThrow(/visible flag/);
   });
 
   it("rejects partial point pairs and mismatched segment topology", () => {

@@ -28,7 +28,7 @@ The roadmap is evidence-driven. A later renderer is not promoted merely because 
 - [x] Model a workload-owned authoritative geometry revision so steady-state retained frames can skip the O(N) value scan; real Maps adapters must own any revision they supply.
 - [x] Add independent retained chunk invalidation with producer-owned revisions and separate Rust GPU buffers; the churn workload models tile-shaped updates without importing Maps tile authority.
 - [ ] Add map-specific line/stroke geometry and compare retained road buffers.
-- [ ] Add culling/visible-tile updates.
+- [x] Add producer-owned conservative retained-chunk visibility so Rust can skip off-screen draw calls without invalidating resident geometry; the culling workload proves hidden chunks are fully outside the viewport.
 - [ ] Add GPU picking only when a Maps workload needs it.
 
 ## 4. Vello comparison
