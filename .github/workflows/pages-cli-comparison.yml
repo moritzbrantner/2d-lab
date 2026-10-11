@@ -1,0 +1,59 @@
+name: Pages CLI Provisioning Comparison
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/pages.yml
+      - .github/workflows/pages-cli-comparison.yml
+      - scripts/install-wasm-pack-ci.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: "wasm-pack ${{ matrix.method }} sample ${{ matrix.sample }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [cargo, prebuilt]
+        sample: [1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up common Rust WASM target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Compare wasm-pack provisioning
+        id: provision
+        env:
+          METHOD: ${{ matrix.method }}
+        run: |
+          set -euo pipefail
+          start_ns="$(date +%s%N)"
+          if [[ "$METHOD" == cargo ]]; then
+            cargo install wasm-pack --locked --version 0.14.0
+          else
+            bash scripts/install-wasm-pack-ci.sh
+          fi
+          end_ns="$(date +%s%N)"
+          elapsed_ms="$(((end_ns - start_ns) / 1000000))"
+          echo "elapsed_ms=$elapsed_ms" >> "$GITHUB_OUTPUT"
+          echo "Provisioning method $METHOD took ${elapsed_ms} ms"
+      - name: Validate identical real WASM build
+        run: |
+          set -euo pipefail
+          wasm-pack --version
+          bash scripts/build-wasm.sh
+          test -s public/wasm/viz_render_kernel_bg.wasm
+      - name: Record experimental sample
+        if: always()
+        env:
+          METHOD: ${{ matrix.method }}
+          SAMPLE: ${{ matrix.sample }}
+          ELAPSED_MS: ${{ steps.provision.outputs.elapsed_ms }}
+        run: |
+          echo "| Provisioner | Sample | Install ms | Source SHA |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | ---: | ---: | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| $METHOD | $SAMPLE | ${ELAPSED_MS:-unavailable} | $GITHUB_SHA |" >> "$GITHUB_STEP_SUMMARY"
