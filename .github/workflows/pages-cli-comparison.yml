@@ -1,11 +1,6 @@
 name: Pages CLI Provisioning Comparison
 
 on:
-  pull_request:
-    paths:
-      - .github/workflows/pages.yml
-      - .github/workflows/pages-cli-comparison.yml
-      - scripts/install-wasm-pack-ci.sh
   workflow_dispatch:
 
 permissions:
