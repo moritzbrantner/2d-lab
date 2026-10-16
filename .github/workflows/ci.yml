@@ -32,6 +32,10 @@ jobs:
             bun run test
             cargo test --workspace --locked
             cargo check --workspace --target wasm32-unknown-unknown --locked
-            bun run build:wasm
-            bun run build
+            # PRs prove the Nix release build. On main, Pages builds and
+            # publishes the exact release instead of compiling it twice.
+            if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+              bun run build:wasm
+              bun run build
+            fi
           '
