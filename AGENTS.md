@@ -45,7 +45,7 @@ For generic vector capabilities such as curves, strokes, text, clipping, gradien
 
 ## Vello pin
 
-Vello GPU is currently consumed from the exact upstream revision documented in README.md. Keep that pin explicit. Do not silently float the dependency or present the git API as stable.
+Vello GPU is pinned to the exact upstream Git revision in `crates/viz-render-kernel/Cargo.toml`, with the same revision in `Cargo.lock`. `README.md` references the manifest rather than duplicating a SHA that would become stale after Renovate updates. Do not silently float the dependency or present the git API as stable.
 
 ## Validation
 
