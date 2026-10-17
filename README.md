@@ -33,14 +33,9 @@ All current paths consume the same low-level display list where their semantics 
 
 ### Vello pin
 
-The experiment pins Vello GPU to upstream commit:
+The experiment pins Vello GPU to an exact upstream Git commit in [`crates/viz-render-kernel/Cargo.toml`](crates/viz-render-kernel/Cargo.toml) (`vello_gpu.rev`), with the corresponding revision recorded in `Cargo.lock`. The manifest is the authority for the pin; it does not track a floating branch or tag.
 
-```text
-linebender/vello
-60618fc3ff3343aeabbceb25180be6c6319154e3
-```
-
-At that revision the upstream package identifies as `vello_gpu 0.2.0` and targets the wgpu 30 generation. The crates.io `vello_gpu` name is not yet a usable release for this implementation, so the git revision is intentionally explicit. This is a lab dependency, not a stability commitment for Flat Stories.
+Renovate proposes digest updates as pull requests and merges them only when CI checks pass. This is a lab dependency, not a stability commitment for Flat Stories.
 
 ## Workloads
 
