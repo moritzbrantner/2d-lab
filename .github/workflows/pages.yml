@@ -17,8 +17,8 @@ jobs:
     name: Build and deploy lab
     uses: moritzbrantner/reusable-workflows/.github/workflows/deploy-pages.yml@45042e56be120b438096e774027637cac0280075
     with:
-      node_version: "24"
-      bun_version: "1.4.2"
+      node_version: lts/*
+      bun_version: latest
       install_command: bun install --frozen-lockfile
       pre_command: |
         rustup target add wasm32-unknown-unknown
