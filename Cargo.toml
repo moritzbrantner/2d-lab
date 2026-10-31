@@ -1,6 +1,7 @@
 [workspace]
 members = ["crates/viz-render-kernel"]
 resolver = "3"
+exclude = ["oracle"]
 
 [workspace.package]
 edition = "2024"

@@ -1,0 +1,26 @@
+[package]
+name = "lab-oracle"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+default-run = "oracle"
+description = "Renders each oracle scenario with the custom WebGPU path, Vello and Skia (tiny-skia), gates the custom path with FLIP and GPU time"
+
+# Its own workspace: the lab's `cargo test --workspace` never compiles native wgpu, Vello or FLIP.
+[workspace]
+
+[dependencies]
+viz-render-kernel = { path = "../crates/viz-render-kernel", features = ["native"] }
+# Same pin as the kernel; adds the native Vulkan backend (lavapipe on CI, the local GPU otherwise).
+wgpu = { version = "=30.0.1", default-features = false, features = ["vulkan", "wgsl"] }
+tiny-skia = "0.11.4"
+nv-flip = "0.1.2"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+pollster = "0.4.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[[bin]]
+name = "oracle"
+path = "src/main.rs"

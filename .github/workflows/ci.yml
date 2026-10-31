@@ -9,8 +9,74 @@ permissions:
   contents: read
 
 jobs:
-  validate:
+  # The required check: green only when every job below is.
+  merge-ready:
     name: merge-ready
+    if: always()
+    needs: [validate, oracle]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require validate and the oracle gate
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for result in $RESULTS; do [[ "$result" == success ]] || exit 1; done
+
+  # The oracle gate: custom WebGPU path vs Vello and Skia (FLIP image gate enforced on lavapipe;
+  # GPU time advisory without a GPU). The report artifact holds images, diffs and report.json.
+  oracle:
+    name: oracle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+      WGPU_FORCE_FALLBACK_ADAPTER: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - name: Install the stable toolchain
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Install lavapipe (software Vulkan)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: oracle -> target
+
+      - name: Format and clippy (oracle)
+        working-directory: oracle
+        run: |
+          cargo fmt -- --check
+          cargo clippy --release --all-targets --locked -- -D warnings
+
+      - name: Tests (oracle)
+        working-directory: oracle
+        run: cargo test --release --locked
+
+      - name: Oracle gate (FLIP vs Vello and Skia; GPU time advisory on lavapipe)
+        run: |
+          bun install --frozen-lockfile
+          bun run oracle --frames 5
+
+      - name: Upload oracle report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: oracle-report
+          path: target/oracle
+          retention-days: 14
+
+  validate:
+    name: validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

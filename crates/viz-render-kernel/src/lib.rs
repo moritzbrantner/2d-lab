@@ -8,19 +8,21 @@ mod vello_gpu_renderer;
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 mod webgpu;
 
+// Target-independent GPU cores shared by the browser renderers and the native oracle (`oracle/`,
+// which enables the `native` feature).
+#[cfg(any(all(target_arch = "wasm32", target_os = "unknown"), feature = "native"))]
+pub mod polygon_pipeline;
+#[cfg(any(all(target_arch = "wasm32", target_os = "unknown"), feature = "native"))]
+pub mod vello_scene;
+#[cfg(any(all(target_arch = "wasm32", target_os = "unknown"), feature = "native"))]
+pub use {vello_gpu, wgpu};
+
 const CONVEX_EPSILON: f32 = 1.0e-5;
 const GPU_VERTEX_FLOATS: usize = 6;
 
-#[cfg_attr(
-    all(target_arch = "wasm32", target_os = "unknown"),
-    wasm_bindgen
-)]
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen)]
 pub fn transform_batches(points: &[f32], spans: &[u32], transforms: &[f32]) -> Vec<f32> {
-    assert_eq!(
-        spans.len() % 2,
-        0,
-        "spans must contain start/length pairs"
-    );
+    assert_eq!(spans.len() % 2, 0, "spans must contain start/length pairs");
 
     let command_count = spans.len() / 2;
     assert_eq!(
@@ -37,17 +39,16 @@ pub fn transform_batches(points: &[f32], spans: &[u32], transforms: &[f32]) -> V
 
         assert_eq!(start % 2, 0, "point span must start on an x coordinate");
         assert_eq!(len % 2, 0, "point span must contain complete x/y pairs");
-        assert!(start + len <= points.len(), "point span exceeds point buffer");
+        assert!(
+            start + len <= points.len(),
+            "point span exceeds point buffer"
+        );
 
         let matrix_offset = command_index * 6;
         let transform = &transforms[matrix_offset..matrix_offset + 6];
 
         for point_offset in (start..start + len).step_by(2) {
-            let (x, y) = transform_point(
-                points[point_offset],
-                points[point_offset + 1],
-                transform,
-            );
+            let (x, y) = transform_point(points[point_offset], points[point_offset + 1], transform);
             output[point_offset] = x;
             output[point_offset + 1] = y;
         }
@@ -56,7 +57,7 @@ pub fn transform_batches(points: &[f32], spans: &[u32], transforms: &[f32]) -> V
     output
 }
 
-pub(crate) fn build_convex_polygon_vertices(
+pub fn build_convex_polygon_vertices(
     points: &[f32],
     spans: &[u32],
     transforms: &[f32],
@@ -146,11 +147,7 @@ pub(crate) fn build_local_convex_polygon_vertices(
     Ok(output)
 }
 
-fn validate_polygon_arrays(
-    points: &[f32],
-    spans: &[u32],
-    colors: &[f32],
-) -> Result<(), String> {
+fn validate_polygon_arrays(points: &[f32], spans: &[u32], colors: &[f32]) -> Result<(), String> {
     if spans.len() % 2 != 0 {
         return Err("spans must contain start/length pairs".into());
     }
@@ -165,9 +162,7 @@ fn validate_polygon_arrays(
             .iter()
             .any(|value| !value.is_finite() || !(0.0..=1.0).contains(value))
         {
-            return Err(format!(
-                "command {command_index} has an invalid RGBA color"
-            ));
+            return Err(format!("command {command_index} has an invalid RGBA color"));
         }
     }
     Ok(())
@@ -181,7 +176,9 @@ fn validated_span(
     let start = spans[command_index * 2] as usize;
     let len = spans[command_index * 2 + 1] as usize;
     if start % 2 != 0 || len % 2 != 0 || len < 6 || start + len > points.len() {
-        return Err(format!("command {command_index} has an invalid polygon span"));
+        return Err(format!(
+            "command {command_index} has an invalid polygon span"
+        ));
     }
     Ok((start, len))
 }
@@ -201,9 +198,7 @@ fn append_triangle_fan(
         for point_index in [0, triangle_index, triangle_index + 1] {
             let point_offset = start + point_index * 2;
             let (x, y) = map(points[point_offset], points[point_offset + 1])?;
-            output.extend_from_slice(&[
-                x, y, color[0], color[1], color[2], color[3],
-            ]);
+            output.extend_from_slice(&[x, y, color[0], color[1], color[2], color[3]]);
         }
     }
 
@@ -253,8 +248,7 @@ fn point(points: &[f32], index: usize) -> (f32, f32) {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_convex_polygon_vertices, build_local_convex_polygon_vertices,
-        transform_batches,
+        build_convex_polygon_vertices, build_local_convex_polygon_vertices, transform_batches,
     };
 
     #[test]
@@ -267,10 +261,7 @@ mod tests {
 
         let actual = transform_batches(&points, &spans, &transforms);
 
-        assert_eq!(
-            actual,
-            vec![10.0, 20.0, 12.0, 20.0, 1.0, 7.0, 5.0, 10.0]
-        );
+        assert_eq!(actual, vec![10.0, 20.0, 12.0, 20.0, 1.0, 7.0, 5.0, 10.0]);
     }
 
     #[test]

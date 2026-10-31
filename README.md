@@ -143,6 +143,23 @@ bun run check
 cargo check --workspace --target wasm32-unknown-unknown
 ```
 
+## Oracle gate
+
+The custom Rust/WebGPU path is proven against two established 2D rasterizers: **Vello** (GPU, Rust/wgpu, the lab's pinned `vello_gpu`) and **Skia** (tiny-skia, a Rust port of Skia's CPU rasterizer with Canvas 2D semantics).
+
+```sh
+bun run oracle            # export scenes, render, gate; report in target/oracle/index.html
+WGPU_FORCE_FALLBACK_ADAPTER=1 bun run oracle --frames 5   # as CI runs it (lavapipe)
+```
+
+- **Scenarios** (`src/oracle/scenarios.ts`): one deterministic frame of an existing workload each — `fills`, `transforms`, `strokes`, `vector-animation`, `curves`, `maps-snapshot` and the 2,560-primitive `scaling` case. `bun run oracle:scenes` packs them with the browser adapters' own `packVelloFrame` / `packPolygonFrame`, so the native oracle (`oracle/`) feeds Rust exactly what the browser does.
+- **Same code as the lab:** the custom path's pipeline and pass (`polygon_pipeline.rs`) and the Vello scene adapter (`vello_scene.rs`) are shared by the browser renderers and the oracle (kernel feature `native`).
+- **Image gate:** NVIDIA FLIP of the custom image against *each* oracle, mean ≤ 0.005 and p99 ≤ 0.05. Where Vello and Skia themselves disagree by more (edge anti-aliasing, translucent-fill rounding), the scenario's limit is that measured noise floor, documented in `AA_LIMITS`; the gate also fails if the two oracles drift apart beyond it.
+- **GPU time:** the custom path's median GPU frame time ≤ 1.10× Vello's, enforced on a hardware adapter (local), advisory on lavapipe (CI). Skia is a CPU rasterizer; its time is reported only.
+- **Known gaps:** scenarios the custom path cannot pass yet are listed in `KNOWN_GAPS` with their issue (#55 anti-aliasing, #56 strokes, #57 curves). A listed check that starts passing fails the gate until its entry is removed. Limits are never raised to clear a gap.
+
+CI runs the gate on lavapipe in the `oracle` job (part of `merge-ready`) and uploads the side-by-side report (images, FLIP heatmaps, `report.json`) as the `oracle-report` artifact.
+
 ## Architecture rule
 
 ```text
