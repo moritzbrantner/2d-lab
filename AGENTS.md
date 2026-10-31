@@ -53,6 +53,7 @@ Vello GPU is pinned to the exact upstream Git revision in `crates/viz-render-ker
 - Unsupported renderer semantics must fail closed.
 - Keep the Vello adapter non-authoritative.
 - Keep exact-head Rust/WASM/browser evidence separate from noisy performance evidence.
+- The oracle gate (`oracle/`, README "Oracle gate") proves the custom path against Vello and Skia. Keep the custom pipeline and the Vello scene adapter in the shared modules the oracle renders with; never raise `AA_LIMITS` or add `KNOWN_GAPS` entries to clear a failure without an issue for the renderer gap.
 - Reuse `reusable-workflows` for deployment mechanics and `github-pages-template` for shared Pages evidence presentation instead of recreating those locally.
 - Keep `.coding-tooling.json` as the deterministic capability-discovery contract; benchmark smoke checks prove workload/support shape, not performance thresholds.
 - Runtime captures belong to `runtime-profiler` and comparable baseline/candidate verdicts belong to Moonlight. Do not label ad-hoc CI wall-clock timings as profiler evidence.

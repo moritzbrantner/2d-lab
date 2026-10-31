@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2d-lab oracle</title>
+<style>
+  :root {
+    --bg: #f6f4ef; --panel: #ffffff; --ink: #1d1f24; --muted: #646a75; --line: #dedad0;
+    --pass: #1f7a4d; --gap: #9a6a00; --fail: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171b; --panel: #1d2026; --ink: #e8e6e1; --muted: #9aa0aa; --line: #30343c;
+      --pass: #5cc48d; --gap: #e0b04a; --fail: #f2766d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1280px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 { font-size: 1.15rem; margin: 0; }
+  p { margin: 4px 0; }
+  a { color: inherit; }
+  .muted { color: var(--muted); }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; background: var(--panel); margin: 16px 0 28px;
+    font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child, .text { text-align: left; }
+  th { font-weight: 600; color: var(--muted); font-size: 0.85rem; }
+  .status { font-weight: 600; }
+  .pass { color: var(--pass); } .known-gap { color: var(--gap); } .fail { color: var(--fail); }
+  .bad { color: var(--fail); }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 16px; margin: 0 0 20px; }
+  .head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-top: 12px; }
+  figure { margin: 0; }
+  figure img { width: 100%; height: auto; display: block; border: 1px solid var(--line); cursor: zoom-in; }
+  figcaption { font-size: 0.85rem; color: var(--muted); margin-top: 2px; }
+  .missing { aspect-ratio: 5 / 3; display: grid; place-items: center; border: 1px dashed var(--line);
+    color: var(--muted); font-size: 0.85rem; padding: 12px; text-align: center; }
+  ul { margin: 8px 0 0; padding-left: 20px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>2d-lab oracle</h1>
+  <p class="muted">The custom Rust/WebGPU path against Vello and Skia (tiny-skia), each rendering the same packed display list.
+    Gate: FLIP mean and p99 against <em>each</em> oracle, plus GPU time ≤ margin × Vello on a hardware adapter.
+    The Vello–Skia diff is the noise floor.</p>
+  <p id="meta" class="muted">Loading report.json…</p>
+  <div class="scroll"><table id="summary"></table></div>
+  <div id="scenarios"></div>
+</main>
+<script>
+const fmt = (v, d = 4) => (v === null || v === undefined ? "–" : Number(v).toFixed(d));
+const flipText = (f) => f
+  ? `<span class="${f.pass ? "" : "bad"}">${fmt(f.mean)} / ${fmt(f.p99, 3)}</span>`
+  : "–";
+const lim = (v) => +Number(v).toPrecision(3);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+function figure(src, caption, available = true, reason = "") {
+  if (!available) return `<figure><div class="missing">${esc(reason)}</div><figcaption>${caption}</figcaption></figure>`;
+  return `<figure><a href="${src}" target="_blank"><img loading="lazy" src="${src}" alt="${esc(caption)}"></a><figcaption>${caption}</figcaption></figure>`;
+}
+
+fetch("report.json").then((r) => r.json()).then((report) => {
+  document.getElementById("meta").innerHTML =
+    `Adapter <strong>${esc(report.adapter.name)}</strong> (${esc(report.adapter.device_type)}, ${esc(report.adapter.backend)}) · ` +
+    `default FLIP limits mean ≤ ${lim(report.flip_mean_max)}, p99 ≤ ${lim(report.flip_p99_max)} · ` +
+    `GPU time ≤ ${report.gpu_margin}× Vello (${report.gpu_gate}) · ${report.frames} timed frames · ` +
+    `<strong class="${report.pass ? "pass" : "fail"}">${report.pass ? "gate passed" : "gate failed"}</strong> (${["pass", "known-gap", "fail"].map((k) => `${report.scenarios.filter((s) => s.status === k).length} ${k}`).join(", ")})`;
+
+  const rows = report.scenarios.map((s) => `
+    <tr>
+      <td><a href="#${s.name}">${esc(s.name)}</a></td>
+      <td class="text muted">${esc(s.capability)}</td>
+      <td>${s.flip_limits.map(lim).join(" / ")}</td>
+      <td>${flipText(s.vs_skia)}</td>
+      <td>${flipText(s.vs_vello)}</td>
+      <td>${flipText(s.noise_floor)}</td>
+      <td>${fmt(s.custom_gpu_ms, 3)}</td>
+      <td>${fmt(s.vello_gpu_ms, 3)}</td>
+      <td>${fmt(s.gpu_ratio, 2)}</td>
+      <td>${fmt(s.skia_cpu_ms, 2)}</td>
+      <td class="text status ${s.status}">${s.status}</td>
+    </tr>`).join("");
+  document.getElementById("summary").innerHTML = `
+    <thead><tr><th>scenario</th><th class="text">capability</th><th>limit mean / p99</th><th>custom vs Skia</th><th>custom vs Vello</th>
+      <th>Vello vs Skia (floor)</th><th>custom GPU ms</th><th>Vello GPU ms</th><th>ratio</th><th>Skia CPU ms</th><th>result</th></tr></thead>
+    <tbody>${rows}</tbody>`;
+
+  document.getElementById("scenarios").innerHTML = report.scenarios.map((s) => {
+    const hasCustom = !s.custom_error;
+    const notes = [...s.problems, ...s.known_gaps].map((m) => `<li>${esc(m)}</li>`).join("");
+    return `
+      <section id="${s.name}">
+        <div class="head">
+          <h2>${esc(s.name)}</h2>
+          <span class="muted">${esc(s.capability)} · ${esc(s.workload)} at t = ${s.time_seconds}s · ${s.commands} commands · ${s.width}×${s.height}</span>
+          <span class="status ${s.status}">${s.status}</span>
+        </div>
+        ${notes ? `<ul>${notes}</ul>` : ""}
+        <div class="grid">
+          ${figure(`${s.name}.custom.png`, "custom WebGPU", hasCustom, s.custom_error)}
+          ${figure(`${s.name}.vello.png`, "Vello GPU")}
+          ${figure(`${s.name}.skia.png`, "Skia (tiny-skia)")}
+          ${figure(`${s.name}.custom-vs-skia.flip.png`, `FLIP custom vs Skia · ${hasCustom ? `${fmt(s.vs_skia.mean)} / ${fmt(s.vs_skia.p99, 3)}` : "–"}`, hasCustom, "no custom image")}
+          ${figure(`${s.name}.custom-vs-vello.flip.png`, `FLIP custom vs Vello · ${hasCustom ? `${fmt(s.vs_vello.mean)} / ${fmt(s.vs_vello.p99, 3)}` : "–"}`, hasCustom, "no custom image")}
+          ${figure(`${s.name}.vello-vs-skia.flip.png`, `FLIP Vello vs Skia (noise floor) · ${fmt(s.noise_floor.mean)} / ${fmt(s.noise_floor.p99, 3)}`)}
+        </div>
+      </section>`;
+  }).join("");
+}).catch((error) => {
+  document.getElementById("meta").textContent = `Could not load report.json: ${error}`;
+});
+</script>
+</body>
+</html>

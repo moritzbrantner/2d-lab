@@ -12,7 +12,9 @@
     "test": "vitest run",
     "test:rust": "cargo test --workspace",
     "check": "bun run typecheck && bun run test && bun run test:rust && bun run build",
-    "benchmark:smoke": "vitest run src/benchmark-smoke.test.ts"
+    "benchmark:smoke": "vitest run src/benchmark-smoke.test.ts",
+    "oracle:scenes": "bun scripts/export-oracle-scenes.ts",
+    "oracle": "bun run oracle:scenes && cargo run --release --locked --manifest-path oracle/Cargo.toml --"
   },
   "devDependencies": {
     "typescript": "7.0.2",

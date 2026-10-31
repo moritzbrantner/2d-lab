@@ -10,15 +10,9 @@ use web_sys::HtmlCanvasElement;
 use vello_gpu::{
     ClearSettings, RenderSize, RenderTargetConfig, Renderer, Resources, Scene, TargetInit,
     TextureBindings,
-    kurbo::{Affine, BezPath, Stroke},
-    peniko::Color,
 };
 
-const FLAG_CLOSED: u32 = 1;
-const FLAG_FILL: u32 = 2;
-const FLAG_STROKE: u32 = 4;
-const VERB_LINE: u32 = 0;
-const VERB_CUBIC: u32 = 1;
+use crate::vello_scene::{VelloFrame, color_from_f32, vello_target_format};
 
 #[wasm_bindgen]
 pub struct VelloGpuRenderer {
@@ -72,7 +66,9 @@ impl VelloGpuRenderer {
         let height = canvas.height().max(1);
         let mut config = surface
             .get_default_config(&adapter, width, height)
-            .ok_or_else(|| JsValue::from_str("Vello wgpu surface has no compatible configuration"))?;
+            .ok_or_else(|| {
+                JsValue::from_str("Vello wgpu surface has no compatible configuration")
+            })?;
         if capabilities
             .alpha_modes
             .contains(&wgpu::CompositeAlphaMode::Opaque)
@@ -86,19 +82,14 @@ impl VelloGpuRenderer {
         }
         config.present_mode = wgpu::PresentMode::AutoVsync;
 
-        let surface_view_format = config.format.add_srgb_suffix();
+        let surface_view_format = vello_target_format(config.format);
         if surface_view_format != config.format {
             config.view_formats = vec![surface_view_format];
         }
         surface.configure(&device, &config);
 
         let (renderer, resources, render_size, depth_texture_view, scene) =
-            create_vello_state(
-                &device,
-                surface_view_format,
-                width,
-                height,
-            )?;
+            create_vello_state(&device, surface_view_format, width, height)?;
 
         Ok(Self {
             surface,
@@ -138,7 +129,7 @@ impl VelloGpuRenderer {
         if self.is_device_lost() {
             return Err(JsValue::from_str("Vello wgpu device has been lost"));
         }
-        validate_frame(
+        let frame = VelloFrame {
             points,
             spans,
             verbs,
@@ -149,115 +140,42 @@ impl VelloGpuRenderer {
             stroke_widths,
             flags,
             background,
-        )?;
+        };
+        frame
+            .validate()
+            .map_err(|message| JsValue::from_str(&message))?;
         self.resize(width, height)?;
 
         let prepare_start = now_ms();
-        self.scene.reset();
-
-        let command_count = spans.len() / 2;
-        for command_index in 0..command_count {
-            let start = spans[command_index * 2] as usize;
-            let len = spans[command_index * 2 + 1] as usize;
-            let flags = flags[command_index];
-
-            let verb_start = verb_spans[command_index * 2] as usize;
-            let verb_len = verb_spans[command_index * 2 + 1] as usize;
-            let mut path = BezPath::new();
-            path.move_to((
-                f64::from(points[start]),
-                f64::from(points[start + 1]),
-            ));
-            let mut point_offset = start + 2;
-            for verb in &verbs[verb_start..verb_start + verb_len] {
-                match *verb {
-                    VERB_LINE => {
-                        path.line_to((
-                            f64::from(points[point_offset]),
-                            f64::from(points[point_offset + 1]),
-                        ));
-                        point_offset += 2;
-                    }
-                    VERB_CUBIC => {
-                        path.curve_to(
-                            (
-                                f64::from(points[point_offset]),
-                                f64::from(points[point_offset + 1]),
-                            ),
-                            (
-                                f64::from(points[point_offset + 2]),
-                                f64::from(points[point_offset + 3]),
-                            ),
-                            (
-                                f64::from(points[point_offset + 4]),
-                                f64::from(points[point_offset + 5]),
-                            ),
-                        );
-                        point_offset += 6;
-                    }
-                    _ => return Err(JsValue::from_str("Vello path contains an unknown verb")),
-                }
-            }
-            debug_assert_eq!(point_offset, start + len);
-            if flags & FLAG_CLOSED != 0 {
-                path.close_path();
-            }
-
-            let matrix_offset = command_index * 6;
-            self.scene.set_transform(Affine::new([
-                f64::from(transforms[matrix_offset]),
-                f64::from(transforms[matrix_offset + 1]),
-                f64::from(transforms[matrix_offset + 2]),
-                f64::from(transforms[matrix_offset + 3]),
-                f64::from(transforms[matrix_offset + 4]),
-                f64::from(transforms[matrix_offset + 5]),
-            ]));
-
-            if flags & FLAG_FILL != 0 {
-                let color_offset = command_index * 4;
-                self.scene.set_paint(color_from_f32(
-                    &fill_colors[color_offset..color_offset + 4],
-                )?);
-                self.scene.fill_path(&path);
-            }
-
-            if flags & FLAG_STROKE != 0 {
-                let color_offset = command_index * 4;
-                self.scene.set_paint(color_from_f32(
-                    &stroke_colors[color_offset..color_offset + 4],
-                )?);
-                self.scene.set_stroke(Stroke::new(f64::from(
-                    stroke_widths[command_index],
-                )));
-                self.scene.stroke_path(&path);
-            }
-        }
+        frame
+            .encode(&mut self.scene)
+            .map_err(|message| JsValue::from_str(&message))?;
         let prepare_ms = now_ms() - prepare_start;
 
         let render_start = now_ms();
-        let Some(surface_frame) = acquire_surface_frame(
-            &self.surface,
-            &self.device,
-            &self.config,
-        )? else {
+        let Some(surface_frame) = acquire_surface_frame(&self.surface, &self.device, &self.config)?
+        else {
             return Ok(Float64Array::new_from_slice(&[
                 prepare_ms,
                 now_ms() - render_start,
             ]));
         };
 
-        let view = surface_frame.texture.create_view(&wgpu::TextureViewDescriptor {
-            label: Some("2d-lab Vello sRGB surface view"),
-            format: Some(self.surface_view_format),
-            ..Default::default()
-        });
-        let mut encoder =
-            self.device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("2d-lab Vello command encoder"),
-                });
+        let view = surface_frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor {
+                label: Some("2d-lab Vello sRGB surface view"),
+                format: Some(self.surface_view_format),
+                ..Default::default()
+            });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("2d-lab Vello command encoder"),
+            });
 
-        let clear_color = color_from_f32(background)?;
+        let clear_color =
+            color_from_f32(background).map_err(|message| JsValue::from_str(&message))?;
         self.renderer
             .render(
                 &self.scene,
@@ -292,12 +210,7 @@ impl VelloGpuRenderer {
         self.surface.configure(&self.device, &self.config);
 
         let (renderer, resources, render_size, depth_texture_view, scene) =
-            create_vello_state(
-                &self.device,
-                self.surface_view_format,
-                width,
-                height,
-            )?;
+            create_vello_state(&self.device, self.surface_view_format, width, height)?;
         self.renderer = renderer;
         self.resources = resources;
         self.render_size = render_size;
@@ -313,10 +226,9 @@ fn create_vello_state(
     width: u32,
     height: u32,
 ) -> Result<(Renderer, Resources, RenderSize, wgpu::TextureView, Scene), JsValue> {
-    let width = u16::try_from(width)
-        .map_err(|_| JsValue::from_str("Vello width exceeds u16"))?;
-    let height = u16::try_from(height)
-        .map_err(|_| JsValue::from_str("Vello height exceeds u16"))?;
+    let width = u16::try_from(width).map_err(|_| JsValue::from_str("Vello width exceeds u16"))?;
+    let height =
+        u16::try_from(height).map_err(|_| JsValue::from_str("Vello height exceeds u16"))?;
     let target_config = RenderTargetConfig {
         format,
         width,
@@ -324,112 +236,9 @@ fn create_vello_state(
     };
     let (renderer, resources) = Renderer::new(device, &target_config);
     let render_size = RenderSize { width, height };
-    let depth_texture_view =
-        Renderer::create_depth_texture_view(device, &render_size);
+    let depth_texture_view = Renderer::create_depth_texture_view(device, &render_size);
     let scene = Scene::new(width, height);
-    Ok((
-        renderer,
-        resources,
-        render_size,
-        depth_texture_view,
-        scene,
-    ))
-}
-
-fn validate_frame(
-    points: &[f32],
-    spans: &[u32],
-    verbs: &[u32],
-    verb_spans: &[u32],
-    transforms: &[f32],
-    fill_colors: &[f32],
-    stroke_colors: &[f32],
-    stroke_widths: &[f32],
-    flags: &[u32],
-    background: &[f32],
-) -> Result<(), JsValue> {
-    if spans.len() % 2 != 0 {
-        return Err(JsValue::from_str("Vello spans must be start/length pairs"));
-    }
-    let count = spans.len() / 2;
-    if verb_spans.len() != count * 2 {
-        return Err(JsValue::from_str("Vello verb spans must match command count"));
-    }
-    if transforms.len() != count * 6
-        || fill_colors.len() != count * 4
-        || stroke_colors.len() != count * 4
-        || stroke_widths.len() != count
-        || flags.len() != count
-    {
-        return Err(JsValue::from_str("Vello frame arrays have mismatched lengths"));
-    }
-    if background.len() != 4 {
-        return Err(JsValue::from_str("Vello background must contain RGBA"));
-    }
-
-    for command_index in 0..count {
-        let start = spans[command_index * 2] as usize;
-        let len = spans[command_index * 2 + 1] as usize;
-        if start % 2 != 0 || len % 2 != 0 || len < 4 || start + len > points.len() {
-            return Err(JsValue::from_str(&format!(
-                "Vello command {command_index} has invalid geometry"
-            )));
-        }
-        let verb_start = verb_spans[command_index * 2] as usize;
-        let verb_len = verb_spans[command_index * 2 + 1] as usize;
-        if verb_start + verb_len > verbs.len() {
-            return Err(JsValue::from_str(&format!(
-                "Vello command {command_index} has an invalid verb span"
-            )));
-        }
-        let mut expected_point_len = 2;
-        for verb in &verbs[verb_start..verb_start + verb_len] {
-            expected_point_len += match *verb {
-                VERB_LINE => 2,
-                VERB_CUBIC => 6,
-                _ => {
-                    return Err(JsValue::from_str(&format!(
-                        "Vello command {command_index} contains an unknown path verb"
-                    )));
-                }
-            };
-        }
-        if expected_point_len != len {
-            return Err(JsValue::from_str(&format!(
-                "Vello command {command_index} path verbs do not consume its geometry"
-            )));
-        }
-        if !stroke_widths[command_index].is_finite()
-            || stroke_widths[command_index] <= 0.0
-        {
-            return Err(JsValue::from_str(&format!(
-                "Vello command {command_index} has invalid stroke width"
-            )));
-        }
-    }
-
-    Ok(())
-}
-
-fn color_from_f32(rgba: &[f32]) -> Result<Color, JsValue> {
-    if rgba.len() != 4
-        || rgba
-            .iter()
-            .any(|value| !value.is_finite() || !(0.0..=1.0).contains(value))
-    {
-        return Err(JsValue::from_str("Vello color must be finite RGBA in [0, 1]"));
-    }
-
-    Ok(Color::from_rgba8(
-        float_to_u8(rgba[0]),
-        float_to_u8(rgba[1]),
-        float_to_u8(rgba[2]),
-        float_to_u8(rgba[3]),
-    ))
-}
-
-fn float_to_u8(value: f32) -> u8 {
-    (value * 255.0).round().clamp(0.0, 255.0) as u8
+    Ok((renderer, resources, render_size, depth_texture_view, scene))
 }
 
 fn acquire_surface_frame(
@@ -440,8 +249,9 @@ fn acquire_surface_frame(
     use wgpu::CurrentSurfaceTexture;
 
     match surface.get_current_texture() {
-        CurrentSurfaceTexture::Success(frame)
-        | CurrentSurfaceTexture::Suboptimal(frame) => Ok(Some(frame)),
+        CurrentSurfaceTexture::Success(frame) | CurrentSurfaceTexture::Suboptimal(frame) => {
+            Ok(Some(frame))
+        }
         CurrentSurfaceTexture::Timeout | CurrentSurfaceTexture::Occluded => Ok(None),
         CurrentSurfaceTexture::Outdated | CurrentSurfaceTexture::Lost => {
             surface.configure(device, config);
