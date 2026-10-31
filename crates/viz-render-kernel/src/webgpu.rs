@@ -7,12 +7,8 @@ use js_sys::{Date, Float64Array};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
-use crate::build_convex_polygon_vertices;
-use crate::polygon_pipeline::{
-    create_polygon_pipeline, create_vertex_buffer, encode_polygon_pass, vertex_bytes,
-};
-
-const INITIAL_VERTEX_BUFFER_SIZE: u64 = 4 * 1024;
+use crate::build_coverage_polygons;
+use crate::polygon_pipeline::PolygonRenderer;
 
 #[wasm_bindgen]
 pub struct WgpuPolygonRenderer {
@@ -21,9 +17,7 @@ pub struct WgpuPolygonRenderer {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     surface_view_format: wgpu::TextureFormat,
-    pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    vertex_capacity: u64,
+    renderer: PolygonRenderer,
     device_lost: Arc<AtomicBool>,
 }
 
@@ -81,14 +75,14 @@ impl WgpuPolygonRenderer {
         }
 
         config.present_mode = wgpu::PresentMode::AutoVsync;
-        let surface_view_format = config.format.add_srgb_suffix();
+        // sRGB-encoded blending into the plain view, as Vello and Canvas 2D do.
+        let surface_view_format = config.format.remove_srgb_suffix();
         if surface_view_format != config.format {
             config.view_formats = vec![surface_view_format];
         }
         surface.configure(&device, &config);
 
-        let pipeline = create_polygon_pipeline(&device, surface_view_format);
-        let vertex_buffer = create_vertex_buffer(&device, INITIAL_VERTEX_BUFFER_SIZE);
+        let renderer = PolygonRenderer::new(&device, surface_view_format);
 
         Ok(Self {
             surface,
@@ -96,9 +90,7 @@ impl WgpuPolygonRenderer {
             queue,
             config,
             surface_view_format,
-            pipeline,
-            vertex_buffer,
-            vertex_capacity: INITIAL_VERTEX_BUFFER_SIZE,
+            renderer,
             device_lost,
         })
     }
@@ -146,25 +138,14 @@ impl WgpuPolygonRenderer {
         self.resize(width, height);
 
         let prepare_start = now_ms();
-        let vertices =
-            build_convex_polygon_vertices(points, spans, transforms, colors, width, height)
-                .map_err(|message| JsValue::from_str(&message))?;
-        let vertex_bytes = vertex_bytes(&vertices);
+        let geometry = build_coverage_polygons(points, spans, transforms, colors, width, height)
+            .map_err(|message| JsValue::from_str(&message))?;
         let prepare_ms = now_ms() - prepare_start;
 
-        let required = vertex_bytes.len() as u64;
-        if required > self.vertex_capacity {
-            let capacity = required.next_power_of_two().max(INITIAL_VERTEX_BUFFER_SIZE);
-            self.vertex_buffer = create_vertex_buffer(&self.device, capacity);
-            self.vertex_capacity = capacity;
-        }
-
         let upload_start = now_ms();
-        if !vertex_bytes.is_empty() {
-            self.queue
-                .write_buffer(&self.vertex_buffer, 0, &vertex_bytes);
-        }
+        let required = self.renderer.upload(&self.device, &self.queue, &geometry);
         let upload_ms = now_ms() - upload_start;
+        let vertex_count = geometry.vertex_count();
 
         let submit_start = now_ms();
         let Some(surface_frame) = self.acquire_surface_frame()? else {
@@ -172,7 +153,7 @@ impl WgpuPolygonRenderer {
                 prepare_ms,
                 upload_ms,
                 now_ms() - submit_start,
-                vertices.len() / 6,
+                vertex_count,
                 required,
                 0,
             ));
@@ -181,7 +162,7 @@ impl WgpuPolygonRenderer {
         let view = surface_frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor {
-                label: Some("2d-lab sRGB surface view"),
+                label: Some("2d-lab surface view"),
                 format: Some(self.surface_view_format),
                 ..Default::default()
             });
@@ -191,16 +172,7 @@ impl WgpuPolygonRenderer {
                 label: Some("2d-lab polygon command encoder"),
             });
 
-        let vertex_count = (vertices.len() / 6) as u32;
-        let draw_calls = encode_polygon_pass(
-            &mut encoder,
-            &view,
-            &self.pipeline,
-            &self.vertex_buffer,
-            required,
-            vertex_count,
-            background,
-        );
+        let draw_calls = self.renderer.encode(&mut encoder, &view, background);
 
         self.queue.submit([encoder.finish()]);
         self.queue.present(surface_frame);
@@ -210,7 +182,7 @@ impl WgpuPolygonRenderer {
             prepare_ms,
             upload_ms,
             submit_ms,
-            vertex_count as usize,
+            vertex_count,
             required,
             draw_calls,
         ))
