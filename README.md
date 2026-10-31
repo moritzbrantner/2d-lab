@@ -156,7 +156,7 @@ WGPU_FORCE_FALLBACK_ADAPTER=1 bun run oracle --frames 5   # as CI runs it (lavap
 - **Same code as the lab:** the custom path's pipeline and pass (`polygon_pipeline.rs`) and the Vello scene adapter (`vello_scene.rs`) are shared by the browser renderers and the oracle (kernel feature `native`).
 - **Image gate:** NVIDIA FLIP of the custom image against *each* oracle, mean ≤ 0.005 and p99 ≤ 0.05. Where Vello and Skia themselves disagree by more (edge anti-aliasing, translucent-fill rounding), the scenario's limit is that measured noise floor, documented in `AA_LIMITS`; the gate also fails if the two oracles drift apart beyond it.
 - **GPU time:** the custom path's median GPU frame time ≤ 1.10× Vello's, enforced on a hardware adapter (local), advisory on lavapipe (CI). Skia is a CPU rasterizer; its time is reported only.
-- **Known gaps:** scenarios the custom path cannot pass yet are listed in `KNOWN_GAPS` with their issue (#55 anti-aliasing, #56 strokes, #57 curves). A listed check that starts passing fails the gate until its entry is removed. Limits are never raised to clear a gap.
+- **Known gaps:** scenarios the custom path cannot pass yet are listed in `KNOWN_GAPS` with their issue (#56 strokes, #57 curves). The custom path anti-aliases with analytic per-edge area coverage and sRGB-encoded blending, matching Vello and Skia (#55). A listed check that starts passing fails the gate until its entry is removed. Limits are never raised to clear a gap.
 
 CI runs the gate on lavapipe in the `oracle` job (part of `merge-ready`) and uploads the side-by-side report (images, FLIP heatmaps, `report.json`) as the `oracle-report` artifact.
 

@@ -68,9 +68,6 @@ fn limits(scenario: &str) -> (f32, f32) {
 /// Known custom-path gaps, each tracked by an issue. Never raise a limit to clear one; fix the
 /// renderer and delete the entry (the gate fails while a listed check passes).
 const KNOWN_GAPS: &[(&str, Check, &str)] = &[
-    ("fills", Check::Image, "#55"),
-    ("transforms", Check::Image, "#55"),
-    ("scaling", Check::Image, "#55"),
     ("strokes", Check::Unsupported, "#56"),
     ("vector-animation", Check::Unsupported, "#56"),
     ("maps-snapshot", Check::Unsupported, "#56"),

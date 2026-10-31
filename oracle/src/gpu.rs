@@ -4,10 +4,8 @@
 use std::time::Instant;
 
 use viz_render_kernel::{
-    build_convex_polygon_vertices,
-    polygon_pipeline::{
-        create_polygon_pipeline, create_vertex_buffer, encode_polygon_pass, vertex_bytes,
-    },
+    build_coverage_polygons,
+    polygon_pipeline::PolygonRenderer,
     vello_gpu::{
         ClearSettings, RenderSize, RenderTargetConfig, Renderer, Scene as VelloScene, TargetInit,
         TextureBindings,
@@ -17,9 +15,8 @@ use viz_render_kernel::{
 
 use crate::scene::Scene;
 
-/// The custom path draws into an sRGB view of the canvas surface (its shader outputs linear
-/// colour); Vello draws into the plain view (`vello_target_format`). The oracle's target is an
-/// `Rgba8Unorm` texture with both views, so the read-back bytes are the pixels a browser shows.
+/// The surface format a browser hands out. The custom path and Vello both draw sRGB-encoded colour
+/// into its plain (non-sRGB) view, so the read-back bytes are the pixels a browser shows.
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
 pub struct Gpu {
@@ -74,7 +71,7 @@ impl Gpu {
         self.adapter.device_type == wgpu::DeviceType::Cpu
     }
 
-    /// The custom immediate path: Rust triangulation, one upload, one draw (as `webgpu.rs`).
+    /// The custom immediate path: Rust coverage geometry, one upload, one draw (as `webgpu.rs`).
     pub fn render_custom(&self, scene: &Scene, frames: usize) -> Result<Rendered, String> {
         let colors = scene
             .custom
@@ -82,10 +79,10 @@ impl Gpu {
             .as_deref()
             .ok_or("custom path has no colors")?;
         let v = &scene.vello;
-        let pipeline = create_polygon_pipeline(&self.device, FORMAT);
-        let mut buffer: Option<(wgpu::Buffer, u64)> = None;
-        self.run(scene, frames, FORMAT, |encoder, view| {
-            let vertices = build_convex_polygon_vertices(
+        let format = FORMAT.remove_srgb_suffix();
+        let mut renderer = PolygonRenderer::new(&self.device, format);
+        self.run(scene, frames, format, |encoder, view| {
+            let geometry = build_coverage_polygons(
                 &v.points,
                 &v.spans,
                 &v.transforms,
@@ -93,25 +90,8 @@ impl Gpu {
                 scene.width,
                 scene.height,
             )?;
-            let bytes = vertex_bytes(&vertices);
-            let len = bytes.len() as u64;
-            if buffer.as_ref().is_none_or(|(_, capacity)| *capacity < len) {
-                let capacity = len.next_power_of_two().max(4096);
-                buffer = Some((create_vertex_buffer(&self.device, capacity), capacity));
-            }
-            let (vertex_buffer, _) = buffer.as_ref().expect("allocated above");
-            if len > 0 {
-                self.queue.write_buffer(vertex_buffer, 0, &bytes);
-            }
-            encode_polygon_pass(
-                encoder,
-                view,
-                &pipeline,
-                vertex_buffer,
-                len,
-                (vertices.len() / 6) as u32,
-                &v.background,
-            );
+            renderer.upload(&self.device, &self.queue, &geometry);
+            renderer.encode(encoder, view, &v.background);
             Ok(())
         })
     }
