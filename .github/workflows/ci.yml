@@ -67,12 +67,18 @@ jobs:
           bun install --frozen-lockfile
           bun run oracle --frames 5
 
+      # The report site (oracle/site/ + this run + the committed local GPU run). Pages publishes
+      # this artifact from main at /2d-lab/oracle/.
+      - name: Oracle report site
+        if: always()
+        run: bash scripts/build-oracle-site.sh target/oracle target/oracle-site
+
       - name: Upload oracle report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: oracle-report
-          path: target/oracle
+          path: target/oracle-site
           retention-days: 14
 
   validate:

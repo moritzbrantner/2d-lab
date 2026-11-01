@@ -18,7 +18,8 @@
 //! oracle [--scenes DIR] [--out DIR] [--frames N] [--no-timing] [--only NAME]...
 //! ```
 //! writes `<scenario>.{custom,vello,skia}.png`, `<scenario>.<test>-vs-<ref>.flip.png`,
-//! `report.json` and `index.html` (the side-by-side report) to `--out` (default `target/oracle`).
+//! and `report.json` to `--out` (default `target/oracle`). `scripts/build-oracle-site.sh` turns that
+//! into the report site (`oracle/site/`, published at the lab's `/oracle/`).
 
 mod gpu;
 mod scene;
@@ -515,11 +516,6 @@ fn run(o: &Options) -> Result<bool, String> {
         serde_json::to_string_pretty(&report).expect("json"),
     )
     .map_err(|e| format!("cannot write report.json: {e}"))?;
-    std::fs::write(
-        o.out.join("index.html"),
-        include_str!("../report/index.html"),
-    )
-    .map_err(|e| format!("cannot write index.html: {e}"))?;
     let scenarios = report["scenarios"].as_array().expect("array");
     let count = |status: &str| scenarios.iter().filter(|r| r["status"] == status).count();
     println!(
@@ -532,7 +528,7 @@ fn run(o: &Options) -> Result<bool, String> {
         count("pass"),
         count("known-gap"),
         count("fail"),
-        o.out.join("index.html").display()
+        o.out.join("report.json").display()
     );
     Ok(all_ok)
 }

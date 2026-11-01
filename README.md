@@ -148,7 +148,9 @@ cargo check --workspace --target wasm32-unknown-unknown
 The custom Rust/WebGPU path is proven against two established 2D rasterizers: **Vello** (GPU, Rust/wgpu, the lab's pinned `vello_gpu`) and **Skia** (tiny-skia, a Rust port of Skia's CPU rasterizer with Canvas 2D semantics).
 
 ```sh
-bun run oracle            # export scenes, render, gate; report in target/oracle/index.html
+bun run oracle            # export scenes, render, gate; images and report.json in target/oracle
+bash scripts/build-oracle-site.sh   # the report site from target/oracle, in target/oracle-site
+bash scripts/record-oracle-gpu.sh   # local GPU run -> docs/oracle-local-gpu.json (commit it)
 WGPU_FORCE_FALLBACK_ADAPTER=1 bun run oracle --frames 5   # as CI runs it (lavapipe)
 ```
 
@@ -158,7 +160,7 @@ WGPU_FORCE_FALLBACK_ADAPTER=1 bun run oracle --frames 5   # as CI runs it (lavap
 - **GPU time:** the custom path's median GPU frame time ≤ 1.10× Vello's, enforced on a hardware adapter (local), advisory on lavapipe (CI). Skia is a CPU rasterizer; its time is reported only. As in render-engine's oracle, each side warms up untimed, then one prepared frame is submitted back to back in batches of 64 (re-preparing between submissions leaves the GPU idle, and its clocks wander between power states); Vello and custom rounds alternate, each side keeps its fastest round's median, and a failing ratio gets up to two more round pairs. CPU time (prepare + record + submit) is a separate round.
 - **Known gaps:** scenarios the custom path cannot pass yet are listed in `KNOWN_GAPS` with their issue (none at the moment). The custom path anti-aliases with analytic area coverage and sRGB-encoded blending, matching Vello and Skia (#55); strokes and non-convex fills are lyon meshes merged into convex pieces whose outline edges get that coverage and whose shared internal edges split pixels exactly once (#56, #57). Pieces grow only across their outline edges; a pixel crossed by two outline edges gets their exact joint area unless they meet inside it; a hard edge whose extension past a reflex corner runs along the outline (a sharp bevel's inner corner) stops splitting pixels there (#61). A listed check that starts passing fails the gate until its entry is removed. Limits are never raised to clear a gap.
 
-CI runs the gate on lavapipe in the `oracle` job (part of `merge-ready`) and uploads the side-by-side report (images, FLIP heatmaps, `report.json`) as the `oracle-report` artifact.
+CI runs the gate on lavapipe in the `oracle` job (part of `merge-ready`) and uploads the report site (`oracle/site/` with that run's images, FLIP heat maps and `report.json`) as the `oracle-report` artifact. On main, the Pages workflow publishes that artifact at [`/2d-lab/oracle/`](https://moritzbrantner.github.io/2d-lab/oracle/) beside the lab. CI has no GPU, so the site's GPU-time table comes from `docs/oracle-local-gpu.json`, the latest committed local run (`bash scripts/record-oracle-gpu.sh` on the RTX 3060 Ti).
 
 ## Architecture rule
 
