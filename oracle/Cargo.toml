@@ -14,7 +14,7 @@ description = "Renders each oracle scenario with the custom WebGPU path, Vello a
 viz-render-kernel = { path = "../crates/viz-render-kernel", features = ["native"] }
 # Same pin as the kernel; adds the native Vulkan backend (lavapipe on CI, the local GPU otherwise).
 wgpu = { version = "=30.0.1", default-features = false, features = ["vulkan", "wgsl"] }
-tiny-skia = "0.11.4"
+tiny-skia = "0.12.0"
 nv-flip = "0.1.2"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 pollster = "0.4.0"
