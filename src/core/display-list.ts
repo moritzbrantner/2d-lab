@@ -7,11 +7,20 @@ export type Affine2D = readonly [
   f: number,
 ];
 
+export type LineCap = "butt" | "round" | "square";
+export type LineJoin = "miter" | "round" | "bevel";
+
+/** Canvas 2D paint. Omitted stroke style uses Canvas defaults: width 1, butt caps, miter joins, miter limit 10. */
 export type Paint = {
   readonly fill?: string;
   readonly stroke?: string;
   readonly strokeWidth?: number;
+  readonly lineCap?: LineCap;
+  readonly lineJoin?: LineJoin;
+  readonly miterLimit?: number;
 };
+
+export const CANVAS_MITER_LIMIT = 10;
 
 export type LinePathSegment = {
   readonly kind: "line";
@@ -202,6 +211,13 @@ export function validateDisplayList(displayList: DisplayList): void {
         command.paint.strokeWidth <= 0)
     ) {
       throw new Error(`command ${index} has a non-positive stroke width`);
+    }
+    if (
+      command.paint.miterLimit !== undefined &&
+      (!Number.isFinite(command.paint.miterLimit) ||
+        command.paint.miterLimit <= 0)
+    ) {
+      throw new Error(`command ${index} has a non-positive miter limit`);
     }
   }
 }

@@ -5,7 +5,9 @@
 //!
 //! Anti-aliasing is analytic: every fragment of a polygon's grown triangle fan computes the exact
 //! box-filter area coverage of its pixel by each of the polygon's edges and multiplies them
-//! (exact wherever at most one edge, or two axis-aligned edges, cross the pixel). Like Vello and
+//! (exact wherever at most one edge, or two axis-aligned edges, cross the pixel). Strokes arrive
+//! as convex pieces whose shared internal edges are hard pixel-centre tests instead, so adjacent
+//! pieces split their pixels without a seam or a double blend. Like Vello and
 //! Skia, colours are blended as sRGB-encoded values into a non-sRGB target, so a half-covered
 //! edge pixel is the sRGB midpoint of the two colours.
 
@@ -27,7 +29,8 @@ struct VertexOutput {
   @location(1) @interpolate(flat) edges: vec2<u32>,
 };
 
-// Per edge: unit inward normal, offset (signed pixel distance = dot(n, p) + offset), padding.
+// Per edge: unit inward normal, offset (signed pixel distance = dot(n, p) + offset), then 0 for
+// an anti-aliased outline edge or 1 for a hard internal edge.
 @group(0) @binding(0) var<storage, read> edges: array<vec4<f32>>;
 
 @vertex
@@ -67,7 +70,18 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
   var coverage = 1.0;
   for (var i = input.edges.x; i < input.edges.x + input.edges.y; i++) {
     let edge = edges[i];
-    coverage *= edge_coverage(edge.xy, dot(edge.xy, p) + edge.z);
+    let d = dot(edge.xy, p) + edge.z;
+    if edge.w != 0.0 {
+      // Hard internal edge between two pieces of one stroke: the piece across it holds the
+      // exactly negated line, so a pixel centre belongs to exactly one side (ties go to the
+      // side whose normal points to +x, then +y).
+      let tie = edge.x > 0.0 || (edge.x == 0.0 && edge.y > 0.0);
+      if d < 0.0 || (d == 0.0 && !tie) {
+        coverage = 0.0;
+      }
+    } else {
+      coverage *= edge_coverage(edge.xy, d);
+    }
   }
   if coverage <= 0.0 {
     discard;

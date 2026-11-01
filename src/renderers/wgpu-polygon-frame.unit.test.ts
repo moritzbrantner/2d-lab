@@ -30,10 +30,49 @@ describe("wgpu polygon frame", () => {
     const packed = packPolygonFrame(convexScene);
     expect(Array.from(packed.spans)).toEqual([0, 8]);
     expect(Array.from(packed.transforms)).toEqual([1, 0, 0, 1, 10, 15]);
-    expect(packed.colors[0]).toBeCloseTo(0x33 / 255);
-    expect(packed.colors[1]).toBeCloseTo(0x66 / 255);
-    expect(packed.colors[2]).toBeCloseTo(0x99 / 255);
-    expect(packed.colors[3]).toBe(1);
+    expect(packed.fillColors[0]).toBeCloseTo(0x33 / 255);
+    expect(packed.fillColors[1]).toBeCloseTo(0x66 / 255);
+    expect(packed.fillColors[2]).toBeCloseTo(0x99 / 255);
+    expect(packed.fillColors[3]).toBe(1);
+    expect(packed).not.toHaveProperty("verbs");
+  });
+
+  it("packs Canvas stroke styles with Canvas defaults", () => {
+    const stroked: DisplayList = {
+      ...convexScene,
+      commands: [
+        {
+          kind: "path",
+          points: new Float32Array([0, 0, 20, 0, 20, 20]),
+          closed: false,
+          transform: [1, 0, 0, 1, 0, 0],
+          paint: { stroke: "rgba(10, 20, 30, 0.5)", strokeWidth: 3 },
+        },
+        {
+          kind: "path",
+          points: new Float32Array([0, 0, 20, 0, 20, 20]),
+          closed: false,
+          transform: [1, 0, 0, 1, 0, 0],
+          paint: {
+            stroke: "#000",
+            lineCap: "square",
+            lineJoin: "round",
+            miterLimit: 4,
+          },
+        },
+      ],
+    };
+    expect(
+      polygonRendererSupportError(stroked, { debugBounds: false }),
+    ).toBeNull();
+
+    const packed = packPolygonFrame(stroked);
+    // Stroke flag; butt cap (0 << 3) and miter join (0 << 5) by default.
+    expect(packed.flags[0]).toBe(4);
+    expect(packed.flags[1]).toBe(4 | (2 << 3) | (1 << 5));
+    expect(Array.from(packed.strokeWidths)).toEqual([3, 1]);
+    expect(Array.from(packed.miterLimits)).toEqual([10, 4]);
+    expect(packed.strokeColors[3]).toBe(0.5);
   });
 
   it("fails closed for curved path semantics", () => {
@@ -71,19 +110,6 @@ describe("wgpu polygon frame", () => {
         debugBounds: false,
       }),
     ).toMatch(/opaque background/);
-
-    const stroked: DisplayList = {
-      ...convexScene,
-      commands: [
-        {
-          ...convexScene.commands[0]!,
-          paint: { fill: "#fff", stroke: "#000" },
-        },
-      ],
-    };
-    expect(
-      polygonRendererSupportError(stroked, { debugBounds: false }),
-    ).toMatch(/stroke/);
 
     const concave: DisplayList = {
       ...convexScene,

@@ -54,6 +54,7 @@ const AA_LIMITS: &[(&str, f32, f32)] = &[
     ("fills", 0.006, 0.06),                    // floor 0.0057 / 0.053
     ("maps-snapshot", 0.013, 0.13),            // floor 0.0129 / 0.120
     ("scaling", 0.006, FLIP_P99_MAX),          // floor 0.0055 / 0.028
+    ("stroke-styles", FLIP_MEAN_MAX, 0.06),    // floor 0.0046 / 0.050 (2026-11-01, #56)
     ("strokes", 0.012, 0.07),                  // floor 0.0115 / 0.064
     ("vector-animation", FLIP_MEAN_MAX, 0.06), // floor 0.0048 / 0.058
 ];
@@ -67,12 +68,7 @@ fn limits(scenario: &str) -> (f32, f32) {
 
 /// Known custom-path gaps, each tracked by an issue. Never raise a limit to clear one; fix the
 /// renderer and delete the entry (the gate fails while a listed check passes).
-const KNOWN_GAPS: &[(&str, Check, &str)] = &[
-    ("strokes", Check::Unsupported, "#56"),
-    ("vector-animation", Check::Unsupported, "#56"),
-    ("maps-snapshot", Check::Unsupported, "#56"),
-    ("curves", Check::Unsupported, "#57"),
-];
+const KNOWN_GAPS: &[(&str, Check, &str)] = &[("curves", Check::Unsupported, "#57")];
 
 struct Options {
     scenes: PathBuf,

@@ -65,6 +65,7 @@ export const velloGpuRenderer: Renderer = {
       packed.fillColors,
       packed.strokeColors,
       packed.strokeWidths,
+      packed.miterLimits,
       packed.flags,
       packed.background,
       displayList.width,

@@ -10,6 +10,7 @@ function scene(
   options: {
     readonly secondTransform?: boolean;
     readonly stroke?: boolean;
+    readonly concave?: boolean;
   } = {},
 ): DisplayList {
   return {
@@ -19,7 +20,11 @@ function scene(
     commands: [
       {
         kind: "path",
-        points: new Float32Array([0, 0, 20, 0, 20, 20, 0, 20]),
+        points: new Float32Array(
+          options.concave
+            ? [0, 0, 20, 0, 10, 8, 20, 20, 0, 20]
+            : [0, 0, 20, 0, 20, 20, 0, 20],
+        ),
         closed: true,
         transform: [1, 0, 0, 1, 5, 7],
         paint: {
@@ -70,13 +75,24 @@ describe("2d-lab custom renderer boundary", () => {
     }
   });
 
-  it("fails closed instead of falling back to Canvas for unsupported semantics", () => {
+  it("strokes on the immediate path; the retained path fills only", () => {
     const resolved = resolveCustomWgpuBackend(scene({ stroke: true }), {
       debugBounds: false,
     });
 
+    expect(typeof resolved).not.toBe("string");
+    if (typeof resolved !== "string") {
+      expect(resolved.id).toBe("immediate");
+    }
+  });
+
+  it("fails closed instead of falling back to Canvas for unsupported semantics", () => {
+    const resolved = resolveCustomWgpuBackend(scene({ concave: true }), {
+      debugBounds: false,
+    });
+
     expect(resolved).toMatch(/No Rust\/WASM \+ wgpu custom backend/);
-    expect(customWgpuRenderer.support(scene({ stroke: true }), {
+    expect(customWgpuRenderer.support(scene({ concave: true }), {
       debugBounds: false,
     })).toMatch(/No Rust\/WASM \+ wgpu custom backend/);
   });

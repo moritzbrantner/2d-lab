@@ -121,6 +121,7 @@ impl VelloGpuRenderer {
         fill_colors: &[f32],
         stroke_colors: &[f32],
         stroke_widths: &[f32],
+        miter_limits: &[f32],
         flags: &[u32],
         background: &[f32],
         width: u32,
@@ -138,6 +139,7 @@ impl VelloGpuRenderer {
             fill_colors,
             stroke_colors,
             stroke_widths,
+            miter_limits,
             flags,
             background,
         };

@@ -80,6 +80,14 @@ export function retainedRendererSupportError(
   if (polygonError) {
     return polygonError;
   }
+  for (const [index, command] of displayList.commands.entries()) {
+    if (!command.paint.fill || !command.closed) {
+      return `The retained map backend fills closed polygons only; command ${index} is not one.`;
+    }
+    if (command.paint.stroke) {
+      return `The retained map backend does not stroke; command ${index} has a stroke.`;
+    }
+  }
   if (displayList.commands.length === 0) {
     return null;
   }
@@ -190,7 +198,7 @@ export const retainedWgpuRenderer: Renderer = {
         chunkIndex,
         packed.points,
         packed.spans,
-        packed.colors,
+        packed.fillColors,
       );
       prepareMs += upload[0] ?? 0;
       uploadMs += upload[1] ?? 0;

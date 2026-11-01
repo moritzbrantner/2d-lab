@@ -1,14 +1,16 @@
 //! The Skia oracle: tiny-skia (a Rust port of Skia's CPU rasterizer) drawing the packed frame
-//! with Canvas 2D semantics: nonzero fill, then stroke with butt caps, miter joins, miter limit 10,
-//! anti-aliased, per-command affine transform, sRGB-space blending.
+//! with Canvas 2D semantics: nonzero fill, then stroke with the command's width, cap, join and
+//! miter limit, anti-aliased, per-command affine transform, sRGB-space blending.
 
 use std::time::Instant;
 
 use tiny_skia::{
     Color, FillRule, LineCap, LineJoin, Paint, PathBuilder, Pixmap, Stroke, Transform,
 };
-use viz_render_kernel::vello_scene::{
-    CANVAS_MITER_LIMIT, FLAG_CLOSED, FLAG_FILL, FLAG_STROKE, VERB_CUBIC, VERB_LINE,
+use viz_render_kernel::{
+    FLAG_CLOSED, FLAG_FILL, FLAG_STROKE,
+    stroke::{Cap, Join, stroke_cap, stroke_join},
+    vello_scene::{VERB_CUBIC, VERB_LINE},
 };
 
 use crate::scene::Scene;
@@ -68,9 +70,17 @@ fn draw(scene: &Scene) -> Result<Pixmap, String> {
             let paint = paint(&v.stroke_colors[i * 4..i * 4 + 4]);
             let stroke = Stroke {
                 width: v.stroke_widths[i],
-                line_cap: LineCap::Butt,
-                line_join: LineJoin::Miter,
-                miter_limit: CANVAS_MITER_LIMIT as f32,
+                line_cap: match stroke_cap(flags)? {
+                    Cap::Butt => LineCap::Butt,
+                    Cap::Round => LineCap::Round,
+                    Cap::Square => LineCap::Square,
+                },
+                line_join: match stroke_join(flags)? {
+                    Join::Miter => LineJoin::Miter,
+                    Join::Round => LineJoin::Round,
+                    Join::Bevel => LineJoin::Bevel,
+                },
+                miter_limit: v.miter_limits[i],
                 ..Stroke::default()
             };
             pixmap.stroke_path(&path, &paint, &stroke, transform, None);

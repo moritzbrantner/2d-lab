@@ -27,7 +27,7 @@ All current paths consume the same low-level display list where their semantics 
 
 1. **Canvas 2D / TypeScript prepared** — readable browser reference.
 2. **Canvas 2D / Rust-WASM prepared** — the same Canvas rasterization after one batched Rust affine pass.
-3. **Custom WebGPU / immediate** — Rust transforms and triangle-fans convex fill-only polygons, uploads the generated vertices every frame, then submits one draw.
+3. **Custom WebGPU / immediate** — Rust transforms and triangle-fans convex fills, strokes straight-edged paths with lyon (Canvas width in user space, `lineCap`, `lineJoin`, `miterLimit`; defaults butt, miter, 10), uploads the generated anti-aliased geometry every frame, then submits one draw.
 4. **Custom WebGPU / retained map geometry** — for scenes with stable local fill geometry and one shared frame transform, keeps one or more Rust-owned GPU vertex buffers resident and updates only a small frame uniform during steady-state frames. A workload may provide one `retainedGeometryRevision` or a contiguous `retainedGeometryChunks` partition with producer-owned revisions. Unchanged chunks remain resident while changed chunks alone are retessellated and reuploaded; workloads without revision metadata still use conservative value verification. Chunking deliberately trades additional draw calls for smaller invalidation/upload work. Chunk producers may also mark a chunk conservatively invisible for the current frame; visibility does not invalidate geometry, and Rust simply omits that chunk's draw call.
 5. **Vello GPU / pinned upstream** — general vector competitor. Vello owns path/stroke preprocessing and GPU rasterization/compositing instead of 2d-lab growing those facilities itself.
 
@@ -85,7 +85,7 @@ This asks the opposite question:
 
 > When general vector semantics are needed every frame, is a mature vector renderer a better foundation than a map-specialized custom pipeline?
 
-It is compatible with Canvas and Vello. The fill-only custom polygon backends reject it rather than silently dropping strokes.
+It is compatible with Canvas, Vello and the immediate custom WebGPU path (lyon strokes); the fill-only retained backend rejects it rather than silently dropping strokes.
 
 ### Filled polygon parity
 
@@ -93,7 +93,7 @@ It is compatible with Canvas and Vello. The fill-only custom polygon backends re
 
 ### Map-like mixed scene
 
-A mixed polygon/road workload keeps open lines and strokes in the benchmark suite. Vello and Canvas can consume it; fill-only custom backends cannot yet.
+A mixed polygon/road workload keeps open lines and strokes in the benchmark suite. Canvas, Vello and the immediate custom WebGPU path consume it; the fill-only retained backend does not.
 
 ## Browser lab
 
@@ -152,11 +152,11 @@ bun run oracle            # export scenes, render, gate; report in target/oracle
 WGPU_FORCE_FALLBACK_ADAPTER=1 bun run oracle --frames 5   # as CI runs it (lavapipe)
 ```
 
-- **Scenarios** (`src/oracle/scenarios.ts`): one deterministic frame of an existing workload each — `fills`, `transforms`, `strokes`, `vector-animation`, `curves`, `maps-snapshot` and the 2,560-primitive `scaling` case. `bun run oracle:scenes` packs them with the browser adapters' own `packVelloFrame` / `packPolygonFrame`, so the native oracle (`oracle/`) feeds Rust exactly what the browser does.
+- **Scenarios** (`src/oracle/scenarios.ts`): one deterministic frame of an existing workload each — `fills`, `transforms`, `strokes`, `vector-animation`, `curves`, `maps-snapshot`, the 2,560-primitive `scaling` case, and the oracle-only `stroke-styles` fixture (every cap × join, miter limit, transformed and hairline strokes). `bun run oracle:scenes` packs them with the browser adapters' own `packVelloFrame` / `packPolygonFrame`, so the native oracle (`oracle/`) feeds Rust exactly what the browser does.
 - **Same code as the lab:** the custom path's pipeline and pass (`polygon_pipeline.rs`) and the Vello scene adapter (`vello_scene.rs`) are shared by the browser renderers and the oracle (kernel feature `native`).
 - **Image gate:** NVIDIA FLIP of the custom image against *each* oracle, mean ≤ 0.005 and p99 ≤ 0.05. Where Vello and Skia themselves disagree by more (edge anti-aliasing, translucent-fill rounding), the scenario's limit is that measured noise floor, documented in `AA_LIMITS`; the gate also fails if the two oracles drift apart beyond it.
 - **GPU time:** the custom path's median GPU frame time ≤ 1.10× Vello's, enforced on a hardware adapter (local), advisory on lavapipe (CI). Skia is a CPU rasterizer; its time is reported only.
-- **Known gaps:** scenarios the custom path cannot pass yet are listed in `KNOWN_GAPS` with their issue (#56 strokes, #57 curves). The custom path anti-aliases with analytic per-edge area coverage and sRGB-encoded blending, matching Vello and Skia (#55). A listed check that starts passing fails the gate until its entry is removed. Limits are never raised to clear a gap.
+- **Known gaps:** scenarios the custom path cannot pass yet are listed in `KNOWN_GAPS` with their issue (#57 curves). The custom path anti-aliases with analytic per-edge area coverage and sRGB-encoded blending, matching Vello and Skia (#55); strokes are lyon meshes merged into convex pieces whose outline edges get that coverage and whose shared internal edges split pixels exactly once (#56). A listed check that starts passing fails the gate until its entry is removed. Limits are never raised to clear a gap.
 
 CI runs the gate on lavapipe in the `oracle` job (part of `merge-ready`) and uploads the side-by-side report (images, FLIP heatmaps, `report.json`) as the `oracle-report` artifact.
 

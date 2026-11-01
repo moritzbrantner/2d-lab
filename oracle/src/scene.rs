@@ -31,16 +31,16 @@ pub struct PackedFrame {
     pub fill_colors: Vec<f32>,
     pub stroke_colors: Vec<f32>,
     pub stroke_widths: Vec<f32>,
+    pub miter_limits: Vec<f32>,
     pub flags: Vec<u32>,
     pub background: Vec<f32>,
 }
 
-/// The custom path's input: the Vello frame's points/spans/transforms plus `packPolygonFrame`'s
-/// colors, or the TypeScript support error that keeps the custom path from rendering it.
+/// The custom path renders the Vello frame (`packPolygonFrame` is the same arrays without path
+/// verbs) unless the TypeScript support check keeps it from rendering the scene.
 #[derive(Deserialize)]
 pub struct CustomFrame {
     pub error: Option<String>,
-    pub colors: Option<Vec<f32>>,
 }
 
 impl Scene {
@@ -61,6 +61,7 @@ impl Scene {
             fill_colors: &v.fill_colors,
             stroke_colors: &v.stroke_colors,
             stroke_widths: &v.stroke_widths,
+            miter_limits: &v.miter_limits,
             flags: &v.flags,
             background: &v.background,
         }
@@ -68,10 +69,6 @@ impl Scene {
 
     /// Why the custom path cannot render this scene, if it cannot.
     pub fn custom_gap(&self) -> Option<&str> {
-        match (&self.custom.error, &self.custom.colors) {
-            (Some(error), _) => Some(error),
-            (None, None) => Some("exported without custom colors"),
-            (None, Some(_)) => None,
-        }
+        self.custom.error.as_deref()
     }
 }
