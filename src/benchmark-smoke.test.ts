@@ -109,11 +109,12 @@ describe("renderer benchmark contract", () => {
       expect(immediate.id).toBe("immediate");
     }
 
-    // Strokes (lyon) run on the immediate path.
+    // Strokes and cubic fills (lyon) run on the immediate path.
     for (const workload of [
       mapsE2eStyleWorkload,
       vectorAnimationScene,
       mapLikeScene,
+      flatStoriesCurveScene,
     ]) {
       const resolved = resolveCustomWgpuBackend(workload.create(0), {
         debugBounds: false,
@@ -123,11 +124,5 @@ describe("renderer benchmark contract", () => {
         expect(resolved.id, workload.id).toBe("immediate");
       }
     }
-
-    expect(
-      resolveCustomWgpuBackend(flatStoriesCurveScene.create(0), {
-        debugBounds: false,
-      }),
-    ).toMatch(/No Rust\/WASM \+ wgpu custom backend/);
   });
 });

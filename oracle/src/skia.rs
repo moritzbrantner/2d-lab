@@ -1,5 +1,5 @@
 //! The Skia oracle: tiny-skia (a Rust port of Skia's CPU rasterizer) drawing the packed frame
-//! with Canvas 2D semantics: nonzero fill, then stroke with the command's width, cap, join and
+//! with Canvas 2D semantics: nonzero (or even-odd) fill, then stroke with the command's width, cap, join and
 //! miter limit, anti-aliased, per-command affine transform, sRGB-space blending.
 
 use std::time::Instant;
@@ -8,9 +8,8 @@ use tiny_skia::{
     Color, FillRule, LineCap, LineJoin, Paint, PathBuilder, Pixmap, Stroke, Transform,
 };
 use viz_render_kernel::{
-    FLAG_CLOSED, FLAG_FILL, FLAG_STROKE,
+    FLAG_CLOSED, FLAG_EVEN_ODD, FLAG_FILL, FLAG_STROKE, VERB_CUBIC, VERB_LINE,
     stroke::{Cap, Join, stroke_cap, stroke_join},
-    vello_scene::{VERB_CUBIC, VERB_LINE},
 };
 
 use crate::scene::Scene;
@@ -64,7 +63,12 @@ fn draw(scene: &Scene) -> Result<Pixmap, String> {
         let transform = Transform::from_row(m[0], m[1], m[2], m[3], m[4], m[5]);
         if flags & FLAG_FILL != 0 {
             let paint = paint(&v.fill_colors[i * 4..i * 4 + 4]);
-            pixmap.fill_path(&path, &paint, FillRule::Winding, transform, None);
+            let rule = if flags & FLAG_EVEN_ODD != 0 {
+                FillRule::EvenOdd
+            } else {
+                FillRule::Winding
+            };
+            pixmap.fill_path(&path, &paint, rule, transform, None);
         }
         if flags & FLAG_STROKE != 0 {
             let paint = paint(&v.stroke_colors[i * 4..i * 4 + 4]);

@@ -17,6 +17,7 @@ The roadmap is evidence-driven. A later renderer is not promoted merely because 
 - [x] Preserve sRGB color semantics.
 - [x] Fail closed for unsupported concavity, curves and debug overlays.
 - [x] Stroke straight-edged paths with lyon (Canvas caps, joins, miter limit), anti-aliased like fills and proven against the Vello/Skia oracle (#56).
+- [x] Fill and stroke cubic, concave and self-crossing paths with lyon (Canvas `nonzero`/`evenodd`), proven against the Vello/Skia oracle (#57).
 - [ ] Add GPU timestamp-query evidence where browser/device support makes it reliable.
 - [x] Analytic edge anti-aliasing, proven against the Vello/Skia oracle (#55).
 

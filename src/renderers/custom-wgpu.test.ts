@@ -86,13 +86,25 @@ describe("2d-lab custom renderer boundary", () => {
     }
   });
 
-  it("fails closed instead of falling back to Canvas for unsupported semantics", () => {
+  it("fills concave paths on the immediate path; the retained path fans convex polygons", () => {
     const resolved = resolveCustomWgpuBackend(scene({ concave: true }), {
       debugBounds: false,
     });
 
+    expect(typeof resolved).not.toBe("string");
+    if (typeof resolved !== "string") {
+      expect(resolved.id).toBe("immediate");
+    }
+  });
+
+  it("fails closed instead of falling back to Canvas for unsupported semantics", () => {
+    const translucent = { ...scene(), background: "#ffffff80" };
+    const resolved = resolveCustomWgpuBackend(translucent, {
+      debugBounds: false,
+    });
+
     expect(resolved).toMatch(/No Rust\/WASM \+ wgpu custom backend/);
-    expect(customWgpuRenderer.support(scene({ concave: true }), {
+    expect(customWgpuRenderer.support(translucent, {
       debugBounds: false,
     })).toMatch(/No Rust\/WASM \+ wgpu custom backend/);
   });

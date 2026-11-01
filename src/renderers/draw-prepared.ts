@@ -57,7 +57,7 @@ export function drawPreparedDisplayList(
     }
     if (command.paint.fill) {
       context.fillStyle = command.paint.fill;
-      context.fill();
+      context.fill(command.paint.fillRule ?? "nonzero");
     }
     if (command.paint.stroke) {
       context.strokeStyle = command.paint.stroke;

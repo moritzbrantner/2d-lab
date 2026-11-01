@@ -87,6 +87,12 @@ export function retainedRendererSupportError(
     if (command.paint.stroke) {
       return `The retained map backend does not stroke; command ${index} has a stroke.`;
     }
+    if (command.segments) {
+      return `The retained map backend fills straight-edged polygons only; command ${index} has path segments.`;
+    }
+    if (!isConvexPolygon(command)) {
+      return `The retained map backend triangle-fans convex polygons only; command ${index} is concave or degenerate.`;
+    }
   }
   if (displayList.commands.length === 0) {
     return null;
@@ -381,6 +387,44 @@ export function retainedGeometryMatchesSnapshot(
         : { revision: displayList.retainedGeometryRevision }),
     },
   );
+}
+
+function isConvexPolygon(command: PathCommand): boolean {
+  const pointCount = command.points.length / 2;
+  const point = (index: number): readonly [number, number] => [
+    command.points[index * 2] ?? 0,
+    command.points[index * 2 + 1] ?? 0,
+  ];
+  // Same-signed turns are not enough: a pentagram turns one way throughout but winds twice.
+  let orientation = 0;
+  let turning = 0;
+
+  for (let index = 0; index < pointCount; index += 1) {
+    const first = point(index);
+    const second = point((index + 1) % pointCount);
+    const third = point((index + 2) % pointCount);
+    const [ax, ay] = [second[0] - first[0], second[1] - first[1]];
+    const [bx, by] = [third[0] - second[0], third[1] - second[1]];
+    const cross = ax * by - ay * bx;
+    const dot = ax * bx + ay * by;
+
+    if (Math.abs(cross) <= 1e-5) {
+      if (dot < 0) {
+        return false;
+      }
+      continue;
+    }
+    turning += Math.atan2(cross, dot);
+
+    const sign = Math.sign(cross);
+    if (orientation === 0) {
+      orientation = sign;
+    } else if (orientation !== sign) {
+      return false;
+    }
+  }
+
+  return orientation !== 0 && Math.abs(turning) < 3 * Math.PI;
 }
 
 function sameTransform(

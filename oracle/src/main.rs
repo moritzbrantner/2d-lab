@@ -4,7 +4,9 @@
 //!
 //! - image: NVIDIA FLIP against **each** oracle, mean ≤ `FLIP_MEAN_MAX` and p99 ≤ `FLIP_P99_MAX`;
 //! - GPU time: the custom path's median GPU frame time ≤ `GPU_MARGIN` × Vello's. Enforced on a
-//!   hardware adapter with timestamp queries; advisory on software adapters (lavapipe on CI).
+//!   hardware adapter with timestamp queries; advisory on software adapters (lavapipe on CI). Each
+//!   side warms up untimed, then runs alternating rounds of `--frames` back-to-back frames and keeps
+//!   its fastest round (`time`); a failing ratio gets extra rounds before it fails.
 //!   Skia (tiny-skia) is a CPU rasterizer, so its CPU time is reported but not gated.
 //!
 //! The Vello–Skia FLIP is the noise floor: how much the two established rasterizers disagree.
@@ -53,6 +55,7 @@ const AA_LIMITS: &[(&str, f32, f32)] = &[
     ("curves", 0.007, 0.13),                   // floor 0.0061 / 0.122
     ("fills", 0.006, 0.06),                    // floor 0.0057 / 0.053
     ("maps-snapshot", 0.013, 0.13),            // floor 0.0129 / 0.120
+    ("paths", 0.007, 0.13),                    // floor 0.0060 / 0.129 (2026-11-01, #57)
     ("scaling", 0.006, FLIP_P99_MAX),          // floor 0.0055 / 0.028
     ("stroke-styles", FLIP_MEAN_MAX, 0.06),    // floor 0.0046 / 0.050 (2026-11-01, #56)
     ("strokes", 0.012, 0.07),                  // floor 0.0115 / 0.064
@@ -68,7 +71,7 @@ fn limits(scenario: &str) -> (f32, f32) {
 
 /// Known custom-path gaps, each tracked by an issue. Never raise a limit to clear one; fix the
 /// renderer and delete the entry (the gate fails while a listed check passes).
-const KNOWN_GAPS: &[(&str, Check, &str)] = &[("curves", Check::Unsupported, "#57")];
+const KNOWN_GAPS: &[(&str, Check, &str)] = &[];
 
 struct Options {
     scenes: PathBuf,
@@ -82,7 +85,7 @@ fn options() -> Result<Options, String> {
     let mut o = Options {
         scenes: PathBuf::from("target/oracle-scenes"),
         out: PathBuf::from("target/oracle"),
-        frames: 60,
+        frames: 128,
         timing: true,
         only: Vec::new(),
     };
@@ -152,6 +155,77 @@ fn median(mut values: Vec<f64>) -> Option<f64> {
     }
     values.sort_by(f64::total_cmp);
     Some(values[values.len() / 2])
+}
+
+/// Alternating timed rounds (Vello, custom, Vello, custom) per scenario.
+const ROUNDS: usize = 2;
+/// Extra round pairs a scenario gets before its GPU-time check fails.
+const RETRY_ROUNDS: usize = 2;
+
+/// One side's medians: GPU time of its fastest GPU round, CPU time (prepare + record + submit).
+#[derive(Clone, Copy, Default)]
+struct SideTime {
+    gpu_ms: Option<f64>,
+    cpu_ms: Option<f64>,
+}
+
+impl SideTime {
+    fn keep_faster(&mut self, gpu_ms: Vec<f64>) {
+        if let Some(round) = median(gpu_ms) {
+            self.gpu_ms = Some(self.gpu_ms.map_or(round, |best| best.min(round)));
+        }
+    }
+}
+
+#[derive(Default)]
+struct Timing {
+    vello: SideTime,
+    custom: SideTime,
+    rounds: usize,
+}
+
+impl Timing {
+    fn ratio(&self) -> Option<f64> {
+        self.custom
+            .gpu_ms
+            .zip(self.vello.gpu_ms)
+            .map(|(c, v)| c / v)
+    }
+}
+
+/// Times both sides as render-engine's oracle does (`gpu.rs`): untimed warm-up, then `ROUNDS`
+/// alternating GPU rounds of `frames` back-to-back frames, each side keeping its fastest round;
+/// when the GPU-time gate is enforced and failing, up to `RETRY_ROUNDS` more round pairs.
+/// Interleaving and the best round keep a GPU clock change from landing on one side only. One CPU
+/// round per side follows.
+fn time(
+    vello: &mut gpu::Side,
+    mut custom: Option<&mut gpu::Side>,
+    frames: usize,
+    gate_timing: bool,
+) -> Result<Timing, String> {
+    vello.warm_up()?;
+    if let Some(custom) = custom.as_mut() {
+        custom.warm_up()?;
+    }
+    let mut timing = Timing::default();
+    while timing.rounds < ROUNDS + RETRY_ROUNDS {
+        timing.vello.keep_faster(vello.gpu_round(frames)?);
+        if let Some(custom) = custom.as_mut() {
+            timing.custom.keep_faster(custom.gpu_round(frames)?);
+        }
+        timing.rounds += 1;
+        let passing =
+            !gate_timing || custom.is_none() || timing.ratio().is_some_and(|r| r <= GPU_MARGIN);
+        if timing.rounds >= ROUNDS && passing {
+            break;
+        }
+    }
+    timing.vello.cpu_ms = median(vello.cpu_round(frames)?);
+    if let Some(custom) = custom {
+        timing.custom.cpu_ms = median(custom.cpu_round(frames)?);
+    }
+    Ok(timing)
 }
 
 fn save_png(path: &std::path::Path, w: u32, h: u32, rgba: &[u8]) -> Result<(), String> {
@@ -263,15 +337,29 @@ fn run(o: &Options) -> Result<bool, String> {
             }
         };
         let (skia_rgba, skia_ms) = skia::render(s, frames)?;
-        let vello = gpu.render_vello(s, frames)?;
+        let mut vello = gpu.vello(s)?;
+        let vello_rgba = vello.image()?;
         write("skia", &skia_rgba);
-        write("vello", &vello.rgba);
-        let floor = flip(w, h, &skia_rgba, &vello.rgba);
+        write("vello", &vello_rgba);
+        let floor = flip(w, h, &skia_rgba, &vello_rgba);
         write("vello-vs-skia.flip", &floor.heatmap);
 
-        let custom = match s.custom_gap() {
+        let mut custom = match s.custom_gap() {
             Some(gap) => Err(gap.to_string()),
-            None => gpu.render_custom(s, frames),
+            None => {
+                let mut side = gpu.custom(s);
+                side.image().map(|rgba| (side, rgba))
+            }
+        };
+        let timing = if o.timing {
+            time(
+                &mut vello,
+                custom.as_mut().ok().map(|(side, _)| side),
+                o.frames,
+                gate_timing,
+            )?
+        } else {
+            Timing::default()
         };
         let mut failed: Vec<(Check, String)> = Vec::new();
         let mut row = serde_json::json!({
@@ -285,8 +373,9 @@ fn run(o: &Options) -> Result<bool, String> {
             "flip_limits": [lim.0, lim.1],
             "noise_floor": floor.json(lim),
             "skia_cpu_ms": median(skia_ms),
-            "vello_gpu_ms": median(vello.gpu_ms.clone()),
-            "vello_cpu_ms": median(vello.cpu_ms.clone()),
+            "vello_gpu_ms": timing.vello.gpu_ms,
+            "vello_cpu_ms": timing.vello.cpu_ms,
+            "timing_rounds": timing.rounds,
         });
         let (mut vs_skia_text, mut vs_vello_text, mut custom_ms, mut ratio) =
             ("-".to_string(), "-".to_string(), None, None);
@@ -298,10 +387,10 @@ fn run(o: &Options) -> Result<bool, String> {
                 ));
                 row["custom_error"] = reason.into();
             }
-            Ok(custom) => {
-                write("custom", &custom.rgba);
-                let vs_skia = flip(w, h, &skia_rgba, &custom.rgba);
-                let vs_vello = flip(w, h, &vello.rgba, &custom.rgba);
+            Ok((_, custom_rgba)) => {
+                write("custom", &custom_rgba);
+                let vs_skia = flip(w, h, &skia_rgba, &custom_rgba);
+                let vs_vello = flip(w, h, &vello_rgba, &custom_rgba);
                 write("custom-vs-skia.flip", &vs_skia.heatmap);
                 write("custom-vs-vello.flip", &vs_vello.heatmap);
                 vs_skia_text = format!("{:.4}/{:.3}", vs_skia.mean, vs_skia.p99);
@@ -317,10 +406,8 @@ fn run(o: &Options) -> Result<bool, String> {
                         ));
                     }
                 }
-                custom_ms = median(custom.gpu_ms.clone());
-                ratio = custom_ms
-                    .zip(median(vello.gpu_ms.clone()))
-                    .map(|(c, v)| c / v);
+                custom_ms = timing.custom.gpu_ms;
+                ratio = timing.ratio();
                 if gate_timing {
                     match ratio {
                         None => failed.push((Check::GpuTime, "no GPU timestamps".into())),
@@ -334,7 +421,7 @@ fn run(o: &Options) -> Result<bool, String> {
                 row["vs_skia"] = vs_skia.json(lim);
                 row["vs_vello"] = vs_vello.json(lim);
                 row["custom_gpu_ms"] = custom_ms.into();
-                row["custom_cpu_ms"] = median(custom.cpu_ms).into();
+                row["custom_cpu_ms"] = timing.custom.cpu_ms.into();
                 row["gpu_ratio"] = ratio.into();
             }
         }

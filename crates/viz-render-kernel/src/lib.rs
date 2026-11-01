@@ -17,7 +17,13 @@ pub mod vello_scene;
 #[cfg(any(all(target_arch = "wasm32", target_os = "unknown"), feature = "native"))]
 pub use {vello_gpu, wgpu};
 
+mod mesh;
 pub mod stroke;
+
+use lyon_tessellation::{
+    BuffersBuilder, FillOptions, FillRule, FillTessellator, FillVertex, VertexBuffers, math::Point,
+    path::Path,
+};
 
 const CONVEX_EPSILON: f32 = 1.0e-5;
 /// Floats per custom immediate-path vertex (`CoveragePolygons::vertices`).
@@ -74,7 +80,9 @@ pub struct CoveragePolygons {
     pub vertices: Vec<f32>,
     /// Edge lines, 4 floats each: unit inward normal x/y and offset, so the signed distance (in
     /// pixels, positive inside) of framebuffer point `p` is `n·p + offset`; then 0 for an
-    /// anti-aliased outline edge or 1 for a hard internal edge between two pieces of one stroke.
+    /// anti-aliased outline edge, 1 for a hard internal edge between two pieces of one mesh, or 2
+    /// for the limit of the hard edge before it: beyond this line (`n·p + offset > 0`) that hard
+    /// edge does not apply.
     pub edges: Vec<f32>,
 }
 
@@ -86,17 +94,32 @@ impl CoveragePolygons {
 
 /// `flags` bit: the path is closed.
 pub const FLAG_CLOSED: u32 = 1;
-/// `flags` bit: fill the path (nonzero) with its fill colour.
+/// `flags` bit: fill the path with its fill colour (nonzero unless `FLAG_EVEN_ODD`).
 pub const FLAG_FILL: u32 = 2;
 /// `flags` bit: stroke the path with its stroke colour, width, cap, join and miter limit.
 pub const FLAG_STROKE: u32 = 4;
+/// `flags` bit 7: fill with the even-odd rule (Canvas `fill("evenodd")`).
+pub const FLAG_EVEN_ODD: u32 = 1 << 7;
 
-/// One packed straight-edged frame for the custom path (`packPolygonFrame` in
-/// `src/renderers/wgpu-polygon-frame.ts`): the Vello frame's arrays without path verbs.
+/// Path verb: a line to the next point.
+pub const VERB_LINE: u32 = 0;
+/// Path verb: a cubic Bézier through the next two control points to the third point.
+pub const VERB_CUBIC: u32 = 1;
+
+/// Maximum distance (screen pixels) between a filled curve and its flattened outline (as
+/// `stroke::STROKE_TOLERANCE`).
+pub const FILL_TOLERANCE: f32 = 0.25;
+
+/// One packed frame for the custom path (`packPolygonFrame` in
+/// `src/renderers/wgpu-polygon-frame.ts`): the same arrays as the Vello frame, minus background.
 #[derive(Clone, Copy)]
 pub struct PolygonFrame<'a> {
     pub points: &'a [f32],
     pub spans: &'a [u32],
+    /// `VERB_*` per segment after each command's first point.
+    pub verbs: &'a [u32],
+    /// Start/length pairs into `verbs`, one per command.
+    pub verb_spans: &'a [u32],
     pub transforms: &'a [f32],
     pub fill_colors: &'a [f32],
     pub stroke_colors: &'a [f32],
@@ -109,6 +132,13 @@ pub struct PolygonFrame<'a> {
 /// How far (pixels) each polygon grows before rasterization: a pixel with any coverage has its
 /// centre within half a pixel diagonal (≈ 0.71) of the polygon.
 const COVERAGE_MARGIN: f32 = 1.0;
+/// How far (pixels) a polygon grows across a hard internal edge.
+const HARD_EDGE_MARGIN: f32 = 0.01;
+/// Adjacent edges whose directions differ by less than this sine grow along their bisector.
+const GROW_PARALLEL_SINE: f32 = 0.1;
+/// Corners whose edge normals' cosine is below this (interior angle under 60°) grow as a cut-off
+/// tip rather than a mitre.
+const ACUTE_COS: f32 = -0.5;
 /// Screen-space points closer than this (pixels) are one point; consecutive edges whose
 /// directions differ by less than this sine are one edge.
 const SCREEN_EPSILON: f32 = 1.0e-4;
@@ -124,6 +154,8 @@ pub fn build_coverage_polygons(
     let PolygonFrame {
         points,
         spans,
+        verbs,
+        verb_spans,
         transforms,
         ..
     } = *frame;
@@ -131,7 +163,8 @@ pub fn build_coverage_polygons(
         return Err("spans must contain start/length pairs".into());
     }
     let command_count = spans.len() / 2;
-    if transforms.len() != command_count * 6
+    if verb_spans.len() != command_count * 2
+        || transforms.len() != command_count * 6
         || frame.fill_colors.len() != command_count * 4
         || frame.stroke_colors.len() != command_count * 4
         || frame.stroke_widths.len() != command_count
@@ -146,41 +179,82 @@ pub fn build_coverage_polygons(
     let height = height as f32;
     let mut screen = Vec::new();
     let mut outline = Vec::new();
-    let mut scratch = stroke::StrokeScratch::default();
+    let mut strokes = stroke::StrokeScratch::default();
+    let mut fills = FillScratch::default();
+    let mut pieces = mesh::MeshScratch::default();
 
     for command_index in 0..command_count {
         let flags = frame.flags[command_index];
         let (start, len) = validated_span(points, spans, command_index, flags & FLAG_FILL != 0)?;
-        let path = &points[start..start + len];
+        let local = &points[start..start + len];
+        let verb_start = verb_spans[command_index * 2] as usize;
+        let verb_len = verb_spans[command_index * 2 + 1] as usize;
+        let command_verbs = verbs
+            .get(verb_start..verb_start + verb_len)
+            .ok_or_else(|| format!("command {command_index} has an invalid verb span"))?;
         let transform = &transforms[command_index * 6..command_index * 6 + 6];
         if transform.iter().any(|value| !value.is_finite()) {
             return Err(format!(
                 "command {command_index} has a non-finite affine transform"
             ));
         }
+        let closed = flags & FLAG_CLOSED != 0;
+        let straight = command_verbs.iter().all(|&verb| verb == VERB_LINE);
+        let straight_convex = flags & FLAG_FILL != 0 && straight && is_convex_polygon(local);
+        // Curved, concave or stroked commands go through lyon.
+        let path = if (flags & FLAG_FILL != 0 && !straight_convex) || flags & FLAG_STROKE != 0 {
+            Some(
+                local_path(local, command_verbs, closed)
+                    .map_err(|error| format!("command {command_index}: {error}"))?,
+            )
+        } else {
+            if command_verbs.len() * 2 + 2 != len {
+                return Err(format!(
+                    "command {command_index} path verbs do not consume its geometry"
+                ));
+            }
+            None
+        };
 
         if flags & FLAG_FILL != 0 {
             let color = quantized_color(frame.fill_colors, command_index)?;
-            if !is_convex_polygon(path) {
-                return Err(format!(
-                    "command {command_index} is not a non-degenerate convex polygon"
-                ));
-            }
-            screen.clear();
-            for pair in path.as_chunks::<2>().0 {
-                let (x, y) = transform_point(pair[0], pair[1], transform);
-                if !x.is_finite() || !y.is_finite() {
-                    return Err("transformed polygon coordinate is non-finite".into());
+            if straight_convex {
+                // Convex straight-edged fill: one polygon, every edge on the outline.
+                screen.clear();
+                for pair in local.as_chunks::<2>().0 {
+                    let (x, y) = transform_point(pair[0], pair[1], transform);
+                    if !x.is_finite() || !y.is_finite() {
+                        return Err("transformed polygon coordinate is non-finite".into());
+                    }
+                    screen.push((x, y));
                 }
-                screen.push((x, y));
-            }
-            simplify_screen_polygon(&mut screen);
-            // Fewer than 3 points: collapsed to a point or a line by its transform, which covers
-            // nothing, as in Vello/Skia.
-            if screen.len() >= 3 {
-                outline.clear();
-                outline.resize(screen.len(), false);
-                append_coverage_polygon(&mut output, &screen, &outline, &color, width, height)?;
+                simplify_screen_polygon(&mut screen);
+                // Fewer than 3 points: collapsed to a point or a line by its transform, which
+                // covers nothing, as in Vello/Skia.
+                if screen.len() >= 3 {
+                    outline.clear();
+                    outline.resize(screen.len(), false);
+                    append_coverage_polygon(
+                        &mut output,
+                        &screen,
+                        &outline,
+                        &[],
+                        &color,
+                        width,
+                        height,
+                    )?;
+                }
+            } else {
+                fills.append(
+                    &mut output,
+                    &mut pieces,
+                    path.as_ref().expect("non-convex fills build a path"),
+                    flags & FLAG_EVEN_ODD != 0,
+                    transform,
+                    &color,
+                    width,
+                    height,
+                )?;
             }
         }
 
@@ -206,9 +280,9 @@ pub fn build_coverage_polygons(
             };
             stroke::append_stroke(
                 &mut output,
-                &mut scratch,
-                path,
-                flags & FLAG_CLOSED != 0,
+                &mut strokes,
+                &mut pieces,
+                path.as_ref().expect("stroked commands build a path"),
                 transform,
                 &style,
                 &color,
@@ -219,6 +293,100 @@ pub fn build_coverage_polygons(
     }
 
     Ok(output)
+}
+
+/// The local-space lyon path of one command: its first point, then one segment per verb.
+pub fn local_path(points: &[f32], verbs: &[u32], closed: bool) -> Result<Path, String> {
+    let point = |offset: usize| -> Result<Point, String> {
+        match points.get(offset..offset + 2) {
+            Some(&[x, y]) if x.is_finite() && y.is_finite() => Ok(Point::new(x, y)),
+            Some(_) => Err("path coordinate is non-finite".into()),
+            None => Err("path verbs do not consume its geometry".into()),
+        }
+    };
+    let mut builder = Path::builder();
+    builder.begin(point(0)?);
+    let mut offset = 2;
+    for &verb in verbs {
+        match verb {
+            VERB_LINE => {
+                builder.line_to(point(offset)?);
+                offset += 2;
+            }
+            VERB_CUBIC => {
+                builder.cubic_bezier_to(point(offset)?, point(offset + 2)?, point(offset + 4)?);
+                offset += 6;
+            }
+            _ => return Err("path contains an unknown verb".into()),
+        }
+    }
+    if offset != points.len() {
+        return Err("path verbs do not consume its geometry".into());
+    }
+    builder.end(closed);
+    Ok(builder.build())
+}
+
+/// The largest factor by which `transform` stretches a local length (an upper bound: its larger
+/// column norm), so a local tolerance of `screen / scale` holds in screen pixels.
+fn transform_scale(transform: &[f32]) -> f32 {
+    transform[0]
+        .hypot(transform[1])
+        .max(transform[2].hypot(transform[3]))
+}
+
+/// Reusable buffers for curved and concave fills.
+#[derive(Default)]
+struct FillScratch {
+    tessellator: Option<FillTessellator>,
+    mesh: VertexBuffers<Point, u32>,
+}
+
+impl FillScratch {
+    /// Fills `path` (Canvas nonzero, or even-odd) with lyon's fill tessellator and appends its
+    /// anti-aliased convex pieces.
+    #[allow(clippy::too_many_arguments)]
+    fn append(
+        &mut self,
+        output: &mut CoveragePolygons,
+        pieces: &mut mesh::MeshScratch,
+        path: &Path,
+        even_odd: bool,
+        transform: &[f32],
+        color: &[f32],
+        width: f32,
+        height: f32,
+    ) -> Result<(), String> {
+        let scale = transform_scale(transform);
+        if scale <= 0.0 {
+            return Ok(()); // Collapsed by its transform: covers nothing.
+        }
+        self.mesh.vertices.clear();
+        self.mesh.indices.clear();
+        let options = FillOptions::tolerance(FILL_TOLERANCE / scale).with_fill_rule(if even_odd {
+            FillRule::EvenOdd
+        } else {
+            FillRule::NonZero
+        });
+        self.tessellator
+            .get_or_insert_with(FillTessellator::new)
+            .tessellate_path(
+                path,
+                &options,
+                &mut BuffersBuilder::new(&mut self.mesh, |vertex: FillVertex| vertex.position()),
+            )
+            .map_err(|error| format!("fill tessellation failed: {error:?}"))?;
+        mesh::append_mesh(
+            output,
+            pieces,
+            &self.mesh.vertices,
+            &self.mesh.indices,
+            transform,
+            color,
+            width,
+            height,
+        )
+    }
 }
 
 /// The command's RGBA quantized to 8 bits per channel, as Canvas parses a CSS colour (and as the
@@ -258,11 +426,13 @@ fn simplify_screen_polygon(screen: &mut Vec<(f32, f32)>) {
 }
 
 /// Appends one convex screen-space polygon. `hard[i]` marks edge `screen[i] → screen[i + 1]` as
-/// a hard internal edge (pixel-centre test) instead of an anti-aliased outline edge.
+/// a hard internal edge (pixel-centre test) instead of an anti-aliased outline edge, and
+/// `limits[i]` (when present) is that hard edge's limit record (`CoveragePolygons::edges`).
 pub(crate) fn append_coverage_polygon(
     output: &mut CoveragePolygons,
     screen: &[(f32, f32)],
     hard: &[bool],
+    limits: &[Option<[f32; 4]>],
     color: &[f32],
     width: f32,
     height: f32,
@@ -292,23 +462,63 @@ pub(crate) fn append_coverage_polygon(
         output
             .edges
             .extend_from_slice(&[nx, ny, -(nx * mx + ny * my), kind]);
+        if let Some(Some(limit)) = limits.get(i) {
+            output.edges.extend_from_slice(limit);
+        }
     }
+    let edge_count = (output.edges.len() / 4) as f32 - edge_start;
 
-    // Grow outward: each vertex moves to the intersection of its two edges' offset lines.
+    // Grow outward: each vertex moves to the intersection of its two edges' offset lines. Outline
+    // edges grow by the coverage margin; hard edges barely (pixels across them belong to the
+    // neighbouring piece), just enough that a pixel centre on the shared line is rasterized by
+    // both pieces and the shader's tie rule picks one.
+    let margin = |i: usize| {
+        if hard[i] {
+            HARD_EDGE_MARGIN
+        } else {
+            COVERAGE_MARGIN
+        }
+    };
     let mut grown = Vec::with_capacity(count);
-    for i in 0..count {
-        let (n0, n1) = (normals[(i + count - 1) % count], normals[i]);
-        let scale = COVERAGE_MARGIN / (1.0 + n0.0 * n1.0 + n0.1 * n1.1).max(1.0e-3);
-        let x = screen[i].0 - (n0.0 + n1.0) * scale;
-        let y = screen[i].1 - (n0.1 + n1.1) * scale;
+    let mut push = |x: f32, y: f32| {
         let clip = (x / width * 2.0 - 1.0, 1.0 - y / height * 2.0);
         if !clip.0.is_finite() || !clip.1.is_finite() {
-            return Err("polygon coordinate is not representable in clip space".into());
+            return Err("polygon coordinate is not representable in clip space".to_string());
         }
         grown.push(clip);
+        Ok(())
+    };
+    for i in 0..count {
+        let prev = (i + count - 1) % count;
+        let (n0, n1) = (normals[prev], normals[i]);
+        let (o0, o1) = (margin(prev), margin(i));
+        let (vx, vy) = screen[i];
+        let cos = n0.0 * n1.0 + n0.1 * n1.1;
+        if cos < ACUTE_COS {
+            // An acute corner's mitre would reach far past it (rasterizing fragments that only
+            // get discarded): cut it off around the corner instead, at the margin from it.
+            let (bx, by) = (-(n0.0 + n1.0), -(n0.1 + n1.1));
+            let b = bx.hypot(by).max(1.0e-6);
+            let tip = o0.max(o1);
+            push(vx - n0.0 * o0, vy - n0.1 * o0)?;
+            push(vx + bx / b * tip, vy + by / b * tip)?;
+            push(vx - n1.0 * o1, vy - n1.1 * o1)?;
+            continue;
+        }
+        let det = n0.0 * n1.1 - n0.1 * n1.0;
+        let (dx, dy) = if o0 == o1 || det.abs() < GROW_PARALLEL_SINE {
+            // Equal offsets (or nearly parallel edges): along the bisector, by the larger one.
+            let offset = o0.max(o1);
+            let scale = offset / (1.0 + cos);
+            (-(n0.0 + n1.0) * scale, -(n0.1 + n1.1) * scale)
+        } else {
+            // Solve n0·d = -o0, n1·d = -o1.
+            ((o1 * n0.1 - o0 * n1.1) / det, (o0 * n1.0 - o1 * n0.0) / det)
+        };
+        push(vx + dx, vy + dy)?;
     }
 
-    let edge_count = count as f32;
+    let count = grown.len();
     output.vertices.reserve((count - 2) * 3 * GPU_VERTEX_FLOATS);
     for triangle in 1..count - 1 {
         for index in [0, triangle, triangle + 1] {
@@ -426,17 +636,26 @@ fn is_convex_polygon(points: &[f32]) -> bool {
         return false;
     }
 
+    // Same-signed turns are not enough: a pentagram turns one way throughout but winds twice. A
+    // convex polygon's turns add up to one full turn.
     let mut orientation = 0.0_f32;
+    let mut turning = 0.0_f32;
     for index in 0..point_count {
         let first = point(points, index);
         let second = point(points, (index + 1) % point_count);
         let third = point(points, (index + 2) % point_count);
-        let cross = (second.0 - first.0) * (third.1 - second.1)
-            - (second.1 - first.1) * (third.0 - second.0);
+        let (ax, ay) = (second.0 - first.0, second.1 - first.1);
+        let (bx, by) = (third.0 - second.0, third.1 - second.1);
+        let cross = ax * by - ay * bx;
+        let dot = ax * bx + ay * by;
 
         if cross.abs() <= CONVEX_EPSILON {
+            if dot < 0.0 {
+                return false; // Doubles back on itself.
+            }
             continue;
         }
+        turning += cross.atan2(dot);
 
         let sign = cross.signum();
         if orientation == 0.0 {
@@ -446,7 +665,7 @@ fn is_convex_polygon(points: &[f32]) -> bool {
         }
     }
 
-    orientation != 0.0
+    orientation != 0.0 && turning.abs() < 3.0 * std::f32::consts::PI
 }
 
 fn point(points: &[f32], index: usize) -> (f32, f32) {
@@ -456,9 +675,48 @@ fn point(points: &[f32], index: usize) -> (f32, f32) {
 #[cfg(test)]
 mod tests {
     use super::{
-        CoveragePolygons, FLAG_CLOSED, FLAG_FILL, FLAG_STROKE, PolygonFrame,
-        build_coverage_polygons, build_local_convex_polygon_vertices, transform_batches,
+        CoveragePolygons, FLAG_CLOSED, FLAG_EVEN_ODD, FLAG_FILL, FLAG_STROKE, GPU_VERTEX_FLOATS,
+        PolygonFrame, VERB_CUBIC, VERB_LINE, build_coverage_polygons,
+        build_local_convex_polygon_vertices, transform_batches,
     };
+
+    /// Straight-edged verbs for `spans`: one line per point after each command's first.
+    fn line_verbs(spans: &[u32]) -> (Vec<u32>, Vec<u32>) {
+        let mut verbs = Vec::new();
+        let mut verb_spans = Vec::new();
+        for span in spans.as_chunks::<2>().0 {
+            verb_spans.extend([verbs.len() as u32, span[1] / 2 - 1]);
+            verbs.extend(std::iter::repeat_n(VERB_LINE, span[1] as usize / 2 - 1));
+        }
+        (verbs, verb_spans)
+    }
+
+    /// One command on a 100×100 target.
+    fn path(
+        points: &[f32],
+        verbs: &[u32],
+        flags: u32,
+        transform: &[f32],
+    ) -> Result<CoveragePolygons, String> {
+        build_coverage_polygons(
+            &PolygonFrame {
+                points,
+                spans: &[0, points.len() as u32],
+                verbs,
+                verb_spans: &[0, verbs.len() as u32],
+                transforms: transform,
+                fill_colors: &[1.0; 4],
+                stroke_colors: &[0.0, 0.0, 0.0, 1.0],
+                stroke_widths: &[2.0],
+                miter_limits: &[10.0],
+                flags: &[flags],
+            },
+            100,
+            100,
+        )
+    }
+
+    const IDENTITY: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
 
     /// Fill-only frame on a 100×100 target.
     fn fill(
@@ -468,10 +726,13 @@ mod tests {
         colors: &[f32],
     ) -> Result<CoveragePolygons, String> {
         let count = spans.len() / 2;
+        let (verbs, verb_spans) = line_verbs(spans);
         build_coverage_polygons(
             &PolygonFrame {
                 points,
                 spans,
+                verbs: &verbs,
+                verb_spans: &verb_spans,
                 transforms,
                 fill_colors: colors,
                 stroke_colors: &vec![0.0; count * 4],
@@ -484,12 +745,149 @@ mod tests {
         )
     }
 
+    /// How many pieces have the screen point `(x, y)` inside all their edges (for points clear of
+    /// any outline, so coverage is all or nothing).
+    fn pieces_covering(geometry: &CoveragePolygons, x: f32, y: f32) -> usize {
+        let mut ranges: Vec<(usize, usize)> = geometry
+            .vertices
+            .as_chunks::<GPU_VERTEX_FLOATS>()
+            .0
+            .iter()
+            .map(|v| (v[6] as usize, v[7] as usize))
+            .collect();
+        ranges.dedup();
+        ranges
+            .iter()
+            .filter(|&&(first, count)| {
+                geometry.edges.as_chunks::<4>().0[first..first + count]
+                    .iter()
+                    .all(|e| e[3] == 2.0 || e[0] * x + e[1] * y + e[2] > 0.0)
+            })
+            .count()
+    }
+
+    /// Hard edges come in exactly negated pairs (one per piece on either side).
+    fn hard_edges_pair_up(geometry: &CoveragePolygons) -> bool {
+        let hard: Vec<_> = geometry
+            .edges
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|e| e[3] == 1.0)
+            .collect();
+        hard.iter().all(|e| {
+            hard.iter()
+                .any(|o| o[0] == -e[0] && o[1] == -e[1] && o[2] == -e[2])
+        })
+    }
+
+    #[test]
+    fn concave_fills_tile_their_interior_once() {
+        // An arrow: concave where the shaft meets the head.
+        let arrow = [
+            10.0, 40.0, 50.0, 40.0, 50.0, 20.0, 90.0, 50.0, 50.0, 80.0, 50.0, 60.0, 10.0, 60.0,
+        ];
+        let (verbs, _) = line_verbs(&[0, arrow.len() as u32]);
+        let geometry =
+            path(&arrow, &verbs, FLAG_CLOSED | FLAG_FILL, &IDENTITY).expect("concave fill");
+        assert!(hard_edges_pair_up(&geometry));
+        for (x, y) in [(20.3, 50.1), (60.3, 50.1), (70.2, 45.1)] {
+            assert_eq!(pieces_covering(&geometry, x, y), 1, "({x}, {y})");
+        }
+        // Inside the notch between shaft and head.
+        assert_eq!(pieces_covering(&geometry, 45.1, 30.2), 0);
+    }
+
+    #[test]
+    fn fill_rules_differ_inside_a_self_crossing_star() {
+        let star = [50.0, 5.0, 79.0, 95.0, 2.0, 39.0, 98.0, 39.0, 21.0, 95.0];
+        let (verbs, _) = line_verbs(&[0, star.len() as u32]);
+        let nonzero = path(&star, &verbs, FLAG_CLOSED | FLAG_FILL, &IDENTITY).expect("star");
+        let even_odd = path(
+            &star,
+            &verbs,
+            FLAG_CLOSED | FLAG_FILL | FLAG_EVEN_ODD,
+            &IDENTITY,
+        )
+        .expect("star");
+        assert_eq!(pieces_covering(&nonzero, 50.1, 55.2), 1);
+        assert_eq!(pieces_covering(&even_odd, 50.1, 55.2), 0);
+        // A point.
+        assert_eq!(pieces_covering(&even_odd, 50.1, 20.2), 1);
+    }
+
+    #[test]
+    fn cubic_fills_flatten_within_tolerance() {
+        // A circle of radius 40 around (50, 50) from four cubics, scaled by 1 (so 0.25 px).
+        let k = 0.5523 * 40.0;
+        let points = [
+            90.0,
+            50.0,
+            90.0,
+            50.0 + k,
+            50.0 + k,
+            90.0,
+            50.0,
+            90.0,
+            50.0 - k,
+            90.0,
+            10.0,
+            50.0 + k,
+            10.0,
+            50.0,
+            10.0,
+            50.0 - k,
+            50.0 - k,
+            10.0,
+            50.0,
+            10.0,
+            50.0 + k,
+            10.0,
+            90.0,
+            50.0 - k,
+            90.0,
+            50.0,
+        ];
+        let verbs = [VERB_CUBIC; 4];
+        let geometry =
+            path(&points, &verbs, FLAG_CLOSED | FLAG_FILL, &IDENTITY).expect("circle fill");
+        assert!(hard_edges_pair_up(&geometry));
+        assert_eq!(pieces_covering(&geometry, 50.1, 50.2), 1);
+        // Every outline edge lies within tolerance (plus the cubic's own error) of the circle.
+        for edge in geometry.edges.as_chunks::<4>().0 {
+            if edge[3] == 0.0 {
+                let distance = edge[0] * 50.0 + edge[1] * 50.0 + edge[2];
+                assert!((distance - 40.0).abs() < 0.3, "edge at {distance}");
+            }
+        }
+        // A curved stroke builds too.
+        let stroked =
+            path(&points, &verbs, FLAG_CLOSED | FLAG_STROKE, &IDENTITY).expect("circle stroke");
+        assert!(hard_edges_pair_up(&stroked));
+        assert_eq!(pieces_covering(&stroked, 50.1, 50.2), 0);
+        assert_eq!(pieces_covering(&stroked, 90.1, 50.2), 1);
+    }
+
+    #[test]
+    fn verbs_must_consume_the_geometry() {
+        let error = path(
+            &[0.0, 0.0, 10.0, 0.0, 10.0, 10.0],
+            &[VERB_CUBIC],
+            FLAG_CLOSED | FLAG_FILL,
+            &IDENTITY,
+        )
+        .expect_err("a cubic needs three points");
+        assert!(error.contains("do not consume"), "{error}");
+    }
+
     #[test]
     fn fills_then_strokes_each_command_with_quantized_colors() {
         let geometry = build_coverage_polygons(
             &PolygonFrame {
                 points: &[10.0, 10.0, 90.0, 10.0, 90.0, 90.0, 10.0, 90.0],
                 spans: &[0, 8],
+                verbs: &[VERB_LINE; 3],
+                verb_spans: &[0, 3],
                 transforms: &[1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
                 fill_colors: &[1.0, 1.0, 1.0, 0.72],
                 stroke_colors: &[0.0, 0.0, 0.0, 1.0],
@@ -513,6 +911,8 @@ mod tests {
             &PolygonFrame {
                 points: &[10.0, 10.0, 90.0, 10.0],
                 spans: &[0, 4],
+                verbs: &[VERB_LINE],
+                verb_spans: &[0, 1],
                 transforms: &[1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
                 fill_colors: &[0.0; 4],
                 stroke_colors: &[0.0, 0.0, 0.0, 1.0],
@@ -629,15 +1029,19 @@ mod tests {
     }
 
     #[test]
-    fn rejects_concave_polygon_for_triangle_fan_backend() {
-        let error = fill(
-            &[0.0, 0.0, 4.0, 0.0, 2.0, 1.0, 4.0, 4.0, 0.0, 4.0],
-            &[0, 10],
-            &[1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-            &[1.0, 1.0, 1.0, 1.0],
-        )
-        .expect_err("concave polygon must fail closed");
-
-        assert!(error.contains("not a non-degenerate convex polygon"));
+    fn retained_fans_reject_concave_and_self_crossing_polygons() {
+        for polygon in [
+            &[0.0, 0.0, 4.0, 0.0, 2.0, 1.0, 4.0, 4.0, 0.0, 4.0][..],
+            // A pentagram turns one way throughout but winds twice.
+            &[50.0, 5.0, 79.0, 95.0, 2.0, 39.0, 98.0, 39.0, 21.0, 95.0][..],
+        ] {
+            let error = build_local_convex_polygon_vertices(
+                polygon,
+                &[0, polygon.len() as u32],
+                &[1.0, 1.0, 1.0, 1.0],
+            )
+            .expect_err("non-convex polygon must fail closed");
+            assert!(error.contains("not a non-degenerate convex polygon"));
+        }
     }
 }

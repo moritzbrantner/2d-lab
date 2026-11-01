@@ -11,6 +11,8 @@ import type { RenderOptions } from "./types";
 const FLAG_CLOSED = 1;
 const FLAG_FILL = 2;
 const FLAG_STROKE = 4;
+// Even-odd fill rule, as `FLAG_EVEN_ODD` in the Rust kernel.
+const FLAG_EVEN_ODD = 1 << 7;
 // Stroke cap and join, as `stroke::CAP_SHIFT` / `stroke::JOIN_SHIFT` in the Rust kernel.
 const CAP_SHIFT = 3;
 const JOIN_SHIFT = 5;
@@ -29,7 +31,7 @@ export type PackedVelloFrame = {
   readonly strokeColors: Float32Array;
   readonly strokeWidths: Float32Array;
   readonly miterLimits: Float32Array;
-  /** `FLAG_*` bits plus the stroke cap (bits 3–4) and join (bits 5–6). */
+  /** `FLAG_*` bits plus the stroke cap (bits 3–4), join (bits 5–6) and even-odd fill (bit 7). */
   readonly flags: Uint32Array;
   readonly background: Float32Array;
 };
@@ -87,6 +89,9 @@ export function packVelloFrame(displayList: DisplayList): PackedVelloFrame {
       }
       fillColors.set(color, index * 4);
       commandFlags |= FLAG_FILL;
+      if (command.paint.fillRule === "evenodd") {
+        commandFlags |= FLAG_EVEN_ODD;
+      }
     }
 
     if (command.paint.stroke) {

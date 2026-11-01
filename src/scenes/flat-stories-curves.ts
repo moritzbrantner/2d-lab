@@ -115,7 +115,7 @@ export const flatStoriesCurveScene: BenchmarkWorkload = {
   id: "flat-stories-curves",
   name: "Flat Stories · Nova curve slice",
   description:
-    "Exact cubic path anchors and handles from Nova's torso and hair, repeated over Flat Stories' 36-copy benchmark grid with lab-owned placement. Canvas and pinned Vello preserve the curves; custom polygon backends must reject them.",
+    "Exact cubic path anchors and handles from Nova's torso and hair, repeated over Flat Stories' 36-copy benchmark grid with lab-owned placement. Canvas, pinned Vello and the immediate custom path (lyon) preserve the curves; the retained custom backend rejects them.",
   create() {
     return {
       width: COLUMNS * CELL_WIDTH,
