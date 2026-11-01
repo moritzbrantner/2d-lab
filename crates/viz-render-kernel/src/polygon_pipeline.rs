@@ -132,6 +132,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
   var second = vec3<f32>();
   // More than two crossing edges (pixels at tiny pieces): their coverages multiply.
   var product = 1.0;
+  // A hard test skipped past its limit: the pixel stays only if an outline edge crosses it.
+  var limited = false;
   let end = input.edges.x + input.edges.y;
   for (var i = input.edges.x; i < end; i++) {
     let edge = edges[i];
@@ -153,6 +155,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         if limit.w != 2.0 || dot(limit.xy, p) + limit.z <= 0.0 {
           discard;
         }
+        limited = true;
       }
     } else {
       let h = half_extent(edge.xy);
@@ -169,6 +172,9 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         product *= edge_coverage(edge.xy, d);
       }
     }
+  }
+  if limited && crossing == 0u {
+    discard; // Fully inside the outline: across the hard edge, so the neighbour's pixel.
   }
   var coverage = product;
   if crossing == 2u {

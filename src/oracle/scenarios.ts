@@ -9,6 +9,7 @@ import { retainedMapCullingScene } from "../scenes/retained-map-culling";
 import type { BenchmarkWorkload } from "../scenes/types";
 import { vectorAnimationScene } from "../scenes/vector-animation";
 import { pathsWorkload } from "./paths";
+import { strokeCrossingsWorkload } from "./stroke-crossings";
 import { strokeStylesWorkload } from "./stroke-styles";
 
 /**
@@ -46,6 +47,12 @@ export const oracleScenarios: readonly OracleScenario[] = [
     name: "stroke-styles",
     capability: "line caps, joins, miter limit",
     workload: strokeStylesWorkload,
+    timeSeconds: 0,
+  },
+  {
+    name: "stroke-crossings",
+    capability: "self-crossing translucent strokes",
+    workload: strokeCrossingsWorkload,
     timeSeconds: 0,
   },
   {

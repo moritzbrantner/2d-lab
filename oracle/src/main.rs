@@ -58,6 +58,7 @@ const AA_LIMITS: &[(&str, f32, f32)] = &[
     ("maps-snapshot", 0.013, 0.13),            // floor 0.0129 / 0.120
     ("paths", 0.007, 0.13),                    // floor 0.0060 / 0.129 (2026-11-01, #57)
     ("scaling", 0.006, FLIP_P99_MAX),          // floor 0.0055 / 0.028
+    ("stroke-crossings", 0.006, 0.10),         // floor 0.0053 / 0.095 (2026-11-01, #61)
     ("stroke-styles", FLIP_MEAN_MAX, 0.06),    // floor 0.0046 / 0.050 (2026-11-01, #56)
     ("strokes", 0.012, 0.07),                  // floor 0.0115 / 0.064
     ("vector-animation", FLIP_MEAN_MAX, 0.06), // floor 0.0048 / 0.058

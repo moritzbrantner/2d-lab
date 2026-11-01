@@ -6,8 +6,8 @@
 //! convex pieces.
 
 use lyon_tessellation::{
-    BuffersBuilder, LineCap, LineJoin, StrokeOptions, StrokeTessellator, StrokeVertex,
-    VertexBuffers, math::Point, path::Path,
+    BuffersBuilder, FillOptions, FillRule, FillTessellator, FillVertex, LineCap, LineJoin,
+    StrokeOptions, StrokeTessellator, StrokeVertex, VertexBuffers, math::Point, path::Path,
 };
 
 use crate::{
@@ -75,6 +75,7 @@ pub struct StrokeStyle {
 #[derive(Default)]
 pub(crate) struct StrokeScratch {
     tessellator: Option<StrokeTessellator>,
+    fill: Option<FillTessellator>,
     mesh: VertexBuffers<Point, u32>,
 }
 
@@ -123,6 +124,9 @@ pub(crate) fn append_stroke(
             &mut BuffersBuilder::new(&mut s.mesh, |vertex: StrokeVertex| vertex.position()),
         )
         .map_err(|error| format!("stroke tessellation failed: {error:?}"))?;
+    if color[3] < 1.0 {
+        union_mesh(s)?;
+    }
     append_mesh(
         output,
         pieces,
@@ -133,6 +137,39 @@ pub(crate) fn append_stroke(
         width,
         height,
     )
+}
+
+/// Replaces the stroke mesh with its union (#61). lyon does not resolve a stroke's
+/// self-intersections: where the path crosses or folds over itself (a loop, a figure-eight, a sharp
+/// hairpin) its triangles overlap and a translucent paint would blend twice. Canvas, Vello and
+/// Skia stroke with nonzero coverage, so the triangles, all wound the same way, are filled again
+/// with lyon's fill tessellator under the nonzero rule, which tiles every covered point once.
+/// An opaque paint looks the same either way and keeps the stroke mesh.
+fn union_mesh(s: &mut StrokeScratch) -> Result<(), String> {
+    let mut builder = Path::builder();
+    for triangle in s.mesh.indices.as_chunks::<3>().0 {
+        let [a, b, c] = triangle.map(|index| s.mesh.vertices[index as usize]);
+        let area = (b - a).cross(c - a);
+        if area == 0.0 {
+            continue;
+        }
+        let (b, c) = if area > 0.0 { (b, c) } else { (c, b) };
+        builder.begin(a);
+        builder.line_to(b);
+        builder.line_to(c);
+        builder.end(true);
+    }
+    let triangles = builder.build();
+    s.mesh.vertices.clear();
+    s.mesh.indices.clear();
+    s.fill
+        .get_or_insert_with(FillTessellator::new)
+        .tessellate_path(
+            &triangles,
+            &FillOptions::default().with_fill_rule(FillRule::NonZero),
+            &mut BuffersBuilder::new(&mut s.mesh, |vertex: FillVertex| vertex.position()),
+        )
+        .map_err(|error| format!("stroke union failed: {error:?}"))
 }
 
 /// lyon 1.0 bevels a miter join when its join-point-to-tip length exceeds `limit × width`, half
@@ -147,6 +184,15 @@ mod tests {
     use super::*;
 
     fn stroke(points: &[f32], closed: bool, style: StrokeStyle) -> CoveragePolygons {
+        stroke_with_alpha(points, closed, style, 1.0)
+    }
+
+    fn stroke_with_alpha(
+        points: &[f32],
+        closed: bool,
+        style: StrokeStyle,
+        alpha: f32,
+    ) -> CoveragePolygons {
         let mut output = CoveragePolygons::default();
         let verbs = vec![crate::VERB_LINE; points.len() / 2 - 1];
         let path = crate::local_path(points, &verbs, closed).expect("valid polyline");
@@ -157,12 +203,49 @@ mod tests {
             &path,
             &[1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
             &style,
-            &[0.0, 0.0, 0.0, 1.0],
+            &[0.0, 0.0, 0.0, alpha],
             100.0,
             100.0,
         )
         .expect("stroke should tessellate");
         output
+    }
+
+    /// Pieces whose edges all hold the point `(x, y)` (a pixel centre well inside the stroke).
+    fn pieces_covering(geometry: &CoveragePolygons, x: f32, y: f32) -> usize {
+        let mut ranges: Vec<(usize, usize)> = geometry
+            .vertices
+            .as_chunks::<{ crate::GPU_VERTEX_FLOATS }>()
+            .0
+            .iter()
+            .map(|v| (v[6] as usize, v[7] as usize))
+            .collect();
+        ranges.dedup();
+        ranges
+            .iter()
+            .filter(|&&(first, count)| {
+                geometry.edges.as_chunks::<4>().0[first..first + count]
+                    .iter()
+                    .all(|e| e[3] == 2.0 || e[0] * x + e[1] * y + e[2] > 0.0)
+            })
+            .count()
+    }
+
+    #[test]
+    fn a_translucent_self_crossing_stroke_covers_its_crossing_once() {
+        // An open "X" crossing itself at (50, 50), and a sharp hairpin whose arms overlap.
+        let cross = [10.0, 10.0, 90.0, 90.0, 90.0, 10.0, 10.0, 90.0];
+        let hairpin = [5.0, 40.0, 35.0, 42.0, 5.0, 44.0];
+        for (points, x, y) in [(&cross[..], 50.1, 50.2), (&hairpin[..], 20.1, 42.2)] {
+            let opaque = stroke(points, false, canvas(6.0));
+            assert_eq!(
+                pieces_covering(&opaque, x, y),
+                2,
+                "lyon's stroke mesh overlaps"
+            );
+            let translucent = stroke_with_alpha(points, false, canvas(6.0), 0.5);
+            assert_eq!(pieces_covering(&translucent, x, y), 1);
+        }
     }
 
     fn canvas(width: f32) -> StrokeStyle {
@@ -276,12 +359,14 @@ mod tests {
             .iter()
             .filter(|e| e[3] == 2.0)
             .collect();
-        // One record on either side of the shared edge, identical, at the inner corner
-        // (≈ 79.3, 9), pointing away from the bevel.
-        assert_eq!(limits.len(), 2);
-        assert_eq!(limits[0], limits[1]);
-        assert!(limits[0][0] < -0.99);
-        assert!((limits[0][0] * 79.3 + limits[0][1] * 9.0 + limits[0][2]).abs() < 0.1);
+        // The hard edges ending there each carry one record on either side, identical, at the
+        // inner corner (≈ 79.3, 9), pointing away from the bevel.
+        assert!(!limits.is_empty() && limits.len() % 2 == 0);
+        for limit in &limits {
+            assert_eq!(limits.iter().filter(|other| *other == limit).count() % 2, 0);
+            assert!(limit[0] < -0.99);
+            assert!((limit[0] * 79.3 + limit[1] * 9.0 + limit[2]).abs() < 0.1);
+        }
     }
 
     #[test]

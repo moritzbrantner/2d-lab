@@ -82,7 +82,7 @@ pub struct CoveragePolygons {
     /// pixels, positive inside) of framebuffer point `p` is `n·p + offset`; then 0 for an
     /// anti-aliased outline edge, 1 for a hard internal edge between two pieces of one mesh, or 2
     /// for the limit of the hard edge before it: beyond this line (`n·p + offset > 0`) that hard
-    /// edge does not apply.
+    /// edge does not apply to pixels an outline edge of the piece crosses.
     pub edges: Vec<f32>,
 }
 
@@ -517,6 +517,13 @@ pub(crate) fn append_coverage_polygon(
         };
         push(vx + dx, vy + dy)?;
     }
+    // Where a short edge sits between corners grown by different margins (a hard edge beside a
+    // nearly parallel outline edge in a sliver piece), grown corners can overshoot each other and
+    // fold the polygon, so its fan would shade some pixels twice. Its convex hull covers the same
+    // area once; the shader's edge tests still bound the coverage.
+    if !is_convex_ring(&grown) {
+        grown = convex_hull(grown);
+    }
 
     let count = grown.len();
     output.vertices.reserve((count - 2) * 3 * GPU_VERTEX_FLOATS);
@@ -529,6 +536,43 @@ pub(crate) fn append_coverage_polygon(
         }
     }
     Ok(())
+}
+
+/// Whether every corner of the closed ring turns the same way (straight corners allowed).
+fn is_convex_ring(ring: &[(f32, f32)]) -> bool {
+    let n = ring.len();
+    let (mut positive, mut negative) = (false, false);
+    for i in 0..n {
+        let (a, b, c) = (ring[i], ring[(i + 1) % n], ring[(i + 2) % n]);
+        let turn = (b.0 - a.0) * (c.1 - b.1) - (b.1 - a.1) * (c.0 - b.0);
+        positive |= turn > 0.0;
+        negative |= turn < 0.0;
+    }
+    !(positive && negative)
+}
+
+/// Andrew's monotone chain.
+fn convex_hull(mut points: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
+    points.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+    let turn = |o: (f32, f32), a: (f32, f32), b: (f32, f32)| {
+        (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0)
+    };
+    let mut hull: Vec<(f32, f32)> = Vec::with_capacity(points.len() + 1);
+    for &p in &points {
+        while hull.len() >= 2 && turn(hull[hull.len() - 2], hull[hull.len() - 1], p) <= 0.0 {
+            hull.pop();
+        }
+        hull.push(p);
+    }
+    let lower = hull.len() + 1;
+    for &p in points.iter().rev().skip(1) {
+        while hull.len() >= lower && turn(hull[hull.len() - 2], hull[hull.len() - 1], p) <= 0.0 {
+            hull.pop();
+        }
+        hull.push(p);
+    }
+    hull.pop();
+    hull
 }
 
 pub fn build_local_convex_polygon_vertices(
