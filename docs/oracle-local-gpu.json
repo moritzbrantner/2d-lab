@@ -1,0 +1,359 @@
+{
+  "commit": "c7e4579f3d5f4ee9006dc771ce65d325a285495b",
+  "date": "2026-11-01",
+  "adapter": {
+    "backend": "Vulkan",
+    "device_type": "DiscreteGpu",
+    "name": "NVIDIA GeForce RTX 3060 Ti"
+  },
+  "flip_mean_max": 0.004999999888241291,
+  "flip_p99_max": 0.05000000074505806,
+  "frames": 128,
+  "gpu_gate": "enforced",
+  "gpu_margin": 1.1,
+  "pass": true,
+  "scenarios": [
+    {
+      "capability": "cubic paths",
+      "commands": 72,
+      "custom_cpu_ms": 0.546709,
+      "custom_gpu_ms": 0.017408,
+      "flip_limits": [
+        0.007000000216066837,
+        0.12999999523162842
+      ],
+      "gpu_ratio": 0.7391304347826086,
+      "height": 960,
+      "known_gaps": [],
+      "name": "curves",
+      "noise_floor": {
+        "mean": 0.006122141610831022,
+        "p99": 0.12204998731613159,
+        "pass": true
+      },
+      "problems": [],
+      "skia_cpu_ms": 1.078209,
+      "status": "pass",
+      "time_seconds": 0.0,
+      "timing_rounds": 2,
+      "vello_cpu_ms": 0.20720999999999998,
+      "vello_gpu_ms": 0.023552,
+      "vs_skia": {
+        "mean": 0.00554819218814373,
+        "p99": 0.11499616503715515,
+        "pass": true
+      },
+      "vs_vello": {
+        "mean": 0.001680348301306367,
+        "p99": 0.0384107381105423,
+        "pass": true
+      },
+      "width": 1080,
+      "workload": "flat-stories-curves"
+    },
+    {
+      "capability": "convex fills",
+      "commands": 504,
+      "custom_cpu_ms": 0.14707699999999999,
+      "custom_gpu_ms": 0.019456,
+      "flip_limits": [
+        0.006000000052154064,
+        0.05999999865889549
+      ],
+      "gpu_ratio": 0.5,
+      "height": 720,
+      "known_gaps": [],
+      "name": "fills",
+      "noise_floor": {
+        "mean": 0.0056943767704069614,
+        "p99": 0.05260869488120079,
+        "pass": true
+      },
+      "problems": [],
+      "skia_cpu_ms": 3.591419,
+      "status": "pass",
+      "time_seconds": 0.0,
+      "timing_rounds": 2,
+      "vello_cpu_ms": 0.6132139999999999,
+      "vello_gpu_ms": 0.038912,
+      "vs_skia": {
+        "mean": 0.005718155298382044,
+        "p99": 0.05257824435830116,
+        "pass": true
+      },
+      "vs_vello": {
+        "mean": 0.0016364357434213161,
+        "p99": 0.01095026545226574,
+        "pass": true
+      },
+      "width": 1200,
+      "workload": "filled-polygons"
+    },
+    {
+      "capability": "product snapshot (polygons + lines)",
+      "commands": 13,
+      "custom_cpu_ms": 0.289044,
+      "custom_gpu_ms": 0.01024,
+      "flip_limits": [
+        0.013000000268220901,
+        0.12999999523162842
+      ],
+      "gpu_ratio": 0.5555555555555556,
+      "height": 720,
+      "known_gaps": [],
+      "name": "maps-snapshot",
+      "noise_floor": {
+        "mean": 0.012918013148009777,
+        "p99": 0.11952975392341614,
+        "pass": true
+      },
+      "problems": [],
+      "skia_cpu_ms": 1.4045539999999999,
+      "status": "pass",
+      "time_seconds": 0.0,
+      "timing_rounds": 2,
+      "vello_cpu_ms": 0.355419,
+      "vello_gpu_ms": 0.018432,
+      "vs_skia": {
+        "mean": 0.012842755764722824,
+        "p99": 0.1145653948187828,
+        "pass": true
+      },
+      "vs_vello": {
+        "mean": 0.0004896116442978382,
+        "p99": 0.017294781282544136,
+        "pass": true
+      },
+      "width": 1200,
+      "workload": "maps-e2e-style"
+    },
+    {
+      "capability": "concave, self-crossing, fill rules, curved strokes",
+      "commands": 16,
+      "custom_cpu_ms": 0.42925800000000003,
+      "custom_gpu_ms": 0.016384,
+      "flip_limits": [
+        0.007000000216066837,
+        0.12999999523162842
+      ],
+      "gpu_ratio": 0.4444444444444444,
+      "height": 260,
+      "known_gaps": [],
+      "name": "paths",
+      "noise_floor": {
+        "mean": 0.006199379917234182,
+        "p99": 0.12916697561740875,
+        "pass": true
+      },
+      "problems": [],
+      "skia_cpu_ms": 0.668798,
+      "status": "pass",
+      "time_seconds": 0.0,
+      "timing_rounds": 2,
+      "vello_cpu_ms": 0.162466,
+      "vello_gpu_ms": 0.036864,
+      "vs_skia": {
+        "mean": 0.0047605689615011215,
+        "p99": 0.10204557329416275,
+        "pass": true
+      },
+      "vs_vello": {
+        "mean": 0.0053490991704165936,
+        "p99": 0.12747447192668915,
+        "pass": true
+      },
+      "width": 720,
+      "workload": "oracle-paths"
+    },
+    {
+      "capability": "2,560 primitives",
+      "commands": 2560,
+      "custom_cpu_ms": 1.311328,
+      "custom_gpu_ms": 0.03072,
+      "flip_limits": [
+        0.006000000052154064,
+        0.05000000074505806
+      ],
+      "gpu_ratio": 0.5555555555555556,
+      "height": 720,
+      "known_gaps": [],
+      "name": "scaling",
+      "noise_floor": {
+        "mean": 0.005424934439361095,
+        "p99": 0.02739553712308407,
+        "pass": true
+      },
+      "problems": [],
+      "skia_cpu_ms": 12.654217000000001,
+      "status": "pass",
+      "time_seconds": 0.0,
+      "timing_rounds": 2,
+      "vello_cpu_ms": 2.6278360000000003,
+      "vello_gpu_ms": 0.055296,
+      "vs_skia": {
+        "mean": 0.005600820295512676,
+        "p99": 0.027835479006171227,
+        "pass": true
+      },
+      "vs_vello": {
+        "mean": 0.0029477248899638653,
+        "p99": 0.013498818501830101,
+        "pass": true
+      },
+      "width": 1200,
+      "workload": "retained-map-culling"
+    },
+    {
+      "capability": "line caps, joins, miter limit",
+      "commands": 14,
+      "custom_cpu_ms": 0.178226,
+      "custom_gpu_ms": 0.024576,
+      "flip_limits": [
+        0.004999999888241291,
+        0.05999999865889549
+      ],
+      "gpu_ratio": 0.46153846153846156,
+      "height": 330,
+      "known_gaps": [],
+      "name": "stroke-styles",
+      "noise_floor": {
+        "mean": 0.004554715007543564,
+        "p99": 0.05031057819724083,
+        "pass": true
+      },
+      "problems": [],
+      "skia_cpu_ms": 1.092557,
+      "status": "pass",
+      "time_seconds": 0.0,
+      "timing_rounds": 2,
+      "vello_cpu_ms": 0.22624599999999997,
+      "vello_gpu_ms": 0.053248,
+      "vs_skia": {
+        "mean": 0.004761079326272011,
+        "p99": 0.05021795257925987,
+        "pass": true
+      },
+      "vs_vello": {
+        "mean": 0.000844778842292726,
+        "p99": 0.019816983491182327,
+        "pass": true
+      },
+      "width": 800,
+      "workload": "oracle-stroke-styles"
+    },
+    {
+      "capability": "open and closed strokes",
+      "commands": 624,
+      "custom_cpu_ms": 4.785287,
+      "custom_gpu_ms": 0.120832,
+      "flip_limits": [
+        0.012000000104308128,
+        0.07000000029802322
+      ],
+      "gpu_ratio": 0.5673076923076923,
+      "height": 720,
+      "known_gaps": [],
+      "name": "strokes",
+      "noise_floor": {
+        "mean": 0.011464111506938934,
+        "p99": 0.06362468749284744,
+        "pass": true
+      },
+      "problems": [],
+      "skia_cpu_ms": 19.598886999999998,
+      "status": "pass",
+      "time_seconds": 0.0,
+      "timing_rounds": 2,
+      "vello_cpu_ms": 4.900474,
+      "vello_gpu_ms": 0.212992,
+      "vs_skia": {
+        "mean": 0.011347387917339802,
+        "p99": 0.06325851380825043,
+        "pass": true
+      },
+      "vs_vello": {
+        "mean": 0.004335765261203051,
+        "p99": 0.024112964048981667,
+        "pass": true
+      },
+      "width": 1200,
+      "workload": "map-like"
+    },
+    {
+      "capability": "shared pan/zoom transform",
+      "commands": 640,
+      "custom_cpu_ms": 0.470275,
+      "custom_gpu_ms": 0.026624,
+      "flip_limits": [
+        0.004999999888241291,
+        0.05000000074505806
+      ],
+      "gpu_ratio": 0.5199999999999999,
+      "height": 720,
+      "known_gaps": [],
+      "name": "transforms",
+      "noise_floor": {
+        "mean": 0.004587099421769381,
+        "p99": 0.026480235159397125,
+        "pass": true
+      },
+      "problems": [],
+      "skia_cpu_ms": 8.869363,
+      "status": "pass",
+      "time_seconds": 1.5,
+      "timing_rounds": 2,
+      "vello_cpu_ms": 1.7404359999999999,
+      "vello_gpu_ms": 0.0512,
+      "vs_skia": {
+        "mean": 0.004735820461064577,
+        "p99": 0.026868682354688644,
+        "pass": true
+      },
+      "vs_vello": {
+        "mean": 0.0024769571609795094,
+        "p99": 0.012963468208909035,
+        "pass": true
+      },
+      "width": 1200,
+      "workload": "retained-map"
+    },
+    {
+      "capability": "per-figure transforms, fills, strokes",
+      "commands": 270,
+      "custom_cpu_ms": 2.0909050000000002,
+      "custom_gpu_ms": 0.032768,
+      "flip_limits": [
+        0.004999999888241291,
+        0.05999999865889549
+      ],
+      "gpu_ratio": 0.6399999999999999,
+      "height": 720,
+      "known_gaps": [],
+      "name": "vector-animation",
+      "noise_floor": {
+        "mean": 0.004838824737817049,
+        "p99": 0.057781025767326355,
+        "pass": true
+      },
+      "problems": [],
+      "skia_cpu_ms": 15.549425000000001,
+      "status": "pass",
+      "time_seconds": 0.5,
+      "timing_rounds": 2,
+      "vello_cpu_ms": 1.9984410000000001,
+      "vello_gpu_ms": 0.0512,
+      "vs_skia": {
+        "mean": 0.004898304119706154,
+        "p99": 0.05934692546725273,
+        "pass": true
+      },
+      "vs_vello": {
+        "mean": 0.001375930500216782,
+        "p99": 0.022421153262257576,
+        "pass": true
+      },
+      "width": 1200,
+      "workload": "vector-animation"
+    }
+  ]
+}

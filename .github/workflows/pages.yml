@@ -1,7 +1,10 @@
 name: Pages
 
+# Deploys after CI passes on main: the lab plus CI's oracle report site at /2d-lab/oracle/.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -15,6 +18,7 @@ permissions:
 jobs:
   deploy:
     name: Build and deploy lab
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     uses: moritzbrantner/reusable-workflows/.github/workflows/deploy-pages.yml@45042e56be120b438096e774027637cac0280075
     with:
       node_version: lts/*
@@ -28,9 +32,17 @@ jobs:
         git -C .github-pages-template remote add origin https://github.com/moritzbrantner/github-pages-template.git
         git -C .github-pages-template fetch --depth 1 origin 7696672835b8a33eb31607ce000e650775e0f0b8
         git -C .github-pages-template checkout --detach FETCH_HEAD
+        # The oracle report site from the CI run that triggered this deploy (dispatch: the latest
+        # green CI run on main).
+        run_id="${{ github.event.workflow_run.id }}"
+        if [[ -z "$run_id" ]]; then
+          run_id="$(gh run list -R "${{ github.repository }}" -w CI -b main -e push -s success -L 1 --json databaseId -q '.[0].databaseId')"
+        fi
+        gh run download "$run_id" -R "${{ github.repository }}" -n oracle-report -D target/oracle-site
       build_command: |
         bun run build:wasm
         bun run build
+        cp -r target/oracle-site dist/oracle
         node .github-pages-template/bin/github-pages-template.mjs build --config ./pages.config.json --out ./dist --augment
       artifact_path: dist
       cache_bun: true

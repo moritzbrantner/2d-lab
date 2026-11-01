@@ -13,6 +13,10 @@
       "href": "/2d-lab/"
     },
     {
+      "label": "Oracle report",
+      "href": "/2d-lab/oracle/"
+    },
+    {
       "label": "Source",
       "href": "https://github.com/moritzbrantner/2d-lab"
     },
