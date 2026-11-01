@@ -25,6 +25,8 @@ const COLLINEAR_EPSILON: f32 = 1.0e-5;
 /// A hard edge's extension past a reflex corner runs "along" an outline edge there when the cosine
 /// of the angle between them exceeds this (15°).
 const LIMIT_ALIGNMENT: f32 = 0.966;
+/// A merged corner between an outline edge and a hard edge turns by more than this sine (≈ 6°).
+const MIXED_CORNER_SINE: f32 = 0.1;
 
 /// Reusable buffers for `append_mesh`.
 #[derive(Default)]
@@ -194,7 +196,10 @@ fn internal(edges: &HashSet<(u32, u32)>, a: u32, b: u32) -> bool {
 }
 
 /// Whether the corner `a → b → c` keeps a positively oriented piece convex. A straight corner is
-/// allowed only between edges of one kind (it is then dropped, joining them into one edge).
+/// allowed only between edges of one kind (it is then dropped, joining them into one edge). Where
+/// an outline edge meets a hard edge the corner must turn by more than `MIXED_CORNER_SINE`: the
+/// outline's coverage is an infinite line, and past a nearly straight corner it would run on just
+/// beside the hard edge and thin the pixels along it (#61).
 fn convex_corner(
     a: u32,
     b: u32,
@@ -205,10 +210,10 @@ fn convex_corner(
     let (pa, pb, pc) = (screen[a as usize], screen[b as usize], screen[c as usize]);
     let turn = cross(pa, pb, pc);
     let scale = (pb.0 - pa.0).hypot(pb.1 - pa.1) * (pc.0 - pb.0).hypot(pc.1 - pb.1);
-    if turn > COLLINEAR_EPSILON * scale {
-        return true;
+    if internal(edges, a, b) != internal(edges, b, c) {
+        return turn > MIXED_CORNER_SINE * scale;
     }
-    turn >= -COLLINEAR_EPSILON * scale && internal(edges, a, b) == internal(edges, b, c)
+    turn >= -COLLINEAR_EPSILON * scale
 }
 
 /// Adds `triangle` to the convex `piece` when they share an edge and the union stays convex.
@@ -248,7 +253,9 @@ fn emit(
     width: f32,
     height: f32,
 ) -> Result<(), String> {
-    // Drop straight corners (merged edges of one kind) so no line applies its coverage twice.
+    // Drop straight corners between outline edges so no line applies its coverage twice. Straight
+    // corners between hard edges stay: each hard edge is matched (and its line exactly negated)
+    // by the triangle edge across it, which a joined edge would not be.
     let piece = &mut s.piece;
     let mut index = 0;
     while piece.len() > 3 && index < piece.len() {
@@ -264,7 +271,10 @@ fn emit(
             s.screen[c as usize],
         );
         let scale = (pb.0 - pa.0).hypot(pb.1 - pa.1) * (pc.0 - pb.0).hypot(pc.1 - pb.1);
-        if cross(pa, pb, pc).abs() <= COLLINEAR_EPSILON * scale {
+        if cross(pa, pb, pc).abs() <= COLLINEAR_EPSILON * scale
+            && !internal(&s.edges, a, b)
+            && !internal(&s.edges, b, c)
+        {
             piece.remove(index);
         } else {
             index += 1;
