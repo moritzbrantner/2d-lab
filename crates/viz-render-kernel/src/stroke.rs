@@ -1,24 +1,19 @@
 //! Canvas 2D strokes for the custom immediate path, tessellated with lyon.
 //!
-//! lyon's stroke tessellator turns a polyline (in the command's local space, so the width is in
-//! user space under its transform) into a triangle mesh with Canvas caps, joins and miter limit.
-//! Its triangles tile the stroke, so a translucent stroke covers each pixel once. To anti-alias
-//! the stroke outline like Vello and Skia, the mesh is merged back into convex pieces and each
-//! piece edge is classified:
-//!
-//! - an edge with a triangle on only one side is on the stroke **outline** and gets analytic area
-//!   coverage;
-//! - an edge with triangles on both sides is **internal**: a hard pixel-centre test, so the pieces
-//!   on either side split its pixels exactly once (no seam, no double blend).
-
-use std::collections::{HashMap, HashSet};
+//! lyon's stroke tessellator turns a path (in the command's local space, so the width is in user
+//! space under its transform; cubic segments flatten to `STROKE_TOLERANCE` screen pixels) into a
+//! triangle mesh with Canvas caps, joins and miter limit. `mesh.rs` merges it into anti-aliased
+//! convex pieces.
 
 use lyon_tessellation::{
     BuffersBuilder, LineCap, LineJoin, StrokeOptions, StrokeTessellator, StrokeVertex,
-    VertexBuffers, math::Point, path::polygon::Polygon,
+    VertexBuffers, math::Point, path::Path,
 };
 
-use crate::{CoveragePolygons, append_coverage_polygon, transform_point};
+use crate::{
+    CoveragePolygons,
+    mesh::{MeshScratch, append_mesh},
+};
 
 /// `flags` bits 3–4: line cap (Canvas `lineCap`).
 pub const CAP_SHIFT: u32 = 3;
@@ -64,10 +59,10 @@ pub fn stroke_join(flags: u32) -> Result<Join, String> {
     }
 }
 
-/// Maximum distance (screen pixels) between a round cap/join and its flattened polygon.
-const STROKE_TOLERANCE: f32 = 0.1;
-/// Corners whose turn is within this (normalized cross product) are straight.
-const COLLINEAR_EPSILON: f32 = 1.0e-5;
+/// Maximum distance (screen pixels) between a curve, round cap or round join and its flattened
+/// polygon. Vello and Skia flatten to 0.25 px; a tighter tolerance stays nearer the true curve
+/// both of them approximate.
+pub const STROKE_TOLERANCE: f32 = 0.1;
 
 pub struct StrokeStyle {
     pub width: f32,
@@ -78,47 +73,30 @@ pub struct StrokeStyle {
 
 /// Reusable buffers for `append_stroke`.
 #[derive(Default)]
-pub struct StrokeScratch {
+pub(crate) struct StrokeScratch {
     tessellator: Option<StrokeTessellator>,
-    local: Vec<Point>,
     mesh: VertexBuffers<Point, u32>,
-    canonical: HashMap<(u32, u32), u32>,
-    /// Directed triangle edges (positive orientation).
-    edges: HashSet<(u32, u32)>,
-    screen: Vec<(f32, f32)>,
-    triangles: Vec<[u32; 3]>,
-    piece: Vec<u32>,
-    corners: Vec<(f32, f32)>,
-    hard: Vec<bool>,
 }
 
-/// Strokes the local-space polyline `points` (x/y pairs) and appends its anti-aliased pieces.
+/// Strokes the local-space `path` and appends its anti-aliased pieces.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn append_stroke(
     output: &mut CoveragePolygons,
     scratch: &mut StrokeScratch,
-    points: &[f32],
-    closed: bool,
+    pieces: &mut MeshScratch,
+    path: &Path,
     transform: &[f32],
     style: &StrokeStyle,
     color: &[f32],
     width: f32,
     height: f32,
 ) -> Result<(), String> {
-    let scale = (transform[0].hypot(transform[1])).max(transform[2].hypot(transform[3]));
+    let scale = crate::transform_scale(transform);
     if scale <= 0.0 {
         return Ok(()); // Collapsed by its transform: covers nothing.
     }
 
     let s = scratch;
-    s.local.clear();
-    s.local.extend(
-        points
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|p| Point::new(p[0], p[1])),
-    );
     s.mesh.vertices.clear();
     s.mesh.indices.clear();
     let options = StrokeOptions::default()
@@ -139,73 +117,22 @@ pub(crate) fn append_stroke(
         .with_tolerance(STROKE_TOLERANCE / scale);
     s.tessellator
         .get_or_insert_with(StrokeTessellator::new)
-        .tessellate_polygon(
-            Polygon {
-                points: &s.local,
-                closed,
-            },
+        .tessellate_path(
+            path,
             &options,
             &mut BuffersBuilder::new(&mut s.mesh, |vertex: StrokeVertex| vertex.position()),
         )
         .map_err(|error| format!("stroke tessellation failed: {error:?}"))?;
-
-    // lyon may emit one position as several vertices (e.g. where a closed path meets itself);
-    // identify vertices by their exact local position so shared edges are found.
-    s.canonical.clear();
-    s.screen.clear();
-    let mut remap = Vec::with_capacity(s.mesh.vertices.len());
-    for vertex in &s.mesh.vertices {
-        let key = (vertex.x.to_bits(), vertex.y.to_bits());
-        let next = s.screen.len() as u32;
-        let index = *s.canonical.entry(key).or_insert(next);
-        if index == next {
-            let (x, y) = transform_point(vertex.x, vertex.y, transform);
-            if !x.is_finite() || !y.is_finite() {
-                return Err("transformed stroke coordinate is non-finite".into());
-            }
-            s.screen.push((x, y));
-        }
-        remap.push(index);
-    }
-
-    s.triangles.clear();
-    s.edges.clear();
-    for triangle in s.mesh.indices.as_chunks::<3>().0 {
-        let [a, b, c] = triangle.map(|index| remap[index as usize]);
-        let area = cross(
-            s.screen[a as usize],
-            s.screen[b as usize],
-            s.screen[c as usize],
-        );
-        if a == b || b == c || c == a || area == 0.0 {
-            continue;
-        }
-        // Positive orientation throughout, so a shared edge runs in opposite directions.
-        let triangle = if area > 0.0 { [a, b, c] } else { [a, c, b] };
-        for i in 0..3 {
-            s.edges.insert((triangle[i], triangle[(i + 1) % 3]));
-        }
-        s.triangles.push(triangle);
-    }
-
-    // Greedily merge consecutive triangles (lyon emits each segment body, join and cap as a
-    // run of adjacent triangles) into convex pieces.
-    s.piece.clear();
-    for t in 0..s.triangles.len() {
-        let triangle = s.triangles[t];
-        if !s.piece.is_empty() && merge(&mut s.piece, triangle, &s.screen, &s.edges) {
-            continue;
-        }
-        if !s.piece.is_empty() {
-            emit(output, s, color, width, height)?;
-        }
-        s.piece.clear();
-        s.piece.extend_from_slice(&triangle);
-    }
-    if !s.piece.is_empty() {
-        emit(output, s, color, width, height)?;
-    }
-    Ok(())
+    append_mesh(
+        output,
+        pieces,
+        &s.mesh.vertices,
+        &s.mesh.indices,
+        transform,
+        color,
+        width,
+        height,
+    )
 }
 
 /// lyon 1.0 bevels a miter join when its join-point-to-tip length exceeds `limit × width`, half
@@ -215,116 +142,19 @@ fn lyon_miter_limit(canvas_limit: f32) -> f32 {
     (canvas_limit * 0.5).max(StrokeOptions::MINIMUM_MITER_LIMIT)
 }
 
-fn cross(a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> f32 {
-    (b.0 - a.0) * (c.1 - b.1) - (b.1 - a.1) * (c.0 - b.0)
-}
-
-/// Whether the directed piece edge `a → b` is shared with a triangle on its other side (which runs
-/// it `b → a`). Overlapping triangles that run it the same way leave it on the outline.
-fn internal(edges: &HashSet<(u32, u32)>, a: u32, b: u32) -> bool {
-    edges.contains(&(b, a))
-}
-
-/// Whether the corner `a → b → c` keeps a positively oriented piece convex. A straight corner is
-/// allowed only between edges of one kind (it is then dropped, joining them into one edge).
-fn convex_corner(
-    a: u32,
-    b: u32,
-    c: u32,
-    screen: &[(f32, f32)],
-    edges: &HashSet<(u32, u32)>,
-) -> bool {
-    let (pa, pb, pc) = (screen[a as usize], screen[b as usize], screen[c as usize]);
-    let turn = cross(pa, pb, pc);
-    let scale = (pb.0 - pa.0).hypot(pb.1 - pa.1) * (pc.0 - pb.0).hypot(pc.1 - pb.1);
-    if turn > COLLINEAR_EPSILON * scale {
-        return true;
-    }
-    turn >= -COLLINEAR_EPSILON * scale && internal(edges, a, b) == internal(edges, b, c)
-}
-
-/// Adds `triangle` to the convex `piece` when they share an edge and the union stays convex.
-fn merge(
-    piece: &mut Vec<u32>,
-    triangle: [u32; 3],
-    screen: &[(f32, f32)],
-    edges: &HashSet<(u32, u32)>,
-) -> bool {
-    let n = piece.len();
-    for i in 0..3 {
-        let (u, v, w) = (triangle[i], triangle[(i + 1) % 3], triangle[(i + 2) % 3]);
-        if piece.contains(&w) {
-            continue;
-        }
-        // The piece runs the shared edge as v → u; insert w between them.
-        let Some(at) = (0..n).find(|&j| piece[j] == v && piece[(j + 1) % n] == u) else {
-            continue;
-        };
-        let before = piece[(at + n - 1) % n];
-        let after = piece[(at + 2) % n];
-        if convex_corner(before, v, w, screen, edges)
-            && convex_corner(v, w, u, screen, edges)
-            && convex_corner(w, u, after, screen, edges)
-        {
-            piece.insert(at + 1, w);
-            return true;
-        }
-    }
-    false
-}
-
-fn emit(
-    output: &mut CoveragePolygons,
-    s: &mut StrokeScratch,
-    color: &[f32],
-    width: f32,
-    height: f32,
-) -> Result<(), String> {
-    // Drop straight corners (merged edges of one kind) so no line applies its coverage twice.
-    let piece = &mut s.piece;
-    let mut index = 0;
-    while piece.len() > 3 && index < piece.len() {
-        let n = piece.len();
-        let (a, b, c) = (
-            piece[(index + n - 1) % n],
-            piece[index],
-            piece[(index + 1) % n],
-        );
-        let (pa, pb, pc) = (
-            s.screen[a as usize],
-            s.screen[b as usize],
-            s.screen[c as usize],
-        );
-        let scale = (pb.0 - pa.0).hypot(pb.1 - pa.1) * (pc.0 - pb.0).hypot(pc.1 - pb.1);
-        if cross(pa, pb, pc).abs() <= COLLINEAR_EPSILON * scale {
-            piece.remove(index);
-        } else {
-            index += 1;
-        }
-    }
-
-    s.corners.clear();
-    s.hard.clear();
-    let n = piece.len();
-    for i in 0..n {
-        let (a, b) = (piece[i], piece[(i + 1) % n]);
-        s.corners.push(s.screen[a as usize]);
-        s.hard.push(internal(&s.edges, a, b));
-    }
-    append_coverage_polygon(output, &s.corners, &s.hard, color, width, height)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn stroke(points: &[f32], closed: bool, style: StrokeStyle) -> CoveragePolygons {
         let mut output = CoveragePolygons::default();
+        let verbs = vec![crate::VERB_LINE; points.len() / 2 - 1];
+        let path = crate::local_path(points, &verbs, closed).expect("valid polyline");
         append_stroke(
             &mut output,
             &mut StrokeScratch::default(),
-            points,
-            closed,
+            &mut MeshScratch::default(),
+            &path,
             &[1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
             &style,
             &[0.0, 0.0, 0.0, 1.0],
@@ -346,14 +176,16 @@ mod tests {
 
     /// (outline, internal) edge counts.
     fn edge_kinds(geometry: &CoveragePolygons) -> (usize, usize) {
-        let hard = geometry
-            .edges
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .filter(|e| e[3] != 0.0)
-            .count();
-        (geometry.edges.len() / 4 - hard, hard)
+        let kind = |k: f32| {
+            geometry
+                .edges
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .filter(|e| e[3] == k)
+                .count()
+        };
+        (kind(0.0), kind(1.0))
     }
 
     #[test]
@@ -373,7 +205,7 @@ mod tests {
             .as_chunks::<4>()
             .0
             .iter()
-            .filter(|e| e[3] != 0.0)
+            .filter(|e| e[3] == 1.0)
             .collect();
         assert_eq!(hard[0][0], -hard[1][0]);
         assert_eq!(hard[0][1], -hard[1][1]);
@@ -430,6 +262,26 @@ mod tests {
         };
         assert!(max_x(10.0) < 128.0, "bevel reaches {}", max_x(10.0));
         assert!(max_x(40.0) > 135.0, "miter reaches {}", max_x(40.0));
+    }
+
+    #[test]
+    fn a_sharp_bevel_limits_its_hard_edge_past_the_inner_corner() {
+        // A 9.4° turn bevelled at the default limit: lyon's edge from the bevel to the inner
+        // corner runs on, past that corner, almost along the other arm's inner outline (#61).
+        let geometry = stroke(&[0.0, 0.0, 110.0, 9.0, 0.0, 18.0], false, canvas(5.0));
+        let limits: Vec<_> = geometry
+            .edges
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|e| e[3] == 2.0)
+            .collect();
+        // One record on either side of the shared edge, identical, at the inner corner
+        // (≈ 79.3, 9), pointing away from the bevel.
+        assert_eq!(limits.len(), 2);
+        assert_eq!(limits[0], limits[1]);
+        assert!(limits[0][0] < -0.99);
+        assert!((limits[0][0] * 79.3 + limits[0][1] * 9.0 + limits[0][2]).abs() < 0.1);
     }
 
     #[test]

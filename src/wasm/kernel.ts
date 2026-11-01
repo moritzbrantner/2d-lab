@@ -15,6 +15,8 @@ export interface WgpuPolygonRendererWasm {
   render(
     points: Float32Array,
     spans: Uint32Array,
+    verbs: Uint32Array,
+    verbSpans: Uint32Array,
     transforms: Float32Array,
     fillColors: Float32Array,
     strokeColors: Float32Array,

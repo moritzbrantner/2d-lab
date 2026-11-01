@@ -9,10 +9,15 @@ export type Affine2D = readonly [
 
 export type LineCap = "butt" | "round" | "square";
 export type LineJoin = "miter" | "round" | "bevel";
+export type FillRule = "nonzero" | "evenodd";
 
-/** Canvas 2D paint. Omitted stroke style uses Canvas defaults: width 1, butt caps, miter joins, miter limit 10. */
+/**
+ * Canvas 2D paint. Omitted style uses Canvas defaults: nonzero fill rule, width 1, butt caps,
+ * miter joins, miter limit 10.
+ */
 export type Paint = {
   readonly fill?: string;
+  readonly fillRule?: FillRule;
   readonly stroke?: string;
   readonly strokeWidth?: number;
   readonly lineCap?: LineCap;

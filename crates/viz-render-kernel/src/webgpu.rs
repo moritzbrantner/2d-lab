@@ -117,6 +117,8 @@ impl WgpuPolygonRenderer {
         &mut self,
         points: &[f32],
         spans: &[u32],
+        verbs: &[u32],
+        verb_spans: &[u32],
         transforms: &[f32],
         fill_colors: &[f32],
         stroke_colors: &[f32],
@@ -147,6 +149,8 @@ impl WgpuPolygonRenderer {
             &PolygonFrame {
                 points,
                 spans,
+                verbs,
+                verb_spans,
                 transforms,
                 fill_colors,
                 stroke_colors,

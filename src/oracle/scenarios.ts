@@ -8,6 +8,7 @@ import { retainedMapScene } from "../scenes/retained-map";
 import { retainedMapCullingScene } from "../scenes/retained-map-culling";
 import type { BenchmarkWorkload } from "../scenes/types";
 import { vectorAnimationScene } from "../scenes/vector-animation";
+import { pathsWorkload } from "./paths";
 import { strokeStylesWorkload } from "./stroke-styles";
 
 /**
@@ -57,6 +58,12 @@ export const oracleScenarios: readonly OracleScenario[] = [
     name: "curves",
     capability: "cubic paths",
     workload: flatStoriesCurveScene,
+    timeSeconds: 0,
+  },
+  {
+    name: "paths",
+    capability: "concave, self-crossing, fill rules, curved strokes",
+    workload: pathsWorkload,
     timeSeconds: 0,
   },
   {

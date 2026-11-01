@@ -34,7 +34,7 @@ describe("wgpu polygon frame", () => {
     expect(packed.fillColors[1]).toBeCloseTo(0x66 / 255);
     expect(packed.fillColors[2]).toBeCloseTo(0x99 / 255);
     expect(packed.fillColors[3]).toBe(1);
-    expect(packed).not.toHaveProperty("verbs");
+    expect(Array.from(packed.verbs)).toEqual([0, 0, 0]);
   });
 
   it("packs Canvas stroke styles with Canvas defaults", () => {
@@ -75,8 +75,8 @@ describe("wgpu polygon frame", () => {
     expect(packed.strokeColors[3]).toBe(0.5);
   });
 
-  it("fails closed for curved path semantics", () => {
-    const curved: DisplayList = {
+  it("packs curved, concave and even-odd paths with their verbs", () => {
+    const paths: DisplayList = {
       ...convexScene,
       commands: [
         {
@@ -92,15 +92,26 @@ describe("wgpu polygon frame", () => {
             { kind: "line" },
           ],
         },
+        {
+          ...convexScene.commands[0]!,
+          points: new Float32Array([0, 0, 20, 0, 10, 8, 20, 20, 0, 20]),
+          paint: { fill: "#336699", fillRule: "evenodd" },
+        },
       ],
     };
-
     expect(
-      polygonRendererSupportError(curved, { debugBounds: false }),
-    ).toMatch(/straight edges only/);
+      polygonRendererSupportError(paths, { debugBounds: false }),
+    ).toBeNull();
+
+    const packed = packPolygonFrame(paths);
+    // Cubic (1) then three lines (0), then the concave polygon's four lines.
+    expect(Array.from(packed.verbs)).toEqual([1, 0, 0, 0, 0, 0, 0, 0]);
+    expect(Array.from(packed.verbSpans)).toEqual([0, 4, 4, 4]);
+    // Closed (1) | fill (2), plus even-odd (1 << 7) on the second.
+    expect(Array.from(packed.flags)).toEqual([3, 3 | (1 << 7)]);
   });
 
-  it("fails closed for unsupported paint and geometry semantics", () => {
+  it("fails closed for unsupported paint semantics", () => {
     const translucentBackground: DisplayList = {
       ...convexScene,
       background: "#ffffff80",
@@ -110,20 +121,5 @@ describe("wgpu polygon frame", () => {
         debugBounds: false,
       }),
     ).toMatch(/opaque background/);
-
-    const concave: DisplayList = {
-      ...convexScene,
-      commands: [
-        {
-          ...convexScene.commands[0]!,
-          points: new Float32Array([
-            0, 0, 20, 0, 10, 8, 20, 20, 0, 20,
-          ]),
-        },
-      ],
-    };
-    expect(
-      polygonRendererSupportError(concave, { debugBounds: false }),
-    ).toMatch(/concave|degenerate/);
   });
 });

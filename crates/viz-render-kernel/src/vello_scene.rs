@@ -5,16 +5,13 @@
 use vello_gpu::{
     Scene,
     kurbo::{Affine, BezPath, Cap, Join, Stroke},
-    peniko::Color,
+    peniko::{Color, Fill},
 };
 
 use crate::{
-    FLAG_CLOSED, FLAG_FILL, FLAG_STROKE,
+    FLAG_CLOSED, FLAG_EVEN_ODD, FLAG_FILL, FLAG_STROKE, VERB_CUBIC, VERB_LINE,
     stroke::{self, stroke_cap, stroke_join},
 };
-
-pub const VERB_LINE: u32 = 0;
-pub const VERB_CUBIC: u32 = 1;
 
 /// The view format Vello renders into. Vello writes sRGB-encoded values itself, so it needs a
 /// non-sRGB view; an `*Srgb` view would encode them a second time and wash the image out.
@@ -177,6 +174,11 @@ impl VelloFrame<'_> {
                 scene.set_paint(color_from_f32(
                     &self.fill_colors[color_offset..color_offset + 4],
                 )?);
+                scene.set_fill_rule(if flags & FLAG_EVEN_ODD != 0 {
+                    Fill::EvenOdd
+                } else {
+                    Fill::NonZero
+                });
                 scene.fill_path(&path);
             }
 

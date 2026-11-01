@@ -3,11 +3,12 @@
 //! (`webgpu.rs`) draws into a canvas surface; the oracle (`oracle/`) draws into an offscreen
 //! texture with the same code.
 //!
-//! Anti-aliasing is analytic: every fragment of a polygon's grown triangle fan computes the exact
-//! box-filter area coverage of its pixel by each of the polygon's edges and multiplies them
-//! (exact wherever at most one edge, or two axis-aligned edges, cross the pixel). Strokes arrive
-//! as convex pieces whose shared internal edges are hard pixel-centre tests instead, so adjacent
-//! pieces split their pixels without a seam or a double blend. Like Vello and
+//! Anti-aliasing is analytic: every fragment of a polygon's grown triangle fan computes the
+//! box-filter area of its pixel inside the polygon's anti-aliased edges (exact for one crossing
+//! edge, and for two unless they meet inside the pixel; more multiply). Curved and concave fills
+//! and strokes arrive as convex pieces of a lyon mesh whose shared internal edges are hard
+//! pixel-centre tests instead, so adjacent pieces split their pixels without a seam or a double
+//! blend. Like Vello and
 //! Skia, colours are blended as sRGB-encoded values into a non-sRGB target, so a half-covered
 //! edge pixel is the sRGB midpoint of the two colours.
 
@@ -64,24 +65,114 @@ fn edge_coverage(n: vec2<f32>, d: f32) -> f32 {
   return 1.0 - u * u / (2.0 * a * b);
 }
 
+// Half the extent of the unit pixel square along unit normal `n`.
+fn half_extent(n: vec2<f32>) -> f32 {
+  return 0.5 * (abs(n.x) + abs(n.y));
+}
+
+// Midpoint of the chord that line `l` (unit normal, signed distance of the pixel centre) cuts
+// through the unit pixel square, relative to the pixel centre.
+fn chord_midpoint(l: vec3<f32>) -> vec2<f32> {
+  let p0 = -l.z * l.xy;
+  let dir = vec2<f32>(l.y, -l.x);
+  var t0 = -2.0;
+  var t1 = 2.0;
+  if abs(dir.x) > 1.0e-6 {
+    let a = (-0.5 - p0.x) / dir.x;
+    let b = (0.5 - p0.x) / dir.x;
+    t0 = max(t0, min(a, b));
+    t1 = min(t1, max(a, b));
+  }
+  if abs(dir.y) > 1.0e-6 {
+    let a = (-0.5 - p0.y) / dir.y;
+    let b = (0.5 - p0.y) / dir.y;
+    t0 = max(t0, min(a, b));
+    t1 = min(t1, max(a, b));
+  }
+  return p0 + 0.5 * (t0 + t1) * dir;
+}
+
+// Area of the unit pixel square inside two crossing edges `a` and `b`. Where the edges do not
+// meet inside the pixel it is exact: within the pixel one half-plane contains the other (the
+// smaller coverage), they are disjoint (0), or they cover it together (the sum minus 1). Where
+// they meet inside, it blends the product (exact for perpendicular axis-aligned edges) towards
+// the minimum (exact as the edges straighten into one line, as at a flattened curve's vertex).
+fn pair_coverage(a: vec3<f32>, b: vec3<f32>) -> f32 {
+  let ca = edge_coverage(a.xy, a.z);
+  let cb = edge_coverage(b.xy, b.z);
+  let alignment = dot(a.xy, b.xy);
+  let det = a.x * b.y - a.y * b.x;
+  if abs(det) > 1.0e-6 {
+    let meet = vec2<f32>(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z) / det;
+    if all(abs(meet) < vec2<f32>(0.5)) {
+      return mix(ca * cb, min(ca, cb), clamp(alignment, 0.0, 1.0));
+    }
+  } else if alignment > 0.0 {
+    return min(ca, cb); // Parallel, facing the same way.
+  }
+  let a_in_b = dot(b.xy, chord_midpoint(a)) + b.z >= 0.0;
+  let b_in_a = dot(a.xy, chord_midpoint(b)) + a.z >= 0.0;
+  if a_in_b && b_in_a {
+    return max(ca + cb - 1.0, 0.0);
+  }
+  if a_in_b {
+    return ca;
+  }
+  if b_in_a {
+    return cb;
+  }
+  return 0.0;
+}
+
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
   let p = input.position.xy;
-  var coverage = 1.0;
-  for (var i = input.edges.x; i < input.edges.x + input.edges.y; i++) {
+  var crossing = 0u;
+  var first = vec3<f32>();
+  var second = vec3<f32>();
+  // More than two crossing edges (pixels at tiny pieces): their coverages multiply.
+  var product = 1.0;
+  let end = input.edges.x + input.edges.y;
+  for (var i = input.edges.x; i < end; i++) {
     let edge = edges[i];
     let d = dot(edge.xy, p) + edge.z;
+    if edge.w == 2.0 {
+      continue; // The limit of the hard edge before it, read with that edge.
+    }
     if edge.w != 0.0 {
-      // Hard internal edge between two pieces of one stroke: the piece across it holds the
+      // Hard internal edge between two pieces of one mesh: the piece across it holds the
       // exactly negated line, so a pixel centre belongs to exactly one side (ties go to the
       // side whose normal points to +x, then +y).
       let tie = edge.x > 0.0 || (edge.x == 0.0 && edge.y > 0.0);
       if d < 0.0 || (d == 0.0 && !tie) {
-        coverage = 0.0;
+        // Unless a limit record follows and the pixel centre is past it.
+        if i + 1u >= end {
+          discard;
+        }
+        let limit = edges[i + 1u];
+        if limit.w != 2.0 || dot(limit.xy, p) + limit.z <= 0.0 {
+          discard;
+        }
       }
     } else {
-      coverage *= edge_coverage(edge.xy, d);
+      let h = half_extent(edge.xy);
+      if d <= -h {
+        discard;
+      }
+      if d < h {
+        if crossing == 0u {
+          first = vec3<f32>(edge.xy, d);
+        } else if crossing == 1u {
+          second = vec3<f32>(edge.xy, d);
+        }
+        crossing++;
+        product *= edge_coverage(edge.xy, d);
+      }
     }
+  }
+  var coverage = product;
+  if crossing == 2u {
+    coverage = pair_coverage(first, second);
   }
   if coverage <= 0.0 {
     discard;
