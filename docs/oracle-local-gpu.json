@@ -1,5 +1,5 @@
 {
-  "commit": "c7e4579f3d5f4ee9006dc771ce65d325a285495b",
+  "commit": "1ac9809882d14dbeff15234e16ff8eaf715dcf55",
   "date": "2026-11-01",
   "adapter": {
     "backend": "Vulkan",
@@ -16,13 +16,13 @@
     {
       "capability": "cubic paths",
       "commands": 72,
-      "custom_cpu_ms": 0.546709,
+      "custom_cpu_ms": 0.610379,
       "custom_gpu_ms": 0.017408,
       "flip_limits": [
         0.007000000216066837,
         0.12999999523162842
       ],
-      "gpu_ratio": 0.7391304347826086,
+      "gpu_ratio": 0.7083333333333333,
       "height": 960,
       "known_gaps": [],
       "name": "curves",
@@ -32,20 +32,20 @@
         "pass": true
       },
       "problems": [],
-      "skia_cpu_ms": 1.078209,
+      "skia_cpu_ms": 1.068592,
       "status": "pass",
       "time_seconds": 0.0,
       "timing_rounds": 2,
-      "vello_cpu_ms": 0.20720999999999998,
-      "vello_gpu_ms": 0.023552,
+      "vello_cpu_ms": 0.206148,
+      "vello_gpu_ms": 0.024576,
       "vs_skia": {
-        "mean": 0.00554819218814373,
-        "p99": 0.11499616503715515,
+        "mean": 0.005607059691101313,
+        "p99": 0.11603757739067078,
         "pass": true
       },
       "vs_vello": {
-        "mean": 0.001680348301306367,
-        "p99": 0.0384107381105423,
+        "mean": 0.0015986800426617265,
+        "p99": 0.03586952015757561,
         "pass": true
       },
       "width": 1080,
@@ -54,7 +54,7 @@
     {
       "capability": "convex fills",
       "commands": 504,
-      "custom_cpu_ms": 0.14707699999999999,
+      "custom_cpu_ms": 0.155162,
       "custom_gpu_ms": 0.019456,
       "flip_limits": [
         0.006000000052154064,
@@ -70,11 +70,11 @@
         "pass": true
       },
       "problems": [],
-      "skia_cpu_ms": 3.591419,
+      "skia_cpu_ms": 3.280144,
       "status": "pass",
       "time_seconds": 0.0,
       "timing_rounds": 2,
-      "vello_cpu_ms": 0.6132139999999999,
+      "vello_cpu_ms": 0.6161,
       "vello_gpu_ms": 0.038912,
       "vs_skia": {
         "mean": 0.005718155298382044,
@@ -92,13 +92,13 @@
     {
       "capability": "product snapshot (polygons + lines)",
       "commands": 13,
-      "custom_cpu_ms": 0.289044,
-      "custom_gpu_ms": 0.01024,
+      "custom_cpu_ms": 0.39698700000000003,
+      "custom_gpu_ms": 0.011264,
       "flip_limits": [
         0.013000000268220901,
         0.12999999523162842
       ],
-      "gpu_ratio": 0.5555555555555556,
+      "gpu_ratio": 0.611111111111111,
       "height": 720,
       "known_gaps": [],
       "name": "maps-snapshot",
@@ -108,20 +108,20 @@
         "pass": true
       },
       "problems": [],
-      "skia_cpu_ms": 1.4045539999999999,
+      "skia_cpu_ms": 1.883746,
       "status": "pass",
       "time_seconds": 0.0,
       "timing_rounds": 2,
-      "vello_cpu_ms": 0.355419,
+      "vello_cpu_ms": 0.203673,
       "vello_gpu_ms": 0.018432,
       "vs_skia": {
-        "mean": 0.012842755764722824,
+        "mean": 0.012881828472018242,
         "p99": 0.1145653948187828,
         "pass": true
       },
       "vs_vello": {
-        "mean": 0.0004896116442978382,
-        "p99": 0.017294781282544136,
+        "mean": 0.0006813775398768485,
+        "p99": 0.017295600846409798,
         "pass": true
       },
       "width": 1200,
@@ -130,13 +130,13 @@
     {
       "capability": "concave, self-crossing, fill rules, curved strokes",
       "commands": 16,
-      "custom_cpu_ms": 0.42925800000000003,
-      "custom_gpu_ms": 0.016384,
+      "custom_cpu_ms": 0.33875700000000003,
+      "custom_gpu_ms": 0.007168,
       "flip_limits": [
         0.007000000216066837,
         0.12999999523162842
       ],
-      "gpu_ratio": 0.4444444444444444,
+      "gpu_ratio": 0.3888888888888889,
       "height": 260,
       "known_gaps": [],
       "name": "paths",
@@ -146,20 +146,20 @@
         "pass": true
       },
       "problems": [],
-      "skia_cpu_ms": 0.668798,
+      "skia_cpu_ms": 0.51015,
       "status": "pass",
       "time_seconds": 0.0,
       "timing_rounds": 2,
-      "vello_cpu_ms": 0.162466,
-      "vello_gpu_ms": 0.036864,
+      "vello_cpu_ms": 0.12247000000000001,
+      "vello_gpu_ms": 0.018432,
       "vs_skia": {
-        "mean": 0.0047605689615011215,
-        "p99": 0.10204557329416275,
+        "mean": 0.004659110680222511,
+        "p99": 0.10035158693790436,
         "pass": true
       },
       "vs_vello": {
-        "mean": 0.0053490991704165936,
-        "p99": 0.12747447192668915,
+        "mean": 0.005265013314783573,
+        "p99": 0.1263016015291214,
         "pass": true
       },
       "width": 720,
@@ -168,13 +168,13 @@
     {
       "capability": "2,560 primitives",
       "commands": 2560,
-      "custom_cpu_ms": 1.311328,
-      "custom_gpu_ms": 0.03072,
+      "custom_cpu_ms": 0.8021499999999999,
+      "custom_gpu_ms": 0.028672,
       "flip_limits": [
         0.006000000052154064,
         0.05000000074505806
       ],
-      "gpu_ratio": 0.5555555555555556,
+      "gpu_ratio": 0.5490196078431373,
       "height": 720,
       "known_gaps": [],
       "name": "scaling",
@@ -184,12 +184,12 @@
         "pass": true
       },
       "problems": [],
-      "skia_cpu_ms": 12.654217000000001,
+      "skia_cpu_ms": 7.430916,
       "status": "pass",
       "time_seconds": 0.0,
       "timing_rounds": 2,
-      "vello_cpu_ms": 2.6278360000000003,
-      "vello_gpu_ms": 0.055296,
+      "vello_cpu_ms": 1.264229,
+      "vello_gpu_ms": 0.052224,
       "vs_skia": {
         "mean": 0.005600820295512676,
         "p99": 0.027835479006171227,
@@ -204,15 +204,53 @@
       "workload": "retained-map-culling"
     },
     {
+      "capability": "self-crossing translucent strokes",
+      "commands": 8,
+      "custom_cpu_ms": 0.564492,
+      "custom_gpu_ms": 0.007168,
+      "flip_limits": [
+        0.006000000052154064,
+        0.10000000149011612
+      ],
+      "gpu_ratio": 0.6363636363636364,
+      "height": 240,
+      "known_gaps": [],
+      "name": "stroke-crossings",
+      "noise_floor": {
+        "mean": 0.0053108432330191135,
+        "p99": 0.09485293924808502,
+        "pass": true
+      },
+      "problems": [],
+      "skia_cpu_ms": 0.43527000000000005,
+      "status": "pass",
+      "time_seconds": 0.0,
+      "timing_rounds": 2,
+      "vello_cpu_ms": 0.100659,
+      "vello_gpu_ms": 0.011264,
+      "vs_skia": {
+        "mean": 0.004109324421733618,
+        "p99": 0.058312710374593735,
+        "pass": true
+      },
+      "vs_vello": {
+        "mean": 0.003288676729425788,
+        "p99": 0.08688902109861374,
+        "pass": true
+      },
+      "width": 720,
+      "workload": "oracle-stroke-crossings"
+    },
+    {
       "capability": "line caps, joins, miter limit",
       "commands": 14,
-      "custom_cpu_ms": 0.178226,
-      "custom_gpu_ms": 0.024576,
+      "custom_cpu_ms": 0.19770200000000002,
+      "custom_gpu_ms": 0.007168,
       "flip_limits": [
         0.004999999888241291,
         0.05999999865889549
       ],
-      "gpu_ratio": 0.46153846153846156,
+      "gpu_ratio": 0.3888888888888889,
       "height": 330,
       "known_gaps": [],
       "name": "stroke-styles",
@@ -222,20 +260,20 @@
         "pass": true
       },
       "problems": [],
-      "skia_cpu_ms": 1.092557,
+      "skia_cpu_ms": 0.52067,
       "status": "pass",
       "time_seconds": 0.0,
       "timing_rounds": 2,
-      "vello_cpu_ms": 0.22624599999999997,
-      "vello_gpu_ms": 0.053248,
+      "vello_cpu_ms": 0.19552799999999998,
+      "vello_gpu_ms": 0.018432,
       "vs_skia": {
-        "mean": 0.004761079326272011,
-        "p99": 0.05021795257925987,
+        "mean": 0.00469757616519928,
+        "p99": 0.048220809549093246,
         "pass": true
       },
       "vs_vello": {
-        "mean": 0.000844778842292726,
-        "p99": 0.019816983491182327,
+        "mean": 0.0009118429734371603,
+        "p99": 0.020644651725888252,
         "pass": true
       },
       "width": 800,
@@ -244,13 +282,13 @@
     {
       "capability": "open and closed strokes",
       "commands": 624,
-      "custom_cpu_ms": 4.785287,
-      "custom_gpu_ms": 0.120832,
+      "custom_cpu_ms": 2.7873669999999997,
+      "custom_gpu_ms": 0.0512,
       "flip_limits": [
         0.012000000104308128,
         0.07000000029802322
       ],
-      "gpu_ratio": 0.5673076923076923,
+      "gpu_ratio": 0.7142857142857144,
       "height": 720,
       "known_gaps": [],
       "name": "strokes",
@@ -260,20 +298,20 @@
         "pass": true
       },
       "problems": [],
-      "skia_cpu_ms": 19.598886999999998,
+      "skia_cpu_ms": 9.508578,
       "status": "pass",
       "time_seconds": 0.0,
       "timing_rounds": 2,
-      "vello_cpu_ms": 4.900474,
-      "vello_gpu_ms": 0.212992,
+      "vello_cpu_ms": 2.431286,
+      "vello_gpu_ms": 0.07168,
       "vs_skia": {
-        "mean": 0.011347387917339802,
-        "p99": 0.06325851380825043,
+        "mean": 0.011341940611600876,
+        "p99": 0.06325618922710419,
         "pass": true
       },
       "vs_vello": {
-        "mean": 0.004335765261203051,
-        "p99": 0.024112964048981667,
+        "mean": 0.0043277558870613575,
+        "p99": 0.024019010365009308,
         "pass": true
       },
       "width": 1200,
@@ -282,13 +320,13 @@
     {
       "capability": "shared pan/zoom transform",
       "commands": 640,
-      "custom_cpu_ms": 0.470275,
-      "custom_gpu_ms": 0.026624,
+      "custom_cpu_ms": 0.32888900000000004,
+      "custom_gpu_ms": 0.024576,
       "flip_limits": [
         0.004999999888241291,
         0.05000000074505806
       ],
-      "gpu_ratio": 0.5199999999999999,
+      "gpu_ratio": 0.5217391304347826,
       "height": 720,
       "known_gaps": [],
       "name": "transforms",
@@ -298,12 +336,12 @@
         "pass": true
       },
       "problems": [],
-      "skia_cpu_ms": 8.869363,
+      "skia_cpu_ms": 4.060061999999999,
       "status": "pass",
       "time_seconds": 1.5,
       "timing_rounds": 2,
-      "vello_cpu_ms": 1.7404359999999999,
-      "vello_gpu_ms": 0.0512,
+      "vello_cpu_ms": 1.3364150000000001,
+      "vello_gpu_ms": 0.047104,
       "vs_skia": {
         "mean": 0.004735820461064577,
         "p99": 0.026868682354688644,
@@ -320,13 +358,13 @@
     {
       "capability": "per-figure transforms, fills, strokes",
       "commands": 270,
-      "custom_cpu_ms": 2.0909050000000002,
-      "custom_gpu_ms": 0.032768,
+      "custom_cpu_ms": 1.3468950000000002,
+      "custom_gpu_ms": 0.027648,
       "flip_limits": [
         0.004999999888241291,
         0.05999999865889549
       ],
-      "gpu_ratio": 0.6399999999999999,
+      "gpu_ratio": 0.574468085106383,
       "height": 720,
       "known_gaps": [],
       "name": "vector-animation",
@@ -336,12 +374,12 @@
         "pass": true
       },
       "problems": [],
-      "skia_cpu_ms": 15.549425000000001,
+      "skia_cpu_ms": 8.321674,
       "status": "pass",
       "time_seconds": 0.5,
       "timing_rounds": 2,
-      "vello_cpu_ms": 1.9984410000000001,
-      "vello_gpu_ms": 0.0512,
+      "vello_cpu_ms": 1.3428579999999999,
+      "vello_gpu_ms": 0.048128,
       "vs_skia": {
         "mean": 0.004898304119706154,
         "p99": 0.05934692546725273,
