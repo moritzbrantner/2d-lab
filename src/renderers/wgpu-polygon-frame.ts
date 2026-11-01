@@ -1,89 +1,66 @@
 import type { DisplayList, PathCommand } from "../core/display-list";
-import { parseHexColor } from "../geometry/color";
-import { flattenGeometry } from "../geometry/flatten";
+import { parseHexColor, parsePaintColor } from "../geometry/color";
+import { packVelloFrame, type PackedVelloFrame } from "./vello-frame";
 import type { RenderOptions } from "./types";
 
-export type PackedPolygonFrame = {
-  readonly points: Float32Array;
-  readonly spans: Uint32Array;
-  readonly transforms: Float32Array;
-  readonly colors: Float32Array;
-  readonly background: Float32Array;
-};
+/**
+ * The custom immediate path's input: the Vello frame without path verbs (the custom path draws
+ * straight edges only), so both renderers receive identical geometry, paint and stroke style.
+ */
+export type PackedPolygonFrame = Omit<PackedVelloFrame, "verbs" | "verbSpans">;
 
+/**
+ * Why the custom immediate path cannot render `displayList`: it fills convex polygons and strokes
+ * straight-edged paths (Canvas width, caps, joins and miter limit, tessellated with lyon).
+ */
 export function polygonRendererSupportError(
   displayList: DisplayList,
   options: RenderOptions,
 ): string | null {
   if (options.debugBounds) {
-    return "The first WebGPU slice does not render debug bounds yet.";
+    return "The custom WebGPU path does not render debug bounds yet.";
   }
   const background = parseHexColor(displayList.background);
   if (!background) {
-    return "The first WebGPU slice requires a hex background color.";
+    return "The custom WebGPU path requires a hex background color.";
   }
   if (background[3] !== 1) {
-    return "The first WebGPU slice requires an opaque background.";
+    return "The custom WebGPU path requires an opaque background.";
   }
 
   for (const [index, command] of displayList.commands.entries()) {
     if (command.segments) {
       return `WebGPU command ${index} uses explicit path segments; custom polygon rendering supports straight edges only.`;
     }
-    if (!command.closed) {
-      return `WebGPU command ${index} is open; the first slice supports closed polygons only.`;
+    if (command.paint.fill) {
+      if (!parsePaintColor(command.paint.fill)) {
+        return `WebGPU command ${index} uses an unsupported fill color.`;
+      }
+      if (command.points.length < 6) {
+        return `WebGPU command ${index} fills fewer than three points.`;
+      }
+      if (!isConvexPolygon(command)) {
+        return `WebGPU command ${index} is concave or degenerate; lyon fill tessellation is a later slice.`;
+      }
     }
-    if (!command.paint.fill) {
-      return `WebGPU command ${index} has no fill.`;
-    }
-    if (command.paint.stroke) {
-      return `WebGPU command ${index} has a stroke; stroke tessellation is a later slice.`;
-    }
-    if (!parseHexColor(command.paint.fill)) {
-      return `WebGPU command ${index} uses a non-hex fill color.`;
-    }
-    if (command.points.length < 6) {
-      return `WebGPU command ${index} has fewer than three points.`;
-    }
-    if (!isConvexPolygon(command)) {
-      return `WebGPU command ${index} is concave or degenerate; lyon tessellation is a later slice.`;
+    if (command.paint.stroke && !parsePaintColor(command.paint.stroke)) {
+      return `WebGPU command ${index} uses an unsupported stroke color.`;
     }
   }
 
   return null;
 }
 
-export function packPolygonFrame(
-  displayList: DisplayList,
-): PackedPolygonFrame {
+export function packPolygonFrame(displayList: DisplayList): PackedPolygonFrame {
   const supportError = polygonRendererSupportError(displayList, {
     debugBounds: false,
   });
   if (supportError) {
     throw new Error(supportError);
   }
-
-  const geometry = flattenGeometry(displayList);
-  const colors = new Float32Array(displayList.commands.length * 4);
-
-  for (const [index, command] of displayList.commands.entries()) {
-    const color = parseHexColor(command.paint.fill!);
-    if (!color) {
-      throw new Error(`command ${index} fill could not be encoded as RGBA`);
-    }
-    colors.set(color, index * 4);
-  }
-
-  const background = parseHexColor(displayList.background);
-  if (!background) {
-    throw new Error("background could not be encoded as RGBA");
-  }
-
-  return {
-    ...geometry,
-    colors,
-    background: new Float32Array(background),
-  };
+  const { verbs: _verbs, verbSpans: _verbSpans, ...frame } =
+    packVelloFrame(displayList);
+  return frame;
 }
 
 function isConvexPolygon(command: PathCommand): boolean {

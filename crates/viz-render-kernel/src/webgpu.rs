@@ -7,8 +7,8 @@ use js_sys::{Date, Float64Array};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
-use crate::build_coverage_polygons;
 use crate::polygon_pipeline::PolygonRenderer;
+use crate::{PolygonFrame, build_coverage_polygons};
 
 #[wasm_bindgen]
 pub struct WgpuPolygonRenderer {
@@ -112,12 +112,17 @@ impl WgpuPolygonRenderer {
         self.surface.configure(&self.device, &self.config);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
         points: &[f32],
         spans: &[u32],
         transforms: &[f32],
-        colors: &[f32],
+        fill_colors: &[f32],
+        stroke_colors: &[f32],
+        stroke_widths: &[f32],
+        miter_limits: &[f32],
+        flags: &[u32],
         background: &[f32],
         width: u32,
         height: u32,
@@ -138,8 +143,21 @@ impl WgpuPolygonRenderer {
         self.resize(width, height);
 
         let prepare_start = now_ms();
-        let geometry = build_coverage_polygons(points, spans, transforms, colors, width, height)
-            .map_err(|message| JsValue::from_str(&message))?;
+        let geometry = build_coverage_polygons(
+            &PolygonFrame {
+                points,
+                spans,
+                transforms,
+                fill_colors,
+                stroke_colors,
+                stroke_widths,
+                miter_limits,
+                flags,
+            },
+            width,
+            height,
+        )
+        .map_err(|message| JsValue::from_str(&message))?;
         let prepare_ms = now_ms() - prepare_start;
 
         let upload_start = now_ms();

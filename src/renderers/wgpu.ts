@@ -34,7 +34,7 @@ async function rendererFor(
 
 export const wgpuPolygonRenderer: Renderer = {
   id: "wgpu-rust-polygons",
-  name: "WebGPU · Rust/WASM convex polygons",
+  name: "WebGPU · Rust/WASM convex fills + lyon strokes",
   support(displayList, options) {
     return polygonRendererSupportError(displayList, options);
   },
@@ -59,7 +59,11 @@ export const wgpuPolygonRenderer: Renderer = {
       packed.points,
       packed.spans,
       packed.transforms,
-      packed.colors,
+      packed.fillColors,
+      packed.strokeColors,
+      packed.strokeWidths,
+      packed.miterLimits,
+      packed.flags,
       packed.background,
       displayList.width,
       displayList.height,

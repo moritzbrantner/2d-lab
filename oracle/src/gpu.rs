@@ -4,7 +4,7 @@
 use std::time::Instant;
 
 use viz_render_kernel::{
-    build_coverage_polygons,
+    PolygonFrame, build_coverage_polygons,
     polygon_pipeline::PolygonRenderer,
     vello_gpu::{
         ClearSettings, RenderSize, RenderTargetConfig, Renderer, Scene as VelloScene, TargetInit,
@@ -73,23 +73,21 @@ impl Gpu {
 
     /// The custom immediate path: Rust coverage geometry, one upload, one draw (as `webgpu.rs`).
     pub fn render_custom(&self, scene: &Scene, frames: usize) -> Result<Rendered, String> {
-        let colors = scene
-            .custom
-            .colors
-            .as_deref()
-            .ok_or("custom path has no colors")?;
         let v = &scene.vello;
+        let frame = PolygonFrame {
+            points: &v.points,
+            spans: &v.spans,
+            transforms: &v.transforms,
+            fill_colors: &v.fill_colors,
+            stroke_colors: &v.stroke_colors,
+            stroke_widths: &v.stroke_widths,
+            miter_limits: &v.miter_limits,
+            flags: &v.flags,
+        };
         let format = FORMAT.remove_srgb_suffix();
         let mut renderer = PolygonRenderer::new(&self.device, format);
         self.run(scene, frames, format, |encoder, view| {
-            let geometry = build_coverage_polygons(
-                &v.points,
-                &v.spans,
-                &v.transforms,
-                colors,
-                scene.width,
-                scene.height,
-            )?;
+            let geometry = build_coverage_polygons(&frame, scene.width, scene.height)?;
             renderer.upload(&self.device, &self.queue, &geometry);
             renderer.encode(encoder, view, &v.background);
             Ok(())

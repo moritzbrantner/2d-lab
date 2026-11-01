@@ -1,4 +1,9 @@
-import type { DisplayList } from "../core/display-list";
+import {
+  CANVAS_MITER_LIMIT,
+  type DisplayList,
+  type LineCap,
+  type LineJoin,
+} from "../core/display-list";
 import { parseHexColor, parsePaintColor } from "../geometry/color";
 import { flattenGeometry } from "../geometry/flatten";
 import type { RenderOptions } from "./types";
@@ -6,6 +11,11 @@ import type { RenderOptions } from "./types";
 const FLAG_CLOSED = 1;
 const FLAG_FILL = 2;
 const FLAG_STROKE = 4;
+// Stroke cap and join, as `stroke::CAP_SHIFT` / `stroke::JOIN_SHIFT` in the Rust kernel.
+const CAP_SHIFT = 3;
+const JOIN_SHIFT = 5;
+const CAPS: Record<LineCap, number> = { butt: 0, round: 1, square: 2 };
+const JOINS: Record<LineJoin, number> = { miter: 0, round: 1, bevel: 2 };
 const VERB_LINE = 0;
 const VERB_CUBIC = 1;
 
@@ -18,6 +28,8 @@ export type PackedVelloFrame = {
   readonly fillColors: Float32Array;
   readonly strokeColors: Float32Array;
   readonly strokeWidths: Float32Array;
+  readonly miterLimits: Float32Array;
+  /** `FLAG_*` bits plus the stroke cap (bits 3–4) and join (bits 5–6). */
   readonly flags: Uint32Array;
   readonly background: Float32Array;
 };
@@ -62,6 +74,7 @@ export function packVelloFrame(displayList: DisplayList): PackedVelloFrame {
   const fillColors = new Float32Array(count * 4);
   const strokeColors = new Float32Array(count * 4);
   const strokeWidths = new Float32Array(count);
+  const miterLimits = new Float32Array(count);
   const flags = new Uint32Array(count);
 
   for (const [index, command] of displayList.commands.entries()) {
@@ -82,10 +95,14 @@ export function packVelloFrame(displayList: DisplayList): PackedVelloFrame {
         throw new Error(`command ${index} stroke could not be encoded`);
       }
       strokeColors.set(color, index * 4);
-      commandFlags |= FLAG_STROKE;
+      commandFlags |=
+        FLAG_STROKE |
+        (CAPS[command.paint.lineCap ?? "butt"] << CAP_SHIFT) |
+        (JOINS[command.paint.lineJoin ?? "miter"] << JOIN_SHIFT);
     }
 
     strokeWidths[index] = command.paint.strokeWidth ?? 1;
+    miterLimits[index] = command.paint.miterLimit ?? CANVAS_MITER_LIMIT;
     flags[index] = commandFlags;
   }
 
@@ -101,6 +118,7 @@ export function packVelloFrame(displayList: DisplayList): PackedVelloFrame {
     fillColors,
     strokeColors,
     strokeWidths,
+    miterLimits,
     flags,
     background: new Float32Array(background),
   };

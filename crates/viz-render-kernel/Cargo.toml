@@ -13,6 +13,9 @@ crate-type = ["cdylib", "rlib"]
 # Native wgpu + Vello for the oracle (`oracle/`); the browser build always has them.
 native = ["dep:wgpu", "dep:vello_gpu"]
 
+[dependencies]
+lyon_tessellation = "1.0.23"
+
 [target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dependencies]
 wgpu = { version = "=30.0.1", default-features = false, features = ["wgsl"], optional = true }
 vello_gpu = { git = "https://github.com/linebender/vello.git", rev = "37f7119ec7fcdc444e391867c77991887c61a652", default-features = false, features = ["wgpu"], optional = true }

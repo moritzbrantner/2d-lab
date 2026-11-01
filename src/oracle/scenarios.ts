@@ -1,8 +1,5 @@
 import { packVelloFrame } from "../renderers/vello-frame";
-import {
-  packPolygonFrame,
-  polygonRendererSupportError,
-} from "../renderers/wgpu-polygon-frame";
+import { polygonRendererSupportError } from "../renderers/wgpu-polygon-frame";
 import { filledPolygonScene } from "../scenes/filled-polygons";
 import { flatStoriesCurveScene } from "../scenes/flat-stories-curves";
 import { mapLikeScene } from "../scenes/map-like";
@@ -11,6 +8,7 @@ import { retainedMapScene } from "../scenes/retained-map";
 import { retainedMapCullingScene } from "../scenes/retained-map-culling";
 import type { BenchmarkWorkload } from "../scenes/types";
 import { vectorAnimationScene } from "../scenes/vector-animation";
+import { strokeStylesWorkload } from "./stroke-styles";
 
 /**
  * Named oracle scenarios: one deterministic frame of an existing lab workload. The native oracle
@@ -41,6 +39,12 @@ export const oracleScenarios: readonly OracleScenario[] = [
     name: "strokes",
     capability: "open and closed strokes",
     workload: mapLikeScene,
+    timeSeconds: 0,
+  },
+  {
+    name: "stroke-styles",
+    capability: "line caps, joins, miter limit",
+    workload: strokeStylesWorkload,
     timeSeconds: 0,
   },
   {
@@ -81,27 +85,16 @@ export type OracleSceneJson = {
   /** `packVelloFrame`: what Vello (and Skia) render. */
   readonly vello: Record<string, number[]>;
   /**
-   * `packPolygonFrame`'s per-command fill colors; its points, spans and transforms are the Vello
-   * frame's (both come from `flattenGeometry`). `error` is the custom path's support error.
+   * The custom path renders the same arrays (`packPolygonFrame` is the Vello frame without path
+   * verbs); `error` is its support error when it cannot.
    */
-  readonly custom: { readonly error: string | null; readonly colors?: number[] };
+  readonly custom: { readonly error: string | null };
 };
 
 export function exportOracleScene(scenario: OracleScenario): OracleSceneJson {
   const displayList = scenario.workload.create(scenario.timeSeconds);
   const vello = packVelloFrame(displayList);
   const error = polygonRendererSupportError(displayList, { debugBounds: false });
-  let custom: OracleSceneJson["custom"] = { error };
-  if (error === null) {
-    const polygon = packPolygonFrame(displayList);
-    for (const key of ["points", "spans", "transforms"] as const) {
-      if (!sameValues(polygon[key], vello[key])) {
-        throw new Error(`${scenario.name}: custom ${key} differ from the Vello frame`);
-      }
-    }
-    custom = { error, colors: f32(polygon.colors) };
-  }
-
   return {
     name: scenario.name,
     capability: scenario.capability,
@@ -119,19 +112,12 @@ export function exportOracleScene(scenario: OracleScenario): OracleSceneJson {
       fillColors: f32(vello.fillColors),
       strokeColors: f32(vello.strokeColors),
       strokeWidths: f32(vello.strokeWidths),
+      miterLimits: f32(vello.miterLimits),
       flags: Array.from(vello.flags),
       background: f32(vello.background),
     },
-    custom,
+    custom: { error },
   };
-}
-
-function sameValues(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
-  if (a.length !== b.length) return false;
-  for (let index = 0; index < a.length; index += 1) {
-    if (a[index] !== b[index]) return false;
-  }
-  return true;
 }
 
 /** Shortest decimal that parses back to the same f32, keeping the JSON small and exact. */

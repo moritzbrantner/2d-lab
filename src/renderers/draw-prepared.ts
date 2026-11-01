@@ -1,4 +1,4 @@
-import type { DisplayList } from "../core/display-list";
+import { CANVAS_MITER_LIMIT, type DisplayList } from "../core/display-list";
 import { pathDataFloatCount } from "../geometry/flatten";
 
 export function drawPreparedDisplayList(
@@ -62,6 +62,9 @@ export function drawPreparedDisplayList(
     if (command.paint.stroke) {
       context.strokeStyle = command.paint.stroke;
       context.lineWidth = command.paint.strokeWidth ?? 1;
+      context.lineCap = command.paint.lineCap ?? "butt";
+      context.lineJoin = command.paint.lineJoin ?? "miter";
+      context.miterLimit = command.paint.miterLimit ?? CANVAS_MITER_LIMIT;
       context.stroke();
     }
 

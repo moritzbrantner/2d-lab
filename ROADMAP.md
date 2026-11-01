@@ -15,9 +15,10 @@ The roadmap is evidence-driven. A later renderer is not promoted merely because 
 - [x] Add immediate Rust/WASM rendering through `wgpu`/WebGPU for closed convex solid polygons.
 - [x] Track preparation, upload, submit, draw count, generated vertices and bytes.
 - [x] Preserve sRGB color semantics.
-- [x] Fail closed for unsupported strokes, concavity and debug overlays.
+- [x] Fail closed for unsupported concavity, curves and debug overlays.
+- [x] Stroke straight-edged paths with lyon (Canvas caps, joins, miter limit), anti-aliased like fills and proven against the Vello/Skia oracle (#56).
 - [ ] Add GPU timestamp-query evidence where browser/device support makes it reliable.
-- [ ] Evaluate MSAA/edge antialiasing against the Canvas reference.
+- [x] Analytic edge anti-aliasing, proven against the Vello/Skia oracle (#55).
 
 ## 3. Map-specific retained geometry
 
@@ -76,7 +77,8 @@ Do not implement these merely to make the custom renderer look complete.
 
 - [x] Curves.
 - [ ] General fill tessellation.
-- [ ] Strokes/joins/caps/dashes.
+- [x] Strokes/joins/caps (lyon, #56).
+- [ ] Dashes.
 - [ ] Text.
 - [ ] Clipping and opacity groups.
 - [ ] Images and gradients.

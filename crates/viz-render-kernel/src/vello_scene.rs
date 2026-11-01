@@ -8,15 +8,13 @@ use vello_gpu::{
     peniko::Color,
 };
 
-pub const FLAG_CLOSED: u32 = 1;
-pub const FLAG_FILL: u32 = 2;
-pub const FLAG_STROKE: u32 = 4;
+use crate::{
+    FLAG_CLOSED, FLAG_FILL, FLAG_STROKE,
+    stroke::{self, stroke_cap, stroke_join},
+};
+
 pub const VERB_LINE: u32 = 0;
 pub const VERB_CUBIC: u32 = 1;
-
-/// Canvas 2D's default miter limit; the display list has no stroke style beyond width, so every
-/// renderer uses Canvas defaults (butt caps, miter joins, miter limit 10).
-pub const CANVAS_MITER_LIMIT: f64 = 10.0;
 
 /// The view format Vello renders into. Vello writes sRGB-encoded values itself, so it needs a
 /// non-sRGB view; an `*Srgb` view would encode them a second time and wash the image out.
@@ -35,6 +33,7 @@ pub struct VelloFrame<'a> {
     pub fill_colors: &'a [f32],
     pub stroke_colors: &'a [f32],
     pub stroke_widths: &'a [f32],
+    pub miter_limits: &'a [f32],
     pub flags: &'a [u32],
     pub background: &'a [f32],
 }
@@ -52,6 +51,7 @@ impl VelloFrame<'_> {
             || self.fill_colors.len() != count * 4
             || self.stroke_colors.len() != count * 4
             || self.stroke_widths.len() != count
+            || self.miter_limits.len() != count
             || self.flags.len() != count
         {
             return Err("Vello frame arrays have mismatched lengths".into());
@@ -99,6 +99,15 @@ impl VelloFrame<'_> {
                     "Vello command {command_index} has invalid stroke width"
                 ));
             }
+            let miter_limit = self.miter_limits[command_index];
+            if !miter_limit.is_finite() || miter_limit <= 0.0 {
+                return Err(format!(
+                    "Vello command {command_index} has invalid miter limit"
+                ));
+            }
+            let flags = self.flags[command_index];
+            stroke_cap(flags)?;
+            stroke_join(flags)?;
         }
 
         Ok(())
@@ -175,11 +184,21 @@ impl VelloFrame<'_> {
                 scene.set_paint(color_from_f32(
                     &self.stroke_colors[color_offset..color_offset + 4],
                 )?);
+                let cap = match stroke_cap(flags)? {
+                    stroke::Cap::Butt => Cap::Butt,
+                    stroke::Cap::Round => Cap::Round,
+                    stroke::Cap::Square => Cap::Square,
+                };
+                let join = match stroke_join(flags)? {
+                    stroke::Join::Miter => Join::Miter,
+                    stroke::Join::Round => Join::Round,
+                    stroke::Join::Bevel => Join::Bevel,
+                };
                 scene.set_stroke(
                     Stroke::new(f64::from(self.stroke_widths[command_index]))
-                        .with_caps(Cap::Butt)
-                        .with_join(Join::Miter)
-                        .with_miter_limit(CANVAS_MITER_LIMIT),
+                        .with_caps(cap)
+                        .with_join(join)
+                        .with_miter_limit(f64::from(self.miter_limits[command_index])),
                 );
                 scene.stroke_path(&path);
             }
