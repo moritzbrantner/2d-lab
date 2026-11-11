@@ -15,8 +15,8 @@ use viz_render_kernel::{
     CoveragePolygons, PolygonFrame, build_coverage_polygons,
     polygon_pipeline::PolygonRenderer,
     vello_gpu::{
-        ClearSettings, RenderSize, RenderTargetConfig, Renderer, Resources, Scene as VelloScene,
-        TargetInit, TextureBindings,
+        ClearSettings, RenderOptions, RenderSize, RenderTarget, RenderTargetConfig, Renderer,
+        Resources, Scene as VelloScene, TargetInit, TextureBindings,
     },
     vello_scene::{VelloFrame, color_from_f32, vello_target_format},
 };
@@ -83,7 +83,6 @@ struct VelloDraw<'a> {
     renderer: Renderer,
     resources: Resources,
     scene: VelloScene,
-    size: RenderSize,
     depth: wgpu::TextureView,
     clear: viz_render_kernel::vello_gpu::peniko::Color,
 }
@@ -95,22 +94,24 @@ impl Draw for VelloDraw<'_> {
 
     fn record(
         &mut self,
-        gpu: &Gpu,
+        _gpu: &Gpu,
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
     ) -> Result<(), String> {
+        // `RenderOptions` is non-exhaustive upstream; the offset stays at its (0, 0) default.
+        let mut options = RenderOptions::default();
+        options.target_init = TargetInit::Clear(ClearSettings::Viewport { color: self.clear });
         self.renderer
             .render(
                 &self.scene,
                 &mut self.resources,
-                &gpu.device,
-                &gpu.queue,
                 encoder,
-                &self.size,
-                view,
-                Some(&self.depth),
+                RenderTarget {
+                    view,
+                    depth_view: Some(&self.depth),
+                },
                 &TextureBindings::new(),
-                TargetInit::Clear(ClearSettings::Viewport { color: self.clear }),
+                options,
             )
             .map_err(|e| format!("Vello render failed: {e}"))
     }
@@ -198,20 +199,20 @@ impl Gpu {
         let height = u16::try_from(scene.height).map_err(|_| "height exceeds u16")?;
         let (renderer, resources) = Renderer::new(
             &self.device,
+            &self.queue,
             &RenderTargetConfig {
                 format: vello_target_format(FORMAT),
                 width,
                 height,
             },
         );
-        let size = RenderSize { width, height };
+        let depth = renderer.create_depth_texture_view(&RenderSize { width, height });
         let draw = VelloDraw {
             frame,
             renderer,
             resources,
             scene: VelloScene::new(width, height),
-            depth: Renderer::create_depth_texture_view(&self.device, &size),
-            size,
+            depth,
             clear: color_from_f32(frame.background)?,
         };
         Ok(self.side(scene, vello_target_format(FORMAT), Box::new(draw)))

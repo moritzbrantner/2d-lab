@@ -8,8 +8,8 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
 use vello_gpu::{
-    ClearSettings, RenderSize, RenderTargetConfig, Renderer, Resources, Scene, TargetInit,
-    TextureBindings,
+    ClearSettings, RenderOptions, RenderSize, RenderTarget, RenderTargetConfig, Renderer,
+    Resources, Scene, TargetInit, TextureBindings,
 };
 
 use crate::vello_scene::{VelloFrame, color_from_f32, vello_target_format};
@@ -23,7 +23,6 @@ pub struct VelloGpuRenderer {
     surface_view_format: wgpu::TextureFormat,
     renderer: Renderer,
     resources: Resources,
-    render_size: RenderSize,
     depth_texture_view: wgpu::TextureView,
     scene: Scene,
     device_lost: Arc<AtomicBool>,
@@ -88,8 +87,8 @@ impl VelloGpuRenderer {
         }
         surface.configure(&device, &config);
 
-        let (renderer, resources, render_size, depth_texture_view, scene) =
-            create_vello_state(&device, surface_view_format, width, height)?;
+        let (renderer, resources, depth_texture_view, scene) =
+            create_vello_state(&device, &queue, surface_view_format, width, height)?;
 
         Ok(Self {
             surface,
@@ -99,7 +98,6 @@ impl VelloGpuRenderer {
             surface_view_format,
             renderer,
             resources,
-            render_size,
             depth_texture_view,
             scene,
             device_lost,
@@ -178,18 +176,20 @@ impl VelloGpuRenderer {
 
         let clear_color =
             color_from_f32(background).map_err(|message| JsValue::from_str(&message))?;
+        // `RenderOptions` is non-exhaustive upstream; the offset stays at its (0, 0) default.
+        let mut options = RenderOptions::default();
+        options.target_init = TargetInit::Clear(ClearSettings::Viewport { color: clear_color });
         self.renderer
             .render(
                 &self.scene,
                 &mut self.resources,
-                &self.device,
-                &self.queue,
                 &mut encoder,
-                &self.render_size,
-                &view,
-                Some(&self.depth_texture_view),
+                RenderTarget {
+                    view: &view,
+                    depth_view: Some(&self.depth_texture_view),
+                },
                 &TextureBindings::new(),
-                TargetInit::Clear(ClearSettings::Viewport { color: clear_color }),
+                options,
             )
             .map_err(|error| js_error("Vello render failed", error))?;
 
@@ -211,11 +211,15 @@ impl VelloGpuRenderer {
         self.config.height = height;
         self.surface.configure(&self.device, &self.config);
 
-        let (renderer, resources, render_size, depth_texture_view, scene) =
-            create_vello_state(&self.device, self.surface_view_format, width, height)?;
+        let (renderer, resources, depth_texture_view, scene) = create_vello_state(
+            &self.device,
+            &self.queue,
+            self.surface_view_format,
+            width,
+            height,
+        )?;
         self.renderer = renderer;
         self.resources = resources;
-        self.render_size = render_size;
         self.depth_texture_view = depth_texture_view;
         self.scene = scene;
         Ok(())
@@ -224,10 +228,11 @@ impl VelloGpuRenderer {
 
 fn create_vello_state(
     device: &wgpu::Device,
+    queue: &wgpu::Queue,
     format: wgpu::TextureFormat,
     width: u32,
     height: u32,
-) -> Result<(Renderer, Resources, RenderSize, wgpu::TextureView, Scene), JsValue> {
+) -> Result<(Renderer, Resources, wgpu::TextureView, Scene), JsValue> {
     let width = u16::try_from(width).map_err(|_| JsValue::from_str("Vello width exceeds u16"))?;
     let height =
         u16::try_from(height).map_err(|_| JsValue::from_str("Vello height exceeds u16"))?;
@@ -236,11 +241,10 @@ fn create_vello_state(
         width,
         height,
     };
-    let (renderer, resources) = Renderer::new(device, &target_config);
-    let render_size = RenderSize { width, height };
-    let depth_texture_view = Renderer::create_depth_texture_view(device, &render_size);
+    let (renderer, resources) = Renderer::new(device, queue, &target_config);
+    let depth_texture_view = renderer.create_depth_texture_view(&RenderSize { width, height });
     let scene = Scene::new(width, height);
-    Ok((renderer, resources, render_size, depth_texture_view, scene))
+    Ok((renderer, resources, depth_texture_view, scene))
 }
 
 fn acquire_surface_frame(
