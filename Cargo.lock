@@ -1073,8 +1073,8 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "vello_common"
-version = "0.3.0"
-source = "git+https://github.com/linebender/vello.git?rev=6293f3b74498582752c3734888608030dfd8cc0e#6293f3b74498582752c3734888608030dfd8cc0e"
+version = "0.4.0"
+source = "git+https://github.com/linebender/vello.git?rev=b238d10c3badaac18f49c459a419219f5b9209b5#b238d10c3badaac18f49c459a419219f5b9209b5"
 dependencies = [
  "bytemuck",
  "fearless_simd",
@@ -1088,8 +1088,8 @@ dependencies = [
 
 [[package]]
 name = "vello_gpu"
-version = "0.3.0"
-source = "git+https://github.com/linebender/vello.git?rev=6293f3b74498582752c3734888608030dfd8cc0e#6293f3b74498582752c3734888608030dfd8cc0e"
+version = "0.4.0"
+source = "git+https://github.com/linebender/vello.git?rev=b238d10c3badaac18f49c459a419219f5b9209b5#b238d10c3badaac18f49c459a419219f5b9209b5"
 dependencies = [
  "bytemuck",
  "hashbrown",
@@ -1102,8 +1102,8 @@ dependencies = [
 
 [[package]]
 name = "vello_gpu_shaders"
-version = "0.3.0"
-source = "git+https://github.com/linebender/vello.git?rev=6293f3b74498582752c3734888608030dfd8cc0e#6293f3b74498582752c3734888608030dfd8cc0e"
+version = "0.4.0"
+source = "git+https://github.com/linebender/vello.git?rev=b238d10c3badaac18f49c459a419219f5b9209b5#b238d10c3badaac18f49c459a419219f5b9209b5"
 dependencies = [
  "naga",
  "wesl",
