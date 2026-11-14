@@ -18,7 +18,7 @@ lyon_tessellation = "1.0.23"
 
 [target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dependencies]
 wgpu = { version = "=30.0.1", default-features = false, features = ["wgsl"], optional = true }
-vello_gpu = { git = "https://github.com/linebender/vello.git", rev = "6293f3b74498582752c3734888608030dfd8cc0e", default-features = false, features = ["wgpu"], optional = true }
+vello_gpu = { git = "https://github.com/linebender/vello.git", rev = "b238d10c3badaac18f49c459a419219f5b9209b5", default-features = false, features = ["wgpu"], optional = true }
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 js-sys = "=0.3.107"
@@ -26,4 +26,4 @@ wasm-bindgen = "=0.2.130"
 wasm-bindgen-futures = "=0.4.80"
 web-sys = { version = "=0.3.107", features = ["HtmlCanvasElement", "Performance", "Window"] }
 wgpu = { version = "=30.0.1", default-features = false, features = ["webgpu", "wgsl"] }
-vello_gpu = { git = "https://github.com/linebender/vello.git", rev = "6293f3b74498582752c3734888608030dfd8cc0e", default-features = false, features = ["wgpu"] }
+vello_gpu = { git = "https://github.com/linebender/vello.git", rev = "b238d10c3badaac18f49c459a419219f5b9209b5", default-features = false, features = ["wgpu"] }
