@@ -250,6 +250,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00d174d5400e5e8fd687ad1049e2f578285fa914201b1af7e8b112a4546bd826"
 
 [[package]]
+name = "etagere"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ecb5c40d5683a270e077688f53a99eac51c1cb1ae5ba63b55590370cb3536bf"
+dependencies = [
+ "euclid",
+]
+
+[[package]]
 name = "euclid"
 version = "0.22.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1073,10 +1082,11 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "vello_common"
-version = "0.3.0"
-source = "git+https://github.com/linebender/vello.git?rev=6293f3b74498582752c3734888608030dfd8cc0e#6293f3b74498582752c3734888608030dfd8cc0e"
+version = "0.4.0"
+source = "git+https://github.com/linebender/vello.git?rev=570f0c4dfa22b2fde082356ab69ee3ff2b93a12d#570f0c4dfa22b2fde082356ab69ee3ff2b93a12d"
 dependencies = [
  "bytemuck",
+ "etagere",
  "fearless_simd",
  "fearless_simd_macros",
  "guillotiere",
@@ -1088,8 +1098,8 @@ dependencies = [
 
 [[package]]
 name = "vello_gpu"
-version = "0.3.0"
-source = "git+https://github.com/linebender/vello.git?rev=6293f3b74498582752c3734888608030dfd8cc0e#6293f3b74498582752c3734888608030dfd8cc0e"
+version = "0.4.0"
+source = "git+https://github.com/linebender/vello.git?rev=570f0c4dfa22b2fde082356ab69ee3ff2b93a12d#570f0c4dfa22b2fde082356ab69ee3ff2b93a12d"
 dependencies = [
  "bytemuck",
  "hashbrown",
@@ -1102,8 +1112,8 @@ dependencies = [
 
 [[package]]
 name = "vello_gpu_shaders"
-version = "0.3.0"
-source = "git+https://github.com/linebender/vello.git?rev=6293f3b74498582752c3734888608030dfd8cc0e#6293f3b74498582752c3734888608030dfd8cc0e"
+version = "0.4.0"
+source = "git+https://github.com/linebender/vello.git?rev=570f0c4dfa22b2fde082356ab69ee3ff2b93a12d#570f0c4dfa22b2fde082356ab69ee3ff2b93a12d"
 dependencies = [
  "naga",
  "wesl",
